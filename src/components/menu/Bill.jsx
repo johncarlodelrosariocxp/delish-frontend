@@ -268,7 +268,32 @@ const Bill = () => {
     mutationFn: (reqData) => addOrder(reqData),
     onSuccess: (res) => {
       const { data } = res.data;
-      setOrderInfo(data);
+
+      // Prepare order info for invoice
+      const invoiceOrderInfo = {
+        ...data,
+        customerDetails: {
+          name: customerData.customerName || "Walk-in",
+          phone: customerData.customerPhone || "Not provided",
+          guests: customerData.guests || 1,
+        },
+        items: combinedCart.map((item) => ({
+          name: item.name,
+          quantity: item.quantity,
+          price: calculateItemTotal(item),
+          pricePerQuantity: item.pricePerQuantity,
+        })),
+        bills: {
+          total: grossTotal,
+          tax: vatAmount,
+          discount: discountAmount,
+          totalWithTax: total,
+        },
+        paymentMethod: paymentMethod,
+        orderDate: new Date().toISOString(),
+      };
+
+      setOrderInfo(invoiceOrderInfo);
 
       // Only update table if tableId exists
       const tableId =
@@ -292,11 +317,6 @@ const Bill = () => {
 
       enqueueSnackbar("Order placed successfully!", { variant: "success" });
       setShowInvoice(true);
-
-      // Redirect to home after 3 seconds
-      setTimeout(() => {
-        navigate("/");
-      }, 3000);
     },
     onError: (error) => {
       console.error("Order placement error:", error);
@@ -395,6 +415,14 @@ const Bill = () => {
     } else {
       orderMutation.mutate(orderData);
     }
+  };
+
+  const handleCloseInvoice = () => {
+    setShowInvoice(false);
+    // Redirect to home after closing invoice
+    setTimeout(() => {
+      navigate("/");
+    }, 500);
   };
 
   return (
@@ -561,21 +589,11 @@ const Bill = () => {
           >
             {orderMutation.isLoading ? "Placing Order..." : "Place Order"}
           </button>
-
-          {showInvoice && (
-            <button
-              onClick={() => window.print()}
-              className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-gray-200 text-gray-700 shadow hover:bg-gray-300"
-            >
-              Print Receipt
-            </button>
-          )}
         </div>
 
+        {/* 📄 INVOICE MODAL */}
         {showInvoice && orderInfo && (
-          <div className="mt-6">
-            <Invoice order={orderInfo} setShowInvoice={setShowInvoice} />
-          </div>
+          <Invoice orderInfo={orderInfo} setShowInvoice={handleCloseInvoice} />
         )}
       </div>
     </div>
