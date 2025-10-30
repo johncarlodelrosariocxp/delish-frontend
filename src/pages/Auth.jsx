@@ -1,61 +1,65 @@
 import React, { useEffect, useState } from "react";
-import restaurant from "../assets/images/restaurant-img.jpg"
-import logo from "../assets/images/logo.png"
+import restaurant from "../assets/images/restaurant-img.jpg";
+import logo from "../assets/images/delish.png";
 import Register from "../components/auth/Register";
 import Login from "../components/auth/Login";
 
 const Auth = () => {
-
   useEffect(() => {
-    document.title = "POS | Auth"
-  }, [])
+    document.title = "POS | Auth";
+  }, []);
 
   const [isRegister, setIsRegister] = useState(false);
 
   return (
-    <div className="flex min-h-screen w-full">
-      {/* Left Section */}
-      <div className="w-1/2 relative flex items-center justify-center bg-cover">
-        {/* BG Image */}
-        <img className="w-full h-full object-cover" src={restaurant} alt="Restaurant Image" />
-
-        {/* Black Overlay */}
-        <div className="absolute inset-0 bg-black bg-opacity-80"></div>
-
-        {/* Quote at bottom */}
-        <blockquote className="absolute bottom-10 px-8 mb-10 text-2xl italic text-white">
-          "Serve customers the best food with prompt and friendly service in a
-          welcoming atmosphere, and they’ll keep coming back."
-          <br />
-          <span className="block mt-4 text-yellow-400">- Founder of Restro</span>
-        </blockquote>
-      </div>
-
-      {/* Right Section */}
-      <div className="w-1/2 min-h-screen bg-[#1a1a1a] p-10">
-        <div className="flex flex-col items-center gap-2">
-          <img src={logo} alt="Restro Logo" className="h-14 w-14 border-2 rounded-full p-1" />
-          <h1 className="text-lg font-semibold text-[#f5f5f5] tracking-wide">Restro</h1>
+    <div className="flex flex-col lg:flex-row min-h-screen w-full">
+      {/* Form Section (Top on mobile, right on desktop) */}
+      <div className="w-full lg:w-1/2 min-h-screen bg-gray-300 p-6 md:p-10 flex flex-col justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <img
+            src={logo}
+            alt="Delish Logo"
+            className="h-44 w-44 border-2 rounded-full p-1"
+          />
+          <h1 className="text-2xl font-semibold text-gray-800 tracking-wide text-center">
+            Delish Cheesecake
+          </h1>
         </div>
 
-        <h2 className="text-4xl text-center mt-10 font-semibold text-yellow-400 mb-10">
+        <h2 className="text-2xl md:text-3xl text-center mt-10 font-semibold text-yellow-500 mb-10">
           {isRegister ? "Employee Registration" : "Employee Login"}
         </h2>
 
-        {/* Components */}  
-        {isRegister ? <Register setIsRegister={setIsRegister} /> : <Login />}
-
-
-        <div className="flex justify-center mt-6">
-          <p className="text-sm text-[#ababab]">
-            {isRegister ? "Already have an account?" : "Don't have an account?"}
-            <a onClick={() => setIsRegister(!isRegister)} className="text-yellow-400 font-semibold hover:underline" href="#">
-              {isRegister ? "Sign in" : "Sign up"}
-            </a>
-          </p>
+        <div className="w-full max-w-md mx-auto">
+          {isRegister ? <Register setIsRegister={setIsRegister} /> : <Login />}
         </div>
 
+        <div className="flex justify-center mt-6">
+          <p className="text-sm text-gray-700">
+            {isRegister ? "Already have an account?" : "Don't have an account?"}{" "}
+            <span
+              onClick={() => setIsRegister(!isRegister)}
+              className="text-yellow-600 font-semibold hover:underline cursor-pointer"
+            >
+              {isRegister ? "Sign in" : "Sign up"}
+            </span>
+          </p>
+        </div>
+      </div>
 
+      {/* Image Section (Bottom on mobile, left on desktop) */}
+      <div className="w-full lg:w-1/2 relative flex items-center justify-center bg-cover">
+        <img
+          className="w-full h-full object-cover"
+          src={restaurant}
+          alt="Restaurant Image"
+        />
+        <div className="absolute inset-0 bg-black bg-opacity-80"></div>
+        <blockquote className="absolute bottom-10 px-8 mb-10 text-xl md:text-2xl italic text-white text-center">
+          “At Delish Cheesecake, we don’t just serve desserts. We serve moments.
+          From the first sip of coffee to the last bite of cheesecake, every
+          plate is a promise of warmth, flavor, and Filipino hospitality."
+        </blockquote>
       </div>
     </div>
   );

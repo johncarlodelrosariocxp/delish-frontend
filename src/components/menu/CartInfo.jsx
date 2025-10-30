@@ -6,66 +6,73 @@ import { removeItem } from "../../redux/slices/cartSlice";
 
 const CartInfo = () => {
   const cartData = useSelector((state) => state.cart);
-  const scrolLRef = useRef();
+  const scrollRef = useRef(null);
   const dispatch = useDispatch();
 
   useEffect(() => {
-    if (scrolLRef.current) {
-      scrolLRef.current.scrollTo({
-        top: scrolLRef.current.scrollHeight,
-        behavior: "smooth",
-      });
-    }
+    scrollRef.current?.scrollTo({
+      top: scrollRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [cartData]);
 
   const handleRemove = (itemId) => {
-    dispatch(removeItem(itemId));
+    if (window.confirm("Are you sure you want to remove this item?")) {
+      dispatch(removeItem(itemId));
+    }
   };
 
   return (
-    <div className="px-4 py-2">
-      <h1 className="text-lg text-[#e4e4e4] font-semibold tracking-wide">
+    <div className="w-full px-4 py-4 sm:px-6 md:px-8">
+      <h1 className="text-lg text-white font-semibold tracking-wide mb-3">
         Order Details
       </h1>
+
       <div
-        className="mt-4 overflow-y-scroll scrollbar-hide h-[380px]"
-        ref={scrolLRef}
+        ref={scrollRef}
+        className="overflow-y-auto h-[60vh] sm:h-[65vh] md:h-[380px] scrollbar-hide space-y-3"
       >
         {cartData.length === 0 ? (
-          <p className="text-[#ababab] text-sm flex justify-center items-center h-[380px]">
-            Your cart is empty. Start adding items!
-          </p>
+          <div className="flex justify-center items-center h-full">
+            <p className="text-gray-400 text-sm text-center">
+              Your cart is empty. Start adding items!
+            </p>
+          </div>
         ) : (
-          cartData.map((item) => {
-            return (
-              <div className="bg-[#1f1f1f] rounded-lg px-4 py-4 mb-2">
-                <div className="flex items-center justify-between">
-                  <h1 className="text-[#ababab] font-semibold tracling-wide text-md">
-                    {item.name}
-                  </h1>
-                  <p className="text-[#ababab] font-semibold">
-                    x{item.quantity}
-                  </p>
-                </div>
-                <div className="flex items-center justify-between mt-3">
-                  <div className="flex items-center gap-3">
-                    <RiDeleteBin2Fill
-                      onClick={() => handleRemove(item.id)}
-                      className="text-[#ababab] cursor-pointer"
-                      size={20}
-                    />
-                    <FaNotesMedical
-                      className="text-[#ababab] cursor-pointer"
-                      size={20}
-                    />
-                  </div>
-                  <p className="text-[#f5f5f5] text-md font-bold">
-                    ₱{item.price}
-                  </p>
-                </div>
+          cartData.map((item) => (
+            <div
+              key={item.id || `${item.name}-${item.quantity}-${item.price}`}
+              className="bg-gray-900 rounded-lg px-4 py-4"
+            >
+              <div className="flex justify-between items-center flex-wrap gap-2">
+                <h1 className="text-gray-300 font-semibold text-sm sm:text-base">
+                  {item.name}
+                </h1>
+                <p className="text-gray-300 font-medium text-sm">
+                  x{item.quantity}
+                </p>
               </div>
-            );
-          })
+
+              <div className="flex justify-between items-center mt-3 flex-wrap gap-2">
+                <div className="flex items-center gap-3">
+                  <RiDeleteBin2Fill
+                    title="Remove Item"
+                    onClick={() => handleRemove(item.id)}
+                    className="text-gray-400 hover:text-red-500 transition cursor-pointer"
+                    size={20}
+                  />
+                  <FaNotesMedical
+                    title="Add Notes"
+                    className="text-gray-400 hover:text-blue-400 transition cursor-pointer"
+                    size={20}
+                  />
+                </div>
+                <p className="text-white font-bold text-sm sm:text-base">
+                  ₱{(item.price * item.quantity).toFixed(2)}
+                </p>
+              </div>
+            </div>
+          ))
         )}
       </div>
     </div>
