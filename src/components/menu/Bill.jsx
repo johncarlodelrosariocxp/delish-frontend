@@ -520,22 +520,20 @@ const Bill = () => {
           </div>
         </div>
 
-        {/* 🎟 DISCOUNT BUTTONS */}
-        <div className="mt-4 space-y-2">
+        {/* 🎟 DISCOUNT BUTTONS - Made smaller and aligned with payment buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 mt-4">
           <button
             onClick={() => {
               setDiscountApplied(!discountApplied);
               setEmployeeDiscountApplied(false);
             }}
-            className={`w-full px-4 py-3 rounded-lg font-semibold text-sm shadow ${
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow ${
               discountApplied
                 ? "bg-green-500 text-white"
                 : "bg-green-100 text-green-700"
             }`}
           >
-            {discountApplied
-              ? "Discount Applied (PWD/Whole/Phinwheel 10%)"
-              : "Apply Discount (PWD/Whole/Phinwheel 10%)"}
+            {discountApplied ? "Discount Applied" : "PWD/Whole/Phinwheel (10%)"}
           </button>
 
           <button
@@ -543,23 +541,23 @@ const Bill = () => {
               setEmployeeDiscountApplied(!employeeDiscountApplied);
               setDiscountApplied(false);
             }}
-            className={`w-full px-4 py-3 rounded-lg font-semibold text-sm shadow ${
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow ${
               employeeDiscountApplied
                 ? "bg-yellow-500 text-white"
                 : "bg-yellow-100 text-yellow-700"
             }`}
           >
             {employeeDiscountApplied
-              ? "Employee Discount Applied (15%)"
-              : "Apply Employee Discount (15%)"}
+              ? "Emp. Discount Applied"
+              : "Employee (15%)"}
           </button>
         </div>
 
         {/* 💳 PAYMENT BUTTONS */}
-        <div className="flex flex-col sm:flex-row gap-3 mt-6">
+        <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={() => setPaymentMethod("Cash")}
-            className={`w-full px-4 py-3 rounded-lg font-semibold text-sm shadow ${
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow ${
               paymentMethod === "Cash"
                 ? "bg-blue-600 text-white"
                 : "bg-gray-200 text-gray-600"
@@ -570,7 +568,7 @@ const Bill = () => {
 
           <button
             onClick={() => setPaymentMethod("Online")}
-            className={`w-full px-4 py-3 rounded-lg font-semibold text-sm shadow ${
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow ${
               paymentMethod === "Online"
                 ? "bg-blue-600 text-white"
                 : "bg-gray-200 text-gray-600"

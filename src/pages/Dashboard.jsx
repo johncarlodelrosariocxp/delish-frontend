@@ -29,7 +29,7 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="bg-[#1f1f1f] min-h-screen">
+    <div className="bg-white min-h-screen">
       {/* Top Controls */}
       <div className="container mx-auto flex flex-col md:flex-row items-start md:items-center justify-between py-14 px-6 md:px-4 gap-6">
         {/* Action Buttons */}
@@ -38,7 +38,7 @@ const Dashboard = () => {
             <button
               key={action}
               onClick={() => handleOpenModal(action)}
-              className="bg-[#1a1a1a] hover:bg-[#262626] px-8 py-3 rounded-lg text-[#f5f5f5] font-semibold text-md flex items-center gap-2"
+              className="bg-gray-100 hover:bg-gray-200 px-8 py-3 rounded-lg text-black font-semibold text-md flex items-center gap-2 transition-colors"
             >
               {label} {icon}
             </button>
@@ -51,10 +51,10 @@ const Dashboard = () => {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`px-8 py-3 rounded-lg text-[#f5f5f5] font-semibold text-md flex items-center gap-2 ${
+              className={`px-8 py-3 rounded-lg text-black font-semibold text-md flex items-center gap-2 transition-colors ${
                 activeTab === tab
-                  ? "bg-[#262626]"
-                  : "bg-[#1a1a1a] hover:bg-[#262626]"
+                  ? "bg-gray-200"
+                  : "bg-gray-100 hover:bg-gray-200"
               }`}
             >
               {tab}
@@ -68,7 +68,7 @@ const Dashboard = () => {
         {activeTab === "Metrics" && <Metrics />}
         {activeTab === "Orders" && <RecentOrders />}
         {activeTab === "Payments" && (
-          <div className="text-white p-6 text-lg font-medium">
+          <div className="text-black p-6 text-lg font-medium">
             Payment Component Coming Soon
           </div>
         )}

@@ -16,46 +16,44 @@ const Menu = () => {
   const customerData = useSelector((state) => state.customer);
 
   return (
-    <section className="bg-white h-[calc(100vh-5rem)] overflow-hidden flex gap-3">
-      {/* Left Div */}
-      <div className="flex-[3]">
-        <div className="flex items-center justify-between px-10 py-4">
-          <div className="flex items-center gap-4">
-            <BackButton />
-            <h1 className="text-gray-900 text-2xl font-bold tracking-wider">
-              Menu
-            </h1>
-          </div>
-          <div className="flex items-center justify-around gap-4">
-            <div className="flex items-center gap-3 cursor-pointer">
-              <MdRestaurantMenu className="text-gray-900 text-4xl" />
-              <div className="flex flex-col items-start">
-                <h1 className="text-md text-gray-900 font-semibold tracking-wide">
-                  {customerData.customerName || "Customer Name"}
-                </h1>
-                <p className="text-xs text-gray-500 font-medium">
-                  Table : {customerData.table?.tableNo || "N/A"}
-                </p>
-              </div>
-            </div>
+    <section className="bg-white min-h-screen flex flex-col">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col md:flex-col lg:flex-row gap-3 p-3 pb-20 lg:pb-3">
+        {/* Left Div - Menu Section - Always at top on mobile/tablet */}
+        <div className="flex-1 lg:flex-[3] flex flex-col min-h-0 order-1">
+          {/* Menu Container with scrollable area */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <MenuContainer />
           </div>
         </div>
 
-        <MenuContainer />
+        {/* Right Div - Sidebar - Always at bottom on mobile/tablet, side on desktop */}
+        <div className="flex-1 lg:flex-[1] bg-gray-100 rounded-lg shadow-md mt-3 lg:mt-0 h-auto lg:h-[calc(100vh-8rem)] flex flex-col order-2">
+          {/* Customer Info */}
+          <div className="flex-shrink-0">
+            <CustomerInfo />
+          </div>
+
+          <hr className="border-gray-300 border-t-2" />
+
+          {/* Cart Info with scroll */}
+          <div className="flex-1 min-h-0 overflow-hidden">
+            <CartInfo />
+          </div>
+
+          <hr className="border-gray-300 border-t-2" />
+
+          {/* Bills - Fixed at bottom */}
+          <div className="flex-shrink-0">
+            <Bill />
+          </div>
+        </div>
       </div>
 
-      {/* Right Div */}
-      <div className="flex-[1] bg-gray-100 mt-4 mr-3 h-[780px] rounded-lg pt-2 shadow-md">
-        {/* Customer Info */}
-        <CustomerInfo />
-        <hr className="border-gray-300 border-t-2" />
-
-        <hr className="border-gray-300 border-t-2" />
-        {/* Bills */}
-        <Bill />
+      {/* Bottom Navigation */}
+      <div className="fixed bottom-0 left-0 right-0 z-50">
+        <BottomNav />
       </div>
-
-      <BottomNav />
     </section>
   );
 };

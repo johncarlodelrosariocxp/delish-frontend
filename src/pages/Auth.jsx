@@ -12,55 +12,123 @@ const Auth = () => {
   const [isRegister, setIsRegister] = useState(false);
 
   return (
-    <div className="flex flex-col lg:flex-row min-h-screen w-full">
-      {/* Form Section (Top on mobile, right on desktop) */}
-      <div className="w-full lg:w-1/2 min-h-screen bg-gray-300 p-6 md:p-10 flex flex-col justify-center">
-        <div className="flex flex-col items-center gap-4">
-          <img
-            src={logo}
-            alt="Delish Logo"
-            className="h-44 w-44 border-2 rounded-full p-1"
-          />
-          <h1 className="text-2xl font-semibold text-gray-800 tracking-wide text-center">
-            Delish Cheesecake
-          </h1>
+    <div className="relative flex items-center justify-center min-h-screen w-full overflow-hidden bg-black">
+      {/* 🔹 Background Image */}
+      <img
+        src={restaurant}
+        alt="Restaurant Background"
+        className="absolute inset-0 w-full h-full object-cover brightness-[0.55] scale-105 animate-zoom-fast"
+        loading="eager"
+      />
+
+      {/* 🔹 Overlay & Depth Layers */}
+      <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/75 to-yellow-900/10"></div>
+
+      {/* 🔹 Ambient Glow Lights */}
+      <div className="absolute w-72 h-72 bg-yellow-500/25 rounded-full blur-[120px] top-[10%] left-[8%] animate-glow-fast" />
+      <div className="absolute w-96 h-96 bg-yellow-400/20 rounded-full blur-[150px] bottom-[10%] right-[10%] animate-glow-slow" />
+
+      {/* 🔹 Main Content */}
+      <div className="relative z-10 flex flex-col lg:flex-row items-center justify-center w-full max-w-6xl mx-auto px-6 py-10 gap-10">
+        {/* Left Section (Form) */}
+        <div className="flex-1 flex flex-col items-center justify-center w-full">
+          <div className="relative bg-white/10 backdrop-blur-xl border border-yellow-200/20 rounded-3xl shadow-2xl p-10 w-full max-w-sm text-white transition-all duration-300 hover:bg-white/15">
+            {/* Border Glow */}
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-br from-yellow-400/20 to-transparent opacity-40 blur-2xl pointer-events-none" />
+
+            {/* Logo & Title */}
+            <div className="flex flex-col items-center gap-3">
+              <div className="relative h-28 w-28 flex items-center justify-center rounded-full bg-white shadow-lg shadow-yellow-400/40 border border-yellow-200/40 transition-transform duration-300 hover:scale-105">
+                <img
+                  src={logo}
+                  alt="Delish Logo"
+                  className="h-26 w-26 object-contain"
+                />
+                {/* Soft outer glow */}
+                <div className="absolute inset-0 rounded-full bg-yellow-400/30 blur-md opacity-40"></div>
+              </div>
+
+              <h1 className="text-3xl font-semibold text-yellow-300 text-center drop-shadow-lg">
+                Delish Cheesecake
+              </h1>
+            </div>
+
+            {/* Title */}
+            <h2 className="text-xl text-center mt-6 font-semibold text-yellow-300 mb-6">
+              {isRegister ? "Employee Registration" : "Employee Login"}
+            </h2>
+
+            {/* Forms */}
+            <div className="w-full">
+              {isRegister ? (
+                <Register setIsRegister={setIsRegister} />
+              ) : (
+                <Login />
+              )}
+            </div>
+
+            {/* Switch Text */}
+            <div className="flex justify-center mt-6">
+              <p className="text-sm text-gray-300">
+                {isRegister
+                  ? "Already have an account?"
+                  : "Don't have an account?"}{" "}
+                <span
+                  onClick={() => setIsRegister(!isRegister)}
+                  className="text-yellow-400 font-semibold hover:underline cursor-pointer hover:text-yellow-300 transition-all"
+                >
+                  {isRegister ? "Sign in" : "Sign up"}
+                </span>
+              </p>
+            </div>
+          </div>
         </div>
 
-        <h2 className="text-2xl md:text-3xl text-center mt-10 font-semibold text-yellow-500 mb-10">
-          {isRegister ? "Employee Registration" : "Employee Login"}
-        </h2>
-
-        <div className="w-full max-w-md mx-auto">
-          {isRegister ? <Register setIsRegister={setIsRegister} /> : <Login />}
-        </div>
-
-        <div className="flex justify-center mt-6">
-          <p className="text-sm text-gray-700">
-            {isRegister ? "Already have an account?" : "Don't have an account?"}{" "}
-            <span
-              onClick={() => setIsRegister(!isRegister)}
-              className="text-yellow-600 font-semibold hover:underline cursor-pointer"
-            >
-              {isRegister ? "Sign in" : "Sign up"}
-            </span>
-          </p>
+        {/* Right Section (Quote) */}
+        <div className="flex-1 flex items-center justify-center w-full">
+          <div className="relative bg-white/10 backdrop-blur-xl border border-yellow-200/20 rounded-3xl shadow-2xl p-10 text-center text-white transition-all duration-300 hover:bg-white/15 max-w-md">
+            <div className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-yellow-400/20 to-transparent opacity-40 blur-2xl pointer-events-none" />
+            <h3 className="text-2xl font-semibold text-yellow-300 mb-3 drop-shadow-md">
+              “At Delish Cheesecake...”
+            </h3>
+            <blockquote className="text-lg italic leading-relaxed text-gray-100">
+              We don’t just serve desserts — we serve{" "}
+              <span className="text-yellow-400 font-medium">moments</span>. From
+              the first sip of coffee to the last bite of cheesecake, every
+              plate is a promise of warmth, flavor, and{" "}
+              <span className="text-yellow-300 font-medium">
+                Filipino hospitality
+              </span>
+              .
+            </blockquote>
+          </div>
         </div>
       </div>
 
-      {/* Image Section (Bottom on mobile, left on desktop) */}
-      <div className="w-full lg:w-1/2 relative flex items-center justify-center bg-cover">
-        <img
-          className="w-full h-full object-cover"
-          src={restaurant}
-          alt="Restaurant Image"
-        />
-        <div className="absolute inset-0 bg-black bg-opacity-80"></div>
-        <blockquote className="absolute bottom-10 px-8 mb-10 text-xl md:text-2xl italic text-white text-center">
-          “At Delish Cheesecake, we don’t just serve desserts. We serve moments.
-          From the first sip of coffee to the last bite of cheesecake, every
-          plate is a promise of warmth, flavor, and Filipino hospitality."
-        </blockquote>
-      </div>
+      {/* 🔹 Animations */}
+      <style>{`
+        @keyframes zoom-fast {
+          0%, 100% { transform: scale(1.05); }
+          50% { transform: scale(1.08); }
+        }
+        @keyframes glow-fast {
+          0%, 100% { opacity: 0.25; transform: scale(1); }
+          50% { opacity: 0.4; transform: scale(1.05); }
+        }
+        @keyframes glow-slow {
+          0%, 100% { opacity: 0.2; transform: scale(1); }
+          50% { opacity: 0.3; transform: scale(1.1); }
+        }
+        .animate-zoom-fast {
+          animation: zoom-fast 10s ease-in-out infinite;
+        }
+        .animate-glow-fast {
+          animation: glow-fast 6s ease-in-out infinite;
+        }
+        .animate-glow-slow {
+          animation: glow-slow 12s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   );
 };

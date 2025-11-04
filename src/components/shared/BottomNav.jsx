@@ -1,7 +1,6 @@
 import React, { useState } from "react";
 import { FaHome } from "react-icons/fa";
-import { MdOutlineReorder, MdTableBar } from "react-icons/md";
-import { CiCircleMore } from "react-icons/ci";
+import { MdOutlineReorder } from "react-icons/md";
 import { BiSolidDish } from "react-icons/bi";
 import { useNavigate, useLocation } from "react-router-dom";
 import Modal from "./Modal";
@@ -13,12 +12,18 @@ const BottomNav = () => {
   const location = useLocation();
   const dispatch = useDispatch();
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const [guestCount, setGuestCount] = useState(0);
+  const [guestCount, setGuestCount] = useState(1);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
 
   const openModal = () => setIsModalOpen(true);
-  const closeModal = () => setIsModalOpen(false);
+  const closeModal = () => {
+    setIsModalOpen(false);
+    // Reset form when modal closes
+    setGuestCount(1);
+    setName("");
+    setPhone("");
+  };
 
   const increment = () => {
     if (guestCount >= 6) return;
@@ -26,16 +31,31 @@ const BottomNav = () => {
   };
 
   const decrement = () => {
-    if (guestCount <= 0) return;
+    if (guestCount <= 1) return;
     setGuestCount((prev) => prev - 1);
   };
 
   const isActive = (path) => location.pathname === path;
 
-  // ✅ Updated: Navigate directly to menu
+  // ✅ Navigate directly to MENU page with customer data - SAME STRUCTURE AS TABLE CARD
   const handleCreateOrder = () => {
-    dispatch(setCustomer({ name, phone, guests: guestCount }));
-    navigate("/menu"); // go to menu instead of tables
+    // Use provided name or default to "Guest" - SAME AS TABLE CARD
+    const finalName = name.trim() || "Guest";
+    const finalPhone = phone.trim() || "N/A";
+    const finalGuests = guestCount || 1;
+
+    // Dispatch customer data to Redux store with SAME STRUCTURE as TableCard
+    dispatch(
+      setCustomer({
+        name: finalName, // SAME PROPERTY NAME AS TABLE CARD
+        phone: finalPhone, // SAME PROPERTY NAME AS TABLE CARD
+        guests: finalGuests, // SAME PROPERTY NAME AS TABLE CARD
+      })
+    );
+
+    // Navigate to MENU page
+    navigate("/menu");
+    closeModal();
   };
 
   return (
@@ -64,33 +84,15 @@ const BottomNav = () => {
         <MdOutlineReorder className="inline mr-2" size={20} /> <p>Orders</p>
       </button>
 
-      {/* Tables */}
+      {/* Floating Action Button - ALWAYS ENABLED NOW */}
       <button
-        onClick={() => navigate("/tables")}
-        className={`flex items-center justify-center font-bold ${
-          isActive("/tables")
-            ? "text-white bg-gray-600"
-            : "text-gray-200 hover:text-white"
-        } w-[300px] rounded-[20px] transition-all`}
-      >
-        <MdTableBar className="inline mr-2" size={20} /> <p>Tables</p>
-      </button>
-
-      {/* More */}
-      <button className="flex items-center justify-center font-bold text-gray-200 hover:text-white w-[300px]">
-        <CiCircleMore className="inline mr-2" size={20} /> <p>More</p>
-      </button>
-
-      {/* Floating Action Button */}
-      <button
-        disabled={isActive("/tables") || isActive("/menu")}
         onClick={openModal}
         className="absolute bottom-6 bg-[#F6B100] text-white rounded-full p-4 shadow-[0_0_15px_rgba(246,177,0,0.6)] hover:shadow-[0_0_20px_rgba(246,177,0,0.8)] transition-all"
       >
         <BiSolidDish size={40} />
       </button>
 
-      {/* Modal */}
+      {/* Modal - SAME DESIGN AS TABLE CARD MODAL */}
       <Modal isOpen={isModalOpen} onClose={closeModal} title="Create Order">
         <div>
           <label className="block text-gray-300 mb-2 text-sm font-medium">
@@ -106,7 +108,6 @@ const BottomNav = () => {
             />
           </div>
         </div>
-
         <div>
           <label className="block text-gray-300 mb-2 mt-3 text-sm font-medium">
             Customer Phone
@@ -121,7 +122,6 @@ const BottomNav = () => {
             />
           </div>
         </div>
-
         <div>
           <label className="block mb-2 mt-3 text-sm font-medium text-gray-300">
             Guest
@@ -136,7 +136,6 @@ const BottomNav = () => {
             </button>
           </div>
         </div>
-
         <button
           onClick={handleCreateOrder}
           className="w-full bg-[#F6B100] text-white rounded-lg py-3 mt-8 hover:bg-yellow-600 transition-all"

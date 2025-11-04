@@ -37,18 +37,20 @@ const Greetings = () => {
     ).padStart(2, "0")}:${String(date.getSeconds()).padStart(2, "0")}`;
 
   return (
-    <div className="flex justify-between items-center px-8 mt-5 text-black">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-wide">
+    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center px-4 sm:px-6 lg:px-8 mt-3 sm:mt-4 lg:mt-5 text-black">
+      <div className="mb-3 sm:mb-0">
+        <h1 className="text-lg sm:text-xl lg:text-2xl font-semibold tracking-wide">
           Good Morning, {userData.name || "TEST USER"}
         </h1>
-        <p className="text-sm">Give your best services for customers 😀</p>
+        <p className="text-xs sm:text-sm">
+          Give your best services for customers 😀
+        </p>
       </div>
-      <div>
-        <h1 className="text-3xl font-bold tracking-wide w-[130px]">
+      <div className="self-end sm:self-auto">
+        <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-wide w-[110px] sm:w-[120px] lg:w-[130px]">
           {formatTime(dateTime)}
         </h1>
-        <p className="text-sm">{formatDate(dateTime)}</p>
+        <p className="text-xs sm:text-sm">{formatDate(dateTime)}</p>
       </div>
     </div>
   );
