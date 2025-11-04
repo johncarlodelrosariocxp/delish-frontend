@@ -15,13 +15,13 @@ function Layout() {
   const isLoading = useLoadData();
   const location = useLocation();
   const hideHeaderRoutes = ["/auth"];
-  const { isAuth } = useSelector((state) => state.user);
+  const { isAuth, token } = useSelector((state) => state.user);
 
   if (isLoading) return <FullScreenLoader />;
 
   return (
     <>
-      {!hideHeaderRoutes.includes(location.pathname) && <Header />}
+      {!hideHeaderRoutes.includes(location.pathname) && isAuth && <Header />}
       <Routes>
         <Route
           path="/"
@@ -31,7 +31,10 @@ function Layout() {
             </ProtectedRoutes>
           }
         />
-        <Route path="/auth" element={isAuth ? <Navigate to="/" /> : <Auth />} />
+        <Route
+          path="/auth"
+          element={isAuth ? <Navigate to="/" replace /> : <Auth />}
+        />
         <Route
           path="/orders"
           element={
@@ -64,7 +67,7 @@ function Layout() {
             </ProtectedRoutes>
           }
         />
-        <Route path="*" element={<div>Not Found</div>} />
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </>
   );
@@ -72,8 +75,9 @@ function Layout() {
 
 function ProtectedRoutes({ children }) {
   const { isAuth } = useSelector((state) => state.user);
+
   if (!isAuth) {
-    return <Navigate to="/auth" />;
+    return <Navigate to="/auth" replace />;
   }
 
   return children;

@@ -3,11 +3,21 @@ import restaurant from "../assets/images/restaurant-img.jpg";
 import logo from "../assets/images/delish.png";
 import Register from "../components/auth/Register";
 import Login from "../components/auth/Login";
+import { useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 
 const Auth = () => {
+  const navigate = useNavigate();
+  const userData = useSelector((state) => state.user);
+
   useEffect(() => {
     document.title = "POS | Auth";
-  }, []);
+
+    // If user is already logged in, redirect to home
+    if (userData && userData.token) {
+      navigate("/");
+    }
+  }, [userData, navigate]);
 
   const [isRegister, setIsRegister] = useState(false);
 
@@ -89,10 +99,10 @@ const Auth = () => {
           <div className="relative bg-white/10 backdrop-blur-xl border border-yellow-200/20 rounded-3xl shadow-2xl p-10 text-center text-white transition-all duration-300 hover:bg-white/15 max-w-md">
             <div className="absolute inset-0 rounded-3xl bg-gradient-to-tr from-yellow-400/20 to-transparent opacity-40 blur-2xl pointer-events-none" />
             <h3 className="text-2xl font-semibold text-yellow-300 mb-3 drop-shadow-md">
-              “At Delish Cheesecake...”
+              "At Delish Cheesecake..."
             </h3>
             <blockquote className="text-lg italic leading-relaxed text-gray-100">
-              We don’t just serve desserts — we serve{" "}
+              We don't just serve desserts — we serve{" "}
               <span className="text-yellow-400 font-medium">moments</span>. From
               the first sip of coffee to the last bite of cheesecake, every
               plate is a promise of warmth, flavor, and{" "}
