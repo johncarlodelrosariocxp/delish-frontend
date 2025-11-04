@@ -30,18 +30,21 @@ const Header = () => {
   const logoutMutation = useMutation({
     mutationFn: () => logout(),
     onSuccess: () => {
+      console.log("Logout successful, redirecting to /auth");
       dispatch(removeUser());
-      navigate("/auth");
+      navigate("/auth", { replace: true });
     },
     onError: (error) => {
       console.log("Logout error:", error);
+      console.log("Clearing local state and redirecting to /auth");
       // Even if API call fails, clear local state and redirect
       dispatch(removeUser());
-      navigate("/auth");
+      navigate("/auth", { replace: true });
     },
   });
 
   const handleLogout = () => {
+    console.log("Logout initiated");
     logoutMutation.mutate();
     setIsMobileMenuOpen(false);
   };
