@@ -35,7 +35,7 @@ const Header = () => {
     },
     onError: (error) => {
       console.log("Logout error:", error);
-      // Even if API call fails, clear local state
+      // Even if API call fails, clear local state and redirect
       dispatch(removeUser());
       navigate("/auth");
     },
