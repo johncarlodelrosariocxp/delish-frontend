@@ -34,7 +34,10 @@ const Header = () => {
       navigate("/auth");
     },
     onError: (error) => {
-      console.log(error);
+      console.log("Logout error:", error);
+      // Even if API call fails, clear local state
+      dispatch(removeUser());
+      navigate("/auth");
     },
   });
 
@@ -73,6 +76,18 @@ const Header = () => {
     setIsMobileMenuOpen(false);
   };
 
+  // Close search dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (isOpen && !event.target.closest(".search-container")) {
+        setIsOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [isOpen]);
+
   return (
     <>
       {/* Header */}
@@ -103,7 +118,7 @@ const Header = () => {
 
         {/* Search - Hidden on mobile when menu is open */}
         <div
-          className={`relative w-full sm:w-[200px] md:w-[250px] lg:w-[300px] ${
+          className={`relative w-full sm:w-[200px] md:w-[250px] lg:w-[300px] search-container ${
             isMobileMenuOpen ? "hidden sm:block" : "block"
           }`}
         >
@@ -168,11 +183,13 @@ const Header = () => {
                 {userData.role || "Role"}
               </p>
             </div>
-            <IoLogOut
+            <button
               onClick={handleLogout}
-              className="text-white ml-1 sm:ml-2 hover:text-gray-200 transition-colors"
-              size={24}
-            />
+              disabled={logoutMutation.isLoading}
+              className="text-white ml-1 sm:ml-2 hover:text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <IoLogOut size={24} />
+            </button>
           </div>
         </div>
       </header>
@@ -182,7 +199,7 @@ const Header = () => {
         <div className="sm:hidden fixed inset-0 bg-gray-500 z-50 mt-16">
           <div className="flex flex-col p-6 space-y-6">
             {/* Search in Mobile Menu */}
-            <div className="relative">
+            <div className="relative search-container">
               <div className="flex items-center gap-2 bg-gray-600 rounded-lg px-3 py-3 w-full">
                 <FaSearch className="text-white text-sm" />
                 <input
@@ -229,13 +246,16 @@ const Header = () => {
                 <span className="text-white font-medium">Notifications</span>
               </div>
 
-              <div
+              <button
                 onClick={handleLogout}
-                className="flex items-center gap-3 p-3 bg-red-600 rounded-lg cursor-pointer hover:bg-red-700 transition-colors"
+                disabled={logoutMutation.isLoading}
+                className="flex items-center gap-3 p-3 bg-red-600 rounded-lg cursor-pointer hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full text-left"
               >
                 <IoLogOut className="text-white text-xl" />
-                <span className="text-white font-medium">Logout</span>
-              </div>
+                <span className="text-white font-medium">
+                  {logoutMutation.isLoading ? "Logging out..." : "Logout"}
+                </span>
+              </button>
             </div>
 
             {/* Close Button */}
