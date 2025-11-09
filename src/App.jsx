@@ -5,7 +5,15 @@ import {
   useLocation,
   Navigate,
 } from "react-router-dom";
-import { Home, Auth, Orders, Tables, Menu, Dashboard } from "./pages";
+import {
+  Home,
+  Auth,
+  Orders,
+  Tables,
+  Menu,
+  Dashboard,
+  Inventory,
+} from "./pages";
 import Header from "./components/shared/Header";
 import { useSelector } from "react-redux";
 import useLoadData from "./hooks/useLoadData";
@@ -64,6 +72,15 @@ function Layout() {
           element={
             <ProtectedRoutes>
               <Dashboard />
+            </ProtectedRoutes>
+          }
+        />
+        {/* Add Inventory Route */}
+        <Route
+          path="/inventory"
+          element={
+            <ProtectedRoutes>
+              <Inventory />
             </ProtectedRoutes>
           }
         />

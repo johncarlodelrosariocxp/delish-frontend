@@ -37,21 +37,38 @@ export const deleteOrder = (orderId) =>
 // =============================
 // ✅ MENU ENDPOINTS
 // =============================
-
-// ➕ Add new menu item
 export const addMenuItem = (data) => axiosWrapper.post("/api/menu", data);
-
-// 📥 Get all menu items
 export const getMenuItems = () => axiosWrapper.get("/api/menu");
-
-// ✏️ Update menu item
 export const updateMenuItem = ({ itemId, ...itemData }) =>
   axiosWrapper.put(`/api/menu/${itemId}`, itemData);
-
-// ❌ Delete menu item
 export const deleteMenuItem = (itemId) =>
   axiosWrapper.delete(`/api/menu/${itemId}`);
-
-// 💸 Apply discount to eligible item
 export const applyMenuDiscount = (itemId) =>
   axiosWrapper.put(`/api/menu/${itemId}/discount`);
+
+// =============================
+// ✅ INVENTORY ENDPOINTS
+// =============================
+
+// 📥 Get all inventory items
+export const getInventory = () => axiosWrapper.get("/api/inventory");
+
+// ➕ Add new inventory item
+export const addInventoryItem = (data) =>
+  axiosWrapper.post("/api/inventory", data);
+
+// ✏️ Update inventory item
+export const updateInventoryItem = ({ itemId, ...itemData }) =>
+  axiosWrapper.put(`/api/inventory/${itemId}`, itemData);
+
+// 🔄 Transfer stock between locations
+export const transferStock = (itemId, transferData) =>
+  axiosWrapper.patch(`/api/inventory/${itemId}/transfer`, transferData);
+
+// ❌ Delete inventory item
+export const deleteInventoryItem = (itemId) =>
+  axiosWrapper.delete(`/api/inventory/${itemId}`);
+
+// 📉 Get low stock items
+export const getLowStockItems = () =>
+  axiosWrapper.get("/api/inventory/low-stock");

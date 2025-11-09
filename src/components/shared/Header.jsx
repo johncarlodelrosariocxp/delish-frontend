@@ -6,6 +6,7 @@ import {
   FaBell,
   FaBars,
   FaTimes,
+  FaBox,
 } from "react-icons/fa";
 import logo from "../../assets/images/delish.jpg";
 import { useDispatch, useSelector } from "react-redux";
@@ -91,6 +92,28 @@ const Header = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen]);
 
+  // Navigation items for mobile menu
+  const mobileMenuItems = [
+    {
+      name: "Dashboard",
+      path: "/dashboard",
+      icon: <MdDashboard className="text-white text-xl" />,
+      show: userData.role === "Admin",
+    },
+    {
+      name: "Inventory",
+      path: "/inventory",
+      icon: <FaBox className="text-white text-xl" />,
+      show: true,
+    },
+    {
+      name: "Notifications",
+      path: "#",
+      icon: <FaBell className="text-white text-xl" />,
+      show: true,
+    },
+  ];
+
   return (
     <>
       {/* Header */}
@@ -164,35 +187,47 @@ const Header = () => {
           )}
         </div>
 
-        {/* Desktop User Info - Hidden on mobile */}
-        <div className="hidden sm:flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 md:gap-6">
-          <div className="flex items-center gap-3">
-            {userData.role === "Admin" && (
-              <MdDashboard
-                onClick={() => navigate("/dashboard")}
-                className="text-white text-xl cursor-pointer hover:text-gray-200 transition-colors"
-              />
-            )}
-            <FaBell className="text-white text-xl cursor-pointer hover:text-gray-200 transition-colors" />
-          </div>
+        {/* Desktop Navigation - Hidden on mobile */}
+        <div className="hidden sm:flex items-center gap-4">
+          {/* Inventory Button for Desktop */}
+          <button
+            onClick={() => navigate("/inventory")}
+            className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+          >
+            <FaBox className="text-white text-lg" />
+            <span className="text-sm font-medium">Inventory</span>
+          </button>
 
-          <div className="flex items-center gap-2 sm:gap-3 cursor-pointer">
-            <FaUserCircle className="text-white text-2xl" />
-            <div className="flex flex-col items-start">
-              <h1 className="text-sm text-white font-semibold tracking-wide">
-                {userData.name || "TEST USER"}
-              </h1>
-              <p className="text-xs text-gray-300 font-medium">
-                {userData.role || "Role"}
-              </p>
+          {/* Desktop User Info */}
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-3">
+              {userData.role === "Admin" && (
+                <MdDashboard
+                  onClick={() => navigate("/dashboard")}
+                  className="text-white text-xl cursor-pointer hover:text-gray-200 transition-colors"
+                />
+              )}
+              <FaBell className="text-white text-xl cursor-pointer hover:text-gray-200 transition-colors" />
             </div>
-            <button
-              onClick={handleLogout}
-              disabled={logoutMutation.isLoading}
-              className="text-white ml-1 sm:ml-2 hover:text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              <IoLogOut size={24} />
-            </button>
+
+            <div className="flex items-center gap-3 cursor-pointer">
+              <FaUserCircle className="text-white text-2xl" />
+              <div className="flex flex-col items-start">
+                <h1 className="text-sm text-white font-semibold tracking-wide">
+                  {userData.name || "TEST USER"}
+                </h1>
+                <p className="text-xs text-gray-300 font-medium">
+                  {userData.role || "Role"}
+                </p>
+              </div>
+              <button
+                onClick={handleLogout}
+                disabled={logoutMutation.isLoading}
+                className="text-white ml-1 hover:text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <IoLogOut size={24} />
+              </button>
+            </div>
           </div>
         </div>
       </header>
@@ -231,24 +266,38 @@ const Header = () => {
 
             {/* Menu Items */}
             <div className="space-y-4">
-              {userData.role === "Admin" && (
-                <div
-                  onClick={() => {
-                    navigate("/dashboard");
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="flex items-center gap-3 p-3 bg-gray-600 rounded-lg cursor-pointer hover:bg-gray-700 transition-colors"
-                >
-                  <MdDashboard className="text-white text-xl" />
-                  <span className="text-white font-medium">Dashboard</span>
-                </div>
-              )}
-
-              <div className="flex items-center gap-3 p-3 bg-gray-600 rounded-lg cursor-pointer hover:bg-gray-700 transition-colors">
-                <FaBell className="text-white text-xl" />
-                <span className="text-white font-medium">Notifications</span>
+              {/* Inventory Button for Mobile */}
+              <div
+                onClick={() => {
+                  navigate("/inventory");
+                  setIsMobileMenuOpen(false);
+                }}
+                className="flex items-center gap-3 p-3 bg-gray-600 rounded-lg cursor-pointer hover:bg-gray-700 transition-colors"
+              >
+                <FaBox className="text-white text-xl" />
+                <span className="text-white font-medium">Inventory</span>
               </div>
 
+              {/* Other Menu Items */}
+              {mobileMenuItems.map((item) =>
+                item.show ? (
+                  <div
+                    key={item.name}
+                    onClick={() => {
+                      if (item.path !== "#") {
+                        navigate(item.path);
+                        setIsMobileMenuOpen(false);
+                      }
+                    }}
+                    className="flex items-center gap-3 p-3 bg-gray-600 rounded-lg cursor-pointer hover:bg-gray-700 transition-colors"
+                  >
+                    {item.icon}
+                    <span className="text-white font-medium">{item.name}</span>
+                  </div>
+                ) : null
+              )}
+
+              {/* Logout Button */}
               <button
                 onClick={handleLogout}
                 disabled={logoutMutation.isLoading}
@@ -259,6 +308,49 @@ const Header = () => {
                   {logoutMutation.isLoading ? "Logging out..." : "Logout"}
                 </span>
               </button>
+            </div>
+
+            {/* Quick Navigation Links */}
+            <div className="pt-4 border-t border-gray-400">
+              <h3 className="text-white font-medium mb-3">Quick Links</h3>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => {
+                    navigate("/orders");
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="p-2 bg-gray-600 rounded text-white text-sm hover:bg-gray-700 transition-colors"
+                >
+                  Orders
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/tables");
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="p-2 bg-gray-600 rounded text-white text-sm hover:bg-gray-700 transition-colors"
+                >
+                  Tables
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/menu");
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="p-2 bg-gray-600 rounded text-white text-sm hover:bg-gray-700 transition-colors"
+                >
+                  Menu
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/");
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="p-2 bg-gray-600 rounded text-white text-sm hover:bg-gray-700 transition-colors"
+                >
+                  Home
+                </button>
+              </div>
             </div>
 
             {/* Close Button */}

@@ -206,7 +206,7 @@ ${orderInfo.items
   .join("\n")}
 ------------------------------
 Subtotal: ₱${orderInfo.bills?.total?.toFixed(2) || "0.00"}
-Tax: ₱${orderInfo.bills?.tax?.toFixed(2) || "0.00"}
+VAT: ₱${orderInfo.bills?.tax?.toFixed(2) || "0.00"}
 GRAND TOTAL: ₱${orderInfo.bills?.totalWithTax?.toFixed(2) || "0.00"}
 ------------------------------
 Payment Method: ${orderInfo.paymentMethod || "N/A"}
@@ -246,7 +246,7 @@ ${new Date().toLocaleString()}
     !orderInfo.bills
   ) {
     return (
-      <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
         <div className="bg-white p-6 rounded-lg shadow-lg text-center">
           <p className="text-red-500 font-semibold">
             Invalid or missing order data.
@@ -263,8 +263,9 @@ ${new Date().toLocaleString()}
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
-      <div className="bg-white p-4 rounded-lg shadow-lg w-[400px]">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
+      {/* Added mt-8 for top margin */}
+      <div className="bg-white p-4 rounded-lg shadow-lg w-[400px] mt-8">
         <div ref={invoiceRef} className="p-4 no-print">
           {/* Receipt Header */}
           <div className="flex justify-center mb-4">
