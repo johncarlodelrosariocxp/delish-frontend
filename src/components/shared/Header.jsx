@@ -1,5 +1,5 @@
 // Header.jsx
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { FaUserCircle, FaBars, FaTimes, FaBox } from "react-icons/fa";
 import logo from "../../assets/images/delish.jpg";
 import { useDispatch, useSelector } from "react-redux";
@@ -19,50 +19,54 @@ const Header = () => {
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const logoutMutation = useMutation({
-    mutationFn: () => logout(),
+    mutationFn: async () => {
+      try {
+        console.log("🔄 Calling logout API...");
+        const response = await logout();
+        return response;
+      } catch (error) {
+        console.log(
+          "⚠️ Logout API call failed, but continuing with client-side logout"
+        );
+        // Don't throw error - we'll handle client-side logout anyway
+        return null;
+      }
+    },
     onSuccess: () => {
-      console.log("Logout successful - clearing all data");
-
-      // Clear ALL storage and cookies
-      localStorage.clear();
-      sessionStorage.clear();
-
-      // Clear all cookies
-      document.cookie.split(";").forEach((c) => {
-        document.cookie = c
-          .replace(/^ +/, "")
-          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-      });
-
-      // Dispatch logout action
-      dispatch(removeUser());
-
-      // Force complete page reload to reset all state
-      setTimeout(() => {
-        window.location.href = "/auth";
-        window.location.reload();
-      }, 100);
+      console.log("✅ Logout API success, clearing local data");
+      performClientLogout();
     },
     onError: (error) => {
-      console.log("Logout API error, forcing logout locally:", error);
-
-      // Even if API fails, force logout locally
-      localStorage.clear();
-      sessionStorage.clear();
-      document.cookie.split(";").forEach((c) => {
-        document.cookie = c
-          .replace(/^ +/, "")
-          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
-      });
-
-      dispatch(removeUser());
-
-      setTimeout(() => {
-        window.location.href = "/auth";
-        window.location.reload();
-      }, 100);
+      console.log("❌ Logout API error, forcing client-side logout:", error);
+      performClientLogout();
     },
   });
+
+  const performClientLogout = () => {
+    console.log("🧹 Clearing all client-side data...");
+
+    // Clear all storage
+    localStorage.clear();
+    sessionStorage.clear();
+
+    // Clear Redux state
+    dispatch(removeUser());
+
+    // Clear all cookies
+    document.cookie.split(";").forEach((c) => {
+      document.cookie = c
+        .replace(/^ +/, "")
+        .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+    });
+
+    console.log("🚪 Redirecting to login page...");
+
+    // Force hard redirect with reload to clear all state
+    setTimeout(() => {
+      window.location.href = "/auth";
+      window.location.reload();
+    }, 500);
+  };
 
   const handleLogoutClick = () => {
     setShowLogoutConfirm(true);
@@ -70,7 +74,7 @@ const Header = () => {
   };
 
   const confirmLogout = () => {
-    console.log("Logout initiated");
+    console.log("🔐 Logout initiated");
     logoutMutation.mutate();
     setShowLogoutConfirm(false);
   };
