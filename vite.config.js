@@ -11,6 +11,7 @@ export default defineConfig({
       ext: ".gz",
     }),
   ],
+  base: "/", // ✅ ADD THIS LINE - crucial for Vercel routing
   optimizeDeps: {
     include: ["react", "react-dom", "react-router-dom", "@reduxjs/toolkit"],
   },
