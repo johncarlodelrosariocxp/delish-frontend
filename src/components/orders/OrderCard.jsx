@@ -93,13 +93,13 @@ const OrderCard = ({
     return 0;
   };
 
-  // Format currency (matches RecentOrders)
+  // Format currency (matches RecentOrders) - Changed to Philippine Peso
   const formatCurrency = (amount) => {
     const numericAmount =
       typeof amount === "number" ? amount : parseFloat(amount) || 0;
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("en-PH", {
       style: "currency",
-      currency: "USD",
+      currency: "PHP",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(numericAmount);

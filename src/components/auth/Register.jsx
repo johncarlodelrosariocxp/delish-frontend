@@ -3,7 +3,7 @@ import { register } from "../../https";
 import { useMutation } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 
-const Register = ({setIsRegister}) => {
+const Register = ({ setIsRegister }) => {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -37,7 +37,7 @@ const Register = ({setIsRegister}) => {
         password: "",
         role: "",
       });
-      
+
       setTimeout(() => {
         setIsRegister(false);
       }, 1500);
@@ -122,7 +122,7 @@ const Register = ({setIsRegister}) => {
           </label>
 
           <div className="flex item-center gap-3 mt-4">
-            {["Waiter", "Cashier", "Admin"].map((role) => {
+            {["Cashier", "Admin"].map((role) => {
               return (
                 <button
                   key={role}

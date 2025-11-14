@@ -1,13 +1,6 @@
 // Header.jsx
-import React, { useState, useEffect } from "react";
-import {
-  FaSearch,
-  FaUserCircle,
-  FaBell,
-  FaBars,
-  FaTimes,
-  FaBox,
-} from "react-icons/fa";
+import { useState, useEffect } from "react";
+import { FaUserCircle, FaBars, FaTimes, FaBox } from "react-icons/fa";
 import logo from "../../assets/images/delish.jpg";
 import { useDispatch, useSelector } from "react-redux";
 import { IoLogOut } from "react-icons/io5";
@@ -16,17 +9,14 @@ import { logout } from "../../https";
 import { removeUser } from "../../redux/slices/userSlice";
 import { useNavigate } from "react-router-dom";
 import { MdDashboard } from "react-icons/md";
-import axios from "axios";
 
 const Header = () => {
   const userData = useSelector((state) => state.user);
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [results, setResults] = useState([]);
-  const [isOpen, setIsOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   const logoutMutation = useMutation({
     mutationFn: () => logout(),
@@ -44,53 +34,20 @@ const Header = () => {
     },
   });
 
-  const handleLogout = () => {
+  const handleLogoutClick = () => {
+    setShowLogoutConfirm(true);
+    setIsMobileMenuOpen(false);
+  };
+
+  const confirmLogout = () => {
     console.log("Logout initiated");
     logoutMutation.mutate();
-    setIsMobileMenuOpen(false);
+    setShowLogoutConfirm(false);
   };
 
-  useEffect(() => {
-    const delayDebounce = setTimeout(() => {
-      if (searchQuery.trim().length > 0) {
-        fetchSearchResults(searchQuery);
-      } else {
-        setResults([]);
-      }
-    }, 400);
-
-    return () => clearTimeout(delayDebounce);
-  }, [searchQuery]);
-
-  const fetchSearchResults = async (query) => {
-    try {
-      const res = await axios.get(
-        `https://delish-backend-1.onrender.com/api/menu?search=${query}`
-      );
-      setResults(res.data.data || []);
-      setIsOpen(true);
-    } catch (error) {
-      console.log("Search error:", error);
-    }
+  const cancelLogout = () => {
+    setShowLogoutConfirm(false);
   };
-
-  const handleSearchItemClick = () => {
-    setIsOpen(false);
-    setSearchQuery("");
-    setIsMobileMenuOpen(false);
-  };
-
-  // Close search dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (isOpen && !event.target.closest(".search-container")) {
-        setIsOpen(false);
-      }
-    };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, [isOpen]);
 
   // Navigation items for mobile menu
   const mobileMenuItems = [
@@ -104,12 +61,6 @@ const Header = () => {
       name: "Inventory",
       path: "/inventory",
       icon: <FaBox className="text-white text-xl" />,
-      show: true,
-    },
-    {
-      name: "Notifications",
-      path: "#",
-      icon: <FaBell className="text-white text-xl" />,
       show: true,
     },
   ];
@@ -142,51 +93,6 @@ const Header = () => {
           </button>
         </div>
 
-        {/* Search - Hidden on mobile when menu is open */}
-        <div
-          className={`relative w-full sm:w-[200px] md:w-[250px] lg:w-[300px] search-container ${
-            isMobileMenuOpen ? "hidden sm:block" : "block"
-          }`}
-        >
-          <div className="flex items-center gap-2 bg-gray-600 rounded-lg px-3 py-1.5 w-full">
-            <FaSearch className="text-white text-sm" />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onFocus={() => setIsOpen(true)}
-              className="bg-transparent outline-none text-white w-full text-sm placeholder-gray-300"
-            />
-          </div>
-
-          {isOpen && results.length > 0 && (
-            <div className="absolute top-10 w-full bg-gray-700 rounded-lg shadow-lg z-50 max-h-48 overflow-y-auto">
-              {results.map((item) => (
-                <div
-                  key={item._id}
-                  onClick={() => {
-                    navigate(`/menu/${item._id}`);
-                    handleSearchItemClick();
-                  }}
-                  className="px-3 py-2 text-white hover:bg-gray-600 cursor-pointer border-b border-gray-500"
-                >
-                  <p className="text-sm font-medium">{item.name}</p>
-                  <p className="text-xs text-gray-300">
-                    ₱{item.price?.toFixed(2)}
-                  </p>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {isOpen && searchQuery && results.length === 0 && (
-            <div className="absolute top-10 w-full bg-gray-700 text-center text-gray-300 py-2 rounded-lg shadow-lg">
-              No items found
-            </div>
-          )}
-        </div>
-
         {/* Desktop Navigation - Hidden on mobile */}
         <div className="hidden sm:flex items-center gap-4">
           {/* Inventory Button for Desktop */}
@@ -207,7 +113,6 @@ const Header = () => {
                   className="text-white text-xl cursor-pointer hover:text-gray-200 transition-colors"
                 />
               )}
-              <FaBell className="text-white text-xl cursor-pointer hover:text-gray-200 transition-colors" />
             </div>
 
             <div className="flex items-center gap-3 cursor-pointer">
@@ -221,7 +126,7 @@ const Header = () => {
                 </p>
               </div>
               <button
-                onClick={handleLogout}
+                onClick={handleLogoutClick}
                 disabled={logoutMutation.isLoading}
                 className="text-white ml-1 hover:text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -236,21 +141,6 @@ const Header = () => {
       {isMobileMenuOpen && (
         <div className="sm:hidden fixed inset-0 bg-gray-500 z-50 mt-16">
           <div className="flex flex-col p-6 space-y-6">
-            {/* Search in Mobile Menu */}
-            <div className="relative search-container">
-              <div className="flex items-center gap-2 bg-gray-600 rounded-lg px-3 py-3 w-full">
-                <FaSearch className="text-white text-sm" />
-                <input
-                  type="text"
-                  placeholder="Search..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  onFocus={() => setIsOpen(true)}
-                  className="bg-transparent outline-none text-white w-full text-sm placeholder-gray-300"
-                />
-              </div>
-            </div>
-
             {/* User Info */}
             <div className="flex items-center gap-3 p-4 bg-gray-600 rounded-lg">
               <FaUserCircle className="text-white text-3xl" />
@@ -299,7 +189,7 @@ const Header = () => {
 
               {/* Logout Button */}
               <button
-                onClick={handleLogout}
+                onClick={handleLogoutClick}
                 disabled={logoutMutation.isLoading}
                 className="flex items-center gap-3 p-3 bg-red-600 rounded-lg cursor-pointer hover:bg-red-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed w-full text-left"
               >
@@ -361,6 +251,43 @@ const Header = () => {
               <FaTimes className="text-sm" />
               Close Menu
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Logout Confirmation Popup */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">
+              Confirm Logout
+            </h3>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to logout?
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={cancelLogout}
+                className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                disabled={logoutMutation.isLoading}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmLogout}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors flex items-center gap-2"
+                disabled={logoutMutation.isLoading}
+              >
+                {logoutMutation.isLoading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Logging out...
+                  </>
+                ) : (
+                  "Yes, Logout"
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

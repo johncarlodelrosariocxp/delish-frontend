@@ -219,13 +219,13 @@ const Orders = () => {
     return 0;
   };
 
-  // Format currency (matches RecentOrders)
+  // Format currency (matches RecentOrders) - Changed to Philippine Peso
   const formatCurrency = (amount) => {
     const numericAmount =
       typeof amount === "number" ? amount : parseFloat(amount) || 0;
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("en-PH", {
       style: "currency",
-      currency: "USD",
+      currency: "PHP",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(numericAmount);
@@ -350,7 +350,13 @@ const Orders = () => {
 
     return (
       <div
-        className={`border rounded-lg p-4 sm:p-6 ${statusConfig.bgColor} ${statusConfig.borderColor} hover:shadow-md transition-all duration-200 w-full`}
+        className={`border rounded-lg p-4 sm:p-6 ${statusConfig.bgColor} ${statusConfig.borderColor} hover:shadow-md transition-all duration-200 w-full backdrop-blur-sm bg-opacity-50 glass-effect`}
+        style={{
+          background:
+            "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(248,250,252,0.9) 100%)",
+          boxShadow: "0 8px 32px 0 rgba(31, 38, 135, 0.07)",
+          border: "1px solid rgba(255, 255, 255, 0.18)",
+        }}
       >
         {/* Order Header */}
         <div className="flex justify-between items-start mb-3">
@@ -426,11 +432,18 @@ const Orders = () => {
                   key={action.status}
                   onClick={() => handleStatusUpdate(order, action.status)}
                   disabled={isUpdating}
-                  className={`flex items-center gap-1 px-3 py-2 rounded text-xs font-medium transition-colors ${
+                  className={`flex items-center gap-1 px-3 py-2 rounded text-xs font-medium transition-colors backdrop-blur-sm ${
                     action.variant === "primary"
                       ? "bg-blue-500 hover:bg-blue-600 text-white"
                       : "bg-green-500 hover:bg-green-600 text-white"
-                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                  } disabled:opacity-50 disabled:cursor-not-allowed glass-effect`}
+                  style={{
+                    background:
+                      action.variant === "primary"
+                        ? "linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)"
+                        : "linear-gradient(135deg, #10b981 0%, #047857 100%)",
+                    boxShadow: "0 4px 15px 0 rgba(59, 130, 246, 0.3)",
+                  }}
                 >
                   {isUpdating ? (
                     <FaSpinner className="animate-spin" />
@@ -450,7 +463,11 @@ const Orders = () => {
             value={order.orderStatus}
             onChange={(e) => handleStatusUpdate(order, e.target.value)}
             disabled={isUpdating}
-            className={`flex-1 px-3 py-2 rounded text-xs font-medium border ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor} disabled:opacity-50`}
+            className={`flex-1 px-3 py-2 rounded text-xs font-medium border backdrop-blur-sm ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor} disabled:opacity-50 glass-effect`}
+            style={{
+              background: "rgba(255, 255, 255, 0.8)",
+              border: "1px solid rgba(255, 255, 255, 0.3)",
+            }}
           >
             <option value="pending">Pending</option>
             <option value="in progress">In Progress</option>
@@ -463,7 +480,11 @@ const Orders = () => {
         <div className="flex gap-2 pt-3 border-t border-gray-200">
           <button
             onClick={() => onViewReceipt(order)}
-            className="flex-1 bg-[#025cca] text-white px-3 py-2 rounded text-xs font-medium flex items-center gap-2 justify-center hover:bg-[#014aa3] transition-colors"
+            className="flex-1 bg-[#025cca] text-white px-3 py-2 rounded text-xs font-medium flex items-center gap-2 justify-center hover:bg-[#014aa3] transition-colors backdrop-blur-sm glass-effect"
+            style={{
+              background: "linear-gradient(135deg, #025cca 0%, #014aa3 100%)",
+              boxShadow: "0 4px 15px 0 rgba(2, 92, 202, 0.3)",
+            }}
           >
             <FaPrint className="text-[10px]" />
             View Receipt
@@ -474,9 +495,9 @@ const Orders = () => {
   };
 
   return (
-    <section className="bg-[#f5f5f5] min-h-screen flex flex-col relative">
+    <section className="bg-gradient-to-br from-blue-50 via-white to-cyan-50 min-h-screen flex flex-col relative">
       {/* Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-30">
+      <div className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 sticky top-0 z-30">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between px-4 md:px-6 py-4 gap-4">
           <div className="flex items-center gap-4">
             <BackButton />
@@ -492,7 +513,17 @@ const Orders = () => {
                 onClick={() => setStatus(type)}
                 className={`text-[#555555] text-xs sm:text-sm ${
                   status === type ? "bg-[#eaeaea]" : "bg-transparent"
-                } rounded-lg px-3 py-2 font-semibold transition`}
+                } rounded-lg px-3 py-2 font-semibold transition backdrop-blur-sm glass-effect`}
+                style={{
+                  background:
+                    status === type
+                      ? "rgba(255, 255, 255, 0.8)"
+                      : "transparent",
+                  border:
+                    status === type
+                      ? "1px solid rgba(255, 255, 255, 0.3)"
+                      : "1px solid transparent",
+                }}
               >
                 {type === "all"
                   ? "All"
@@ -501,21 +532,21 @@ const Orders = () => {
                   : type.charAt(0).toUpperCase() + type.slice(1)}
               </button>
             ))}
-            <span className="text-xs sm:text-sm font-semibold text-green-700 ml-2 sm:ml-4">
+            <span className="text-xs sm:text-sm font-semibold text-green-700 ml-2 sm:ml-4 backdrop-blur-sm px-3 py-1 rounded-full glass-effect">
               Total Sales: {formatCurrency(totalSales)}
             </span>
           </div>
         </div>
 
         {/* Search Bar - Matches RecentOrders */}
-        <div className="flex items-center gap-2 bg-gray-100 rounded-md px-3 py-2 mx-4 mb-4 mt-2">
+        <div className="flex items-center gap-2 bg-gray-100/80 backdrop-blur-sm rounded-md px-3 py-2 mx-4 mb-4 mt-2 glass-effect">
           <FaSearch className="text-gray-600 text-xs sm:text-sm" />
           <input
             type="text"
             placeholder="Search by name, order ID, or status..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-gray-100 outline-none text-black w-full text-xs sm:text-sm placeholder-gray-500"
+            className="bg-transparent outline-none text-black w-full text-xs sm:text-sm placeholder-gray-500"
           />
         </div>
       </div>
@@ -528,7 +559,7 @@ const Orders = () => {
       >
         {isLoading ? (
           <div className="col-span-3 flex justify-center items-center py-8">
-            <div className="text-center">
+            <div className="text-center backdrop-blur-sm glass-effect rounded-lg p-6">
               <FaSpinner className="mx-auto text-gray-400 text-2xl mb-2 animate-spin" />
               <p className="text-gray-500 text-sm">Loading orders...</p>
             </div>
@@ -543,7 +574,7 @@ const Orders = () => {
           ))
         ) : (
           <div className="col-span-3 flex justify-center items-center py-8">
-            <div className="text-center">
+            <div className="text-center backdrop-blur-sm glass-effect rounded-lg p-6">
               <FaReceipt className="mx-auto text-gray-400 text-2xl mb-2" />
               <p className="text-gray-500 text-sm">
                 {searchQuery || status !== "all"
@@ -570,7 +601,10 @@ const Orders = () => {
       {showScrollButton && (
         <button
           onClick={scrollToTop}
-          className="fixed bottom-20 right-4 sm:right-6 bg-[#025cca] text-white p-3 rounded-full shadow-lg hover:bg-[#014aa3] transition-all z-20"
+          className="fixed bottom-20 right-4 sm:right-6 bg-gradient-to-br from-[#025cca] to-[#014aa3] text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all z-20 backdrop-blur-sm glass-effect"
+          style={{
+            boxShadow: "0 8px 25px 0 rgba(2, 92, 202, 0.4)",
+          }}
         >
           <FaArrowUp />
         </button>
@@ -583,6 +617,14 @@ const Orders = () => {
 
       {/* Bottom Navigation */}
       <BottomNav />
+
+      {/* Glass effect styles */}
+      <style jsx>{`
+        .glass-effect {
+          backdrop-filter: blur(10px);
+          -webkit-backdrop-filter: blur(10px);
+        }
+      `}</style>
     </section>
   );
 };
