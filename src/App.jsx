@@ -23,7 +23,7 @@ function Layout() {
   const isLoading = useLoadData();
   const location = useLocation();
   const hideHeaderRoutes = ["/auth"];
-  const { isAuth, token } = useSelector((state) => state.user);
+  const { isAuth } = useSelector((state) => state.user);
 
   if (isLoading) return <FullScreenLoader />;
 
