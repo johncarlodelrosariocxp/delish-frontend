@@ -86,32 +86,42 @@ const Login = () => {
         // Login Form
         <form onSubmit={handleSubmit}>
           <div>
-            <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+            <label
+              htmlFor="email"
+              className="block text-[#ababab] mb-2 mt-3 text-sm font-medium"
+            >
               Employee Email
             </label>
             <div className="flex item-center rounded-lg p-5 px-4 bg-[#1f1f1f]">
               <input
                 type="email"
+                id="email"
                 name="email"
                 value={formData.email}
                 onChange={handleChange}
                 placeholder="Enter employee email"
+                autoComplete="email"
                 className="bg-transparent flex-1 text-white focus:outline-none"
                 required
               />
             </div>
           </div>
           <div>
-            <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+            <label
+              htmlFor="password"
+              className="block text-[#ababab] mb-2 mt-3 text-sm font-medium"
+            >
               Password
             </label>
             <div className="flex item-center rounded-lg p-5 px-4 bg-[#1f1f1f]">
               <input
                 type="password"
+                id="password"
                 name="password"
                 value={formData.password}
                 onChange={handleChange}
                 placeholder="Enter password"
+                autoComplete="current-password"
                 className="bg-transparent flex-1 text-white focus:outline-none"
                 required
               />
@@ -154,9 +164,11 @@ const Login = () => {
               <div className="flex item-center rounded-lg p-5 px-4 bg-[#1f1f1f]">
                 <input
                   type="email"
+                  id="forgotPasswordEmail"
                   value={forgotPasswordEmail}
                   onChange={(e) => setForgotPasswordEmail(e.target.value)}
                   placeholder="Enter your email address"
+                  autoComplete="email"
                   className="bg-transparent flex-1 text-white focus:outline-none"
                   required
                 />
