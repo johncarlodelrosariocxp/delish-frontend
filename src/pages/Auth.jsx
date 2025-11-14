@@ -14,7 +14,8 @@ const Auth = () => {
     document.title = "POS | Auth";
 
     // If user is already logged in, redirect to home
-    if (userData && userData.token) {
+    // Check if user data exists and has required fields
+    if (userData && (userData._id || userData.email)) {
       navigate("/");
     }
   }, [userData, navigate]);
