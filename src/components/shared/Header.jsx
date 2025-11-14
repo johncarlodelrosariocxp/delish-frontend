@@ -21,16 +21,46 @@ const Header = () => {
   const logoutMutation = useMutation({
     mutationFn: () => logout(),
     onSuccess: () => {
-      console.log("Logout successful, redirecting to /auth");
+      console.log("Logout successful - clearing all data");
+
+      // Clear ALL storage and cookies
+      localStorage.clear();
+      sessionStorage.clear();
+
+      // Clear all cookies
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+
+      // Dispatch logout action
       dispatch(removeUser());
-      navigate("/auth", { replace: true });
+
+      // Force complete page reload to reset all state
+      setTimeout(() => {
+        window.location.href = "/auth";
+        window.location.reload();
+      }, 100);
     },
     onError: (error) => {
-      console.log("Logout error:", error);
-      console.log("Clearing local state and redirecting to /auth");
-      // Even if API call fails, clear local state and redirect
+      console.log("Logout API error, forcing logout locally:", error);
+
+      // Even if API fails, force logout locally
+      localStorage.clear();
+      sessionStorage.clear();
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+
       dispatch(removeUser());
-      navigate("/auth", { replace: true });
+
+      setTimeout(() => {
+        window.location.href = "/auth";
+        window.location.reload();
+      }, 100);
     },
   });
 
