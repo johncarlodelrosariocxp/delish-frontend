@@ -1,6 +1,6 @@
 // Header.jsx
 import { useState, useEffect } from "react";
-import { FaUserCircle, FaBars, FaTimes, FaBox } from "react-icons/fa";
+import { FaUserCircle, FaBell, FaBars, FaTimes, FaBox } from "react-icons/fa";
 import logo from "../../assets/images/delish.jpg";
 import { useDispatch, useSelector } from "react-redux";
 import { IoLogOut } from "react-icons/io5";
@@ -63,6 +63,12 @@ const Header = () => {
       icon: <FaBox className="text-white text-xl" />,
       show: true,
     },
+    {
+      name: "Notifications",
+      path: "#",
+      icon: <FaBell className="text-white text-xl" />,
+      show: true,
+    },
   ];
 
   return (
@@ -113,6 +119,7 @@ const Header = () => {
                   className="text-white text-xl cursor-pointer hover:text-gray-200 transition-colors"
                 />
               )}
+              <FaBell className="text-white text-xl cursor-pointer hover:text-gray-200 transition-colors" />
             </div>
 
             <div className="flex items-center gap-3 cursor-pointer">
