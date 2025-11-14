@@ -6,7 +6,16 @@ import { axiosWrapper } from "./axiosWrapper";
 export const login = (data) => axiosWrapper.post("/api/user/login", data);
 export const register = (data) => axiosWrapper.post("/api/user/register", data);
 export const getUserData = () => axiosWrapper.get("/api/user");
-export const logout = () => axiosWrapper.post("/api/user/logout");
+export const logout = () => {
+  // Clear client-side storage immediately for better UX
+  localStorage.removeItem("token");
+  localStorage.removeItem("user");
+  sessionStorage.removeItem("token");
+  sessionStorage.removeItem("user");
+
+  // Then call the server logout
+  return axiosWrapper.post("/api/user/logout");
+};
 
 // =============================
 // ✅ TABLE ENDPOINTS

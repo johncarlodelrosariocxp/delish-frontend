@@ -22,17 +22,29 @@ const Header = () => {
     mutationFn: () => logout(),
     onSuccess: () => {
       console.log("Logout successful, redirecting to /auth");
-      dispatch(removeUser());
-      navigate("/auth", { replace: true });
+      handleSuccessfulLogout();
     },
     onError: (error) => {
-      console.log("Logout error:", error);
-      console.log("Clearing local state and redirecting to /auth");
+      console.error("Logout API error:", error);
+      console.log("Clearing local state despite API error");
       // Even if API call fails, clear local state and redirect
-      dispatch(removeUser());
-      navigate("/auth", { replace: true });
+      handleSuccessfulLogout();
     },
   });
+
+  const handleSuccessfulLogout = () => {
+    // Clear Redux state
+    dispatch(removeUser());
+
+    // Clear any localStorage/sessionStorage if used
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
+
+    // Redirect to auth page
+    navigate("/auth", { replace: true });
+  };
 
   const handleLogoutClick = () => {
     setShowLogoutConfirm(true);
@@ -42,7 +54,6 @@ const Header = () => {
   const confirmLogout = () => {
     console.log("Logout initiated");
     logoutMutation.mutate();
-    setShowLogoutConfirm(false);
   };
 
   const cancelLogout = () => {
