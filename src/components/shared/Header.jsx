@@ -1,5 +1,5 @@
 // Header.jsx
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { FaUserCircle, FaBell, FaBars, FaTimes, FaBox } from "react-icons/fa";
 import logo from "../../assets/images/delish.jpg";
 import { useDispatch, useSelector } from "react-redux";
@@ -23,51 +23,62 @@ const Header = () => {
   const logoutMutation = useMutation({
     mutationFn: () => logout(),
     onSuccess: () => {
-      console.log("Logout API successful, clearing local state");
+      console.log("Logout API successful, clearing everything...");
       handleSuccessfulLogout();
     },
     onError: (error) => {
       console.error("Logout API error:", error);
-      console.log("Clearing local state despite API error");
-      // Even if API call fails, clear local state and redirect
+      console.log("Clearing everything despite API error");
       handleSuccessfulLogout();
     },
   });
 
   const handleSuccessfulLogout = () => {
     try {
-      console.log("Starting logout cleanup...");
+      console.log("🚀 Starting complete logout cleanup...");
 
-      // Clear ALL localStorage items
+      // 1. Clear ALL localStorage
       localStorage.clear();
+      console.log("✅ localStorage cleared");
 
-      // Clear ALL sessionStorage items
+      // 2. Clear ALL sessionStorage
       sessionStorage.clear();
+      console.log("✅ sessionStorage cleared");
 
-      // Clear ALL Redux states
+      // 3. Clear ALL Redux states
       dispatch(removeUser());
       dispatch(removeCustomer());
       dispatch(removeAllItems());
+      console.log("✅ Redux states cleared");
 
-      // Clear cookies explicitly
-      document.cookie.split(";").forEach((c) => {
-        document.cookie = c
-          .replace(/^ +/, "")
-          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      // 4. Clear ALL cookies
+      document.cookie.split(";").forEach((cookie) => {
+        const eqPos = cookie.indexOf("=");
+        const name =
+          eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+        document.cookie =
+          name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+        document.cookie =
+          name +
+          "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=" +
+          window.location.hostname;
       });
+      console.log("✅ Cookies cleared");
 
-      // Add a small delay to ensure state is cleared
+      // 5. Force hard redirect - THIS IS THE KEY FIX
+      console.log("🔄 Redirecting to login page...");
       setTimeout(() => {
-        console.log("Redirecting to /auth");
-        // Use window.location for hard redirect to avoid any React Router cache
+        // Use window.location for hard redirect - completely refreshes the page
         window.location.href = "/auth";
-        // Alternative: use replace with force reload
-        // navigate('/auth', { replace: true });
+        // If /auth doesn't work, try these fallbacks:
+        // window.location.href = '/login';
+        // window.location.href = '/';
+        // window.location.reload();
       }, 100);
     } catch (error) {
-      console.error("Error during logout cleanup:", error);
-      // Fallback: hard redirect
-      window.location.href = "/auth";
+      console.error("❌ Error during logout:", error);
+      // Ultimate fallback - hard reload
+      window.location.href = "/";
     }
   };
 
@@ -77,7 +88,7 @@ const Header = () => {
   };
 
   const confirmLogout = () => {
-    console.log("Logout initiated");
+    console.log("🛑 Logout confirmed");
     logoutMutation.mutate();
   };
 
