@@ -1,5 +1,5 @@
 // Header.jsx
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { FaUserCircle, FaBell, FaBars, FaTimes, FaBox } from "react-icons/fa";
 import logo from "../../assets/images/delish.jpg";
 import { useDispatch, useSelector } from "react-redux";
@@ -9,8 +9,6 @@ import { logout } from "../../https";
 import { removeUser } from "../../redux/slices/userSlice";
 import { useNavigate } from "react-router-dom";
 import { MdDashboard } from "react-icons/md";
-import { removeCustomer } from "../../redux/slices/customerSlice";
-import { removeAllItems } from "../../redux/slices/cartSlice";
 
 const Header = () => {
   const userData = useSelector((state) => state.user);
@@ -23,63 +21,29 @@ const Header = () => {
   const logoutMutation = useMutation({
     mutationFn: () => logout(),
     onSuccess: () => {
-      console.log("Logout API successful, clearing everything...");
+      console.log("Logout successful, redirecting to /auth");
       handleSuccessfulLogout();
     },
     onError: (error) => {
       console.error("Logout API error:", error);
-      console.log("Clearing everything despite API error");
+      console.log("Clearing local state despite API error");
+      // Even if API call fails, clear local state and redirect
       handleSuccessfulLogout();
     },
   });
 
   const handleSuccessfulLogout = () => {
-    try {
-      console.log("🚀 Starting complete logout cleanup...");
+    // Clear Redux state
+    dispatch(removeUser());
 
-      // 1. Clear ALL localStorage
-      localStorage.clear();
-      console.log("✅ localStorage cleared");
+    // Clear any localStorage/sessionStorage if used
+    localStorage.removeItem("token");
+    localStorage.removeItem("user");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("user");
 
-      // 2. Clear ALL sessionStorage
-      sessionStorage.clear();
-      console.log("✅ sessionStorage cleared");
-
-      // 3. Clear ALL Redux states
-      dispatch(removeUser());
-      dispatch(removeCustomer());
-      dispatch(removeAllItems());
-      console.log("✅ Redux states cleared");
-
-      // 4. Clear ALL cookies
-      document.cookie.split(";").forEach((cookie) => {
-        const eqPos = cookie.indexOf("=");
-        const name =
-          eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
-        document.cookie =
-          name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
-        document.cookie =
-          name +
-          "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/;domain=" +
-          window.location.hostname;
-      });
-      console.log("✅ Cookies cleared");
-
-      // 5. Force hard redirect - THIS IS THE KEY FIX
-      console.log("🔄 Redirecting to login page...");
-      setTimeout(() => {
-        // Use window.location for hard redirect - completely refreshes the page
-        window.location.href = "/auth";
-        // If /auth doesn't work, try these fallbacks:
-        // window.location.href = '/login';
-        // window.location.href = '/';
-        // window.location.reload();
-      }, 100);
-    } catch (error) {
-      console.error("❌ Error during logout:", error);
-      // Ultimate fallback - hard reload
-      window.location.href = "/";
-    }
+    // Redirect to auth page
+    navigate("/auth", { replace: true });
   };
 
   const handleLogoutClick = () => {
@@ -88,7 +52,7 @@ const Header = () => {
   };
 
   const confirmLogout = () => {
-    console.log("🛑 Logout confirmed");
+    console.log("Logout initiated");
     logoutMutation.mutate();
   };
 
