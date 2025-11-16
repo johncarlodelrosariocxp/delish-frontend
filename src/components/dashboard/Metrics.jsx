@@ -64,10 +64,12 @@ const getDateRange = (period) => {
 const filterOrdersByPeriod = (orders, period) => {
   if (!orders || orders.length === 0) return [];
 
-  const { start } = getDateRange(period);
+  const { start, end } = getDateRange(period);
   return orders.filter((order) => {
-    const orderDate = new Date(order.createdAt || order.date || Date.now());
-    return orderDate >= start;
+    const orderDate = new Date(
+      order.createdAt || order.orderDate || order.date || Date.now()
+    );
+    return orderDate >= start && orderDate <= end;
   });
 };
 
@@ -81,19 +83,45 @@ const getPreviousPeriodData = (orders, currentPeriod) => {
     Year: "Year",
   };
 
-  // For demo purposes, we'll calculate based on a percentage of current data
-  // In real app, you'd fetch actual previous period data
-  const currentOrders = filterOrdersByPeriod(orders, currentPeriod);
-  const previousMetrics = calculateMetrics(currentOrders, currentPeriod);
+  // Calculate previous period dates
+  const now = new Date();
+  const prevStart = new Date();
+  const prevEnd = new Date();
 
-  // Simulate previous period data (80% of current for demo)
+  switch (currentPeriod) {
+    case "Day":
+      prevStart.setDate(now.getDate() - 2);
+      prevEnd.setDate(now.getDate() - 1);
+      break;
+    case "Week":
+      prevStart.setDate(now.getDate() - 14);
+      prevEnd.setDate(now.getDate() - 7);
+      break;
+    case "Month":
+      prevStart.setMonth(now.getMonth() - 2);
+      prevEnd.setMonth(now.getMonth() - 1);
+      break;
+    case "Year":
+      prevStart.setFullYear(now.getFullYear() - 2);
+      prevEnd.setFullYear(now.getFullYear() - 1);
+      break;
+    default:
+      prevStart.setDate(now.getDate() - 14);
+      prevEnd.setDate(now.getDate() - 7);
+  }
+
+  const previousOrders = orders.filter((order) => {
+    const orderDate = new Date(
+      order.createdAt || order.orderDate || order.date || Date.now()
+    );
+    return orderDate >= prevStart && orderDate <= prevEnd;
+  });
+
+  const previousMetrics = calculateMetrics(previousOrders, currentPeriod);
+
   return {
-    orders: currentOrders,
-    metrics: {
-      totalOrders: Math.floor(previousMetrics.totalOrders * 0.8),
-      totalSales: previousMetrics.totalSales * 0.8,
-      averageOrderValue: previousMetrics.averageOrderValue * 0.95,
-    },
+    orders: previousOrders,
+    metrics: previousMetrics,
   };
 };
 
@@ -157,11 +185,15 @@ const calculateMetrics = (orders, period) => {
       uniqueCustomers: 0,
       topSellingItem: "N/A",
       completionRate: 0,
+      inProgressOrders: 0,
+      pendingOrders: 0,
     };
   }
 
   const totalSales = orders.reduce(
-    (sum, order) => sum + (order.bills?.totalWithTax || order.total || 0),
+    (sum, order) =>
+      sum +
+      (order.bills?.totalWithTax || order.totalAmount || order.total || 0),
     0
   );
   const ordersCount = orders.length;
@@ -169,16 +201,22 @@ const calculateMetrics = (orders, period) => {
 
   // Calculate additional metrics
   const uniqueCustomers = new Set(
-    orders.map((order) => order.customerId || order.customerName)
+    orders.map(
+      (order) =>
+        order.customerDetails?.name || order.customerName || "Unknown Customer"
+    )
   ).size;
 
-  // Find top selling item (simplified)
+  // Find top selling item
   const itemCounts = {};
   orders.forEach((order) => {
-    order.items?.forEach((item) => {
-      const itemName = item.name || "Unknown Item";
-      itemCounts[itemName] = (itemCounts[itemName] || 0) + (item.quantity || 1);
-    });
+    if (order.items && Array.isArray(order.items)) {
+      order.items.forEach((item) => {
+        const itemName = item.name || item.productName || "Unknown Item";
+        itemCounts[itemName] =
+          (itemCounts[itemName] || 0) + (item.quantity || 1);
+      });
+    }
   });
 
   const topSellingItem =
@@ -188,13 +226,23 @@ const calculateMetrics = (orders, period) => {
         )
       : "N/A";
 
-  // Calculate completion rate (simplified - assuming all completed orders have status)
+  // Calculate order status metrics
   const completedOrders = orders.filter(
     (order) =>
-      order.status === "completed" ||
-      order.status === "delivered" ||
-      !order.status
+      order.orderStatus?.toLowerCase() === "completed" ||
+      order.orderStatus?.toLowerCase() === "delivered"
   ).length;
+
+  const inProgressOrders = orders.filter(
+    (order) =>
+      order.orderStatus?.toLowerCase() === "in progress" ||
+      order.orderStatus?.toLowerCase() === "processing"
+  ).length;
+
+  const pendingOrders = orders.filter(
+    (order) => order.orderStatus?.toLowerCase() === "pending"
+  ).length;
+
   const completionRate =
     ordersCount > 0 ? (completedOrders / ordersCount) * 100 : 0;
 
@@ -206,12 +254,16 @@ const calculateMetrics = (orders, period) => {
     uniqueCustomers,
     topSellingItem,
     completionRate,
+    inProgressOrders,
+    pendingOrders,
+    completedOrders,
   };
 };
 
 const calculateTrend = (current, previous, isPositive = true) => {
-  if (!previous || previous === 0)
+  if (previous === undefined || previous === null || previous === 0) {
     return { percentage: null, isIncrease: true };
+  }
 
   const percentage = ((current - previous) / previous) * 100;
 
@@ -256,7 +308,8 @@ const Metrics = ({
 
   // Process and memoize metrics data based on period
   const { metricsData, itemsData, filteredOrders } = useMemo(() => {
-    const allOrders = rawMetricsData || resData?.data?.data || [];
+    const allOrders =
+      rawMetricsData || resData?.data?.data || resData?.data || [];
     const currentPeriodOrders = filterOrdersByPeriod(allOrders, period);
     const currentMetrics = calculateMetrics(currentPeriodOrders, period);
 
@@ -278,6 +331,21 @@ const Metrics = ({
     const aovTrend = calculateTrend(
       currentMetrics.averageOrderValue,
       previousData.metrics?.averageOrderValue
+    );
+
+    const completionTrend = calculateTrend(
+      currentMetrics.completionRate,
+      previousData.metrics?.completionRate
+    );
+
+    const customerTrend = calculateTrend(
+      currentMetrics.uniqueCustomers,
+      previousData.metrics?.uniqueCustomers
+    );
+
+    const inProgressTrend = calculateTrend(
+      currentMetrics.inProgressOrders,
+      previousData.metrics?.inProgressOrders
     );
 
     const premiumMetrics = [
@@ -320,16 +388,6 @@ const Metrics = ({
     ];
 
     // Dynamic items data based on actual metrics
-    const completionTrend = calculateTrend(
-      currentMetrics.completionRate,
-      previousData.metrics?.completionRate
-    );
-
-    const customerTrend = calculateTrend(
-      currentMetrics.uniqueCustomers,
-      previousData.metrics?.uniqueCustomers
-    );
-
     const premiumItems = [
       {
         title: "Completion Rate",
@@ -350,22 +408,25 @@ const Metrics = ({
         icon: FaUsers,
       },
       {
+        title: "In Progress",
+        value: currentMetrics.inProgressOrders.toLocaleString(),
+        subtitle: "Active orders",
+        percentage: inProgressTrend.percentage,
+        isIncrease: inProgressTrend.isIncrease,
+        color: COLORS.primary.purple,
+        icon: FaClock,
+      },
+      {
         title: "Top Product",
-        value: currentMetrics.topSellingItem,
+        value:
+          currentMetrics.topSellingItem.length > 20
+            ? currentMetrics.topSellingItem.substring(0, 20) + "..."
+            : currentMetrics.topSellingItem,
         subtitle: "Most popular item",
         percentage: null,
         isIncrease: true,
-        color: COLORS.primary.purple,
-        icon: FaChartLine,
-      },
-      {
-        title: "Order Growth",
-        value: `${orderTrend.percentage || "0"}%`,
-        subtitle: "vs previous period",
-        percentage: orderTrend.percentage,
-        isIncrease: orderTrend.isIncrease,
         color: COLORS.primary.blue,
-        icon: orderTrend.isIncrease ? FaArrowUp : FaArrowDown,
+        icon: FaChartLine,
       },
     ];
 
@@ -381,6 +442,13 @@ const Metrics = ({
     setPeriod(newPeriod);
     onPeriodChange?.(newPeriod);
   };
+
+  // Show error notification
+  useEffect(() => {
+    if (isError) {
+      enqueueSnackbar("Failed to load metrics data", { variant: "error" });
+    }
+  }, [isError]);
 
   // Enhanced loading state
   if (isLoading) {

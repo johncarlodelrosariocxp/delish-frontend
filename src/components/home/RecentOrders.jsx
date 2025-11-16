@@ -9,6 +9,8 @@ import {
   FaExclamationCircle,
   FaSpinner,
   FaCheck,
+  FaEye,
+  FaEyeSlash,
 } from "react-icons/fa";
 import {
   keepPreviousData,
@@ -21,6 +23,7 @@ import { getOrders, updateOrderStatus } from "../../https/index";
 const RecentOrders = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingOrders, setUpdatingOrders] = useState(new Set());
+  const [showAllOrders, setShowAllOrders] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: resData, isError } = useQuery({
@@ -35,16 +38,23 @@ const RecentOrders = () => {
     enqueueSnackbar("Something went wrong!", { variant: "error" });
   }
 
+  // Get all orders
+  const allOrders = resData?.data.data || [];
+
   // Filter orders based on search query
-  const filteredOrders =
-    resData?.data.data.filter(
-      (order) =>
-        order.customerDetails?.name
-          ?.toLowerCase()
-          .includes(searchQuery.toLowerCase()) ||
-        order._id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase())
-    ) || [];
+  const filteredOrders = allOrders.filter(
+    (order) =>
+      order.customerDetails?.name
+        ?.toLowerCase()
+        .includes(searchQuery.toLowerCase()) ||
+      order._id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      order.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+
+  // Show only recent orders (last 5) when not in "show all" mode, otherwise show filtered results
+  const displayOrders = showAllOrders
+    ? filteredOrders
+    : filteredOrders.slice(0, 5);
 
   // Status configuration
   const getStatusConfig = (status) => {
@@ -96,7 +106,7 @@ const RecentOrders = () => {
     }
   };
 
-  // Handle status update - FIXED VERSION
+  // Handle status update
   const handleStatusUpdate = async (orderId, currentStatus, newStatus) => {
     setUpdatingOrders((prev) => new Set(prev).add(orderId));
 
@@ -123,7 +133,7 @@ const RecentOrders = () => {
         });
       }
 
-      // Call API to update order status - FIXED: Pass as object
+      // Call API to update order status
       await updateOrderStatus({
         orderId,
         orderStatus: newStatus,
@@ -202,13 +212,13 @@ const RecentOrders = () => {
     return 0;
   };
 
-  // Format currency
+  // Format currency - CHANGED TO PESO
   const formatCurrency = (amount) => {
     const numericAmount =
       typeof amount === "number" ? amount : parseFloat(amount) || 0;
-    return new Intl.NumberFormat("en-US", {
+    return new Intl.NumberFormat("en-PH", {
       style: "currency",
-      currency: "USD",
+      currency: "PHP",
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(numericAmount);
@@ -288,20 +298,35 @@ const RecentOrders = () => {
     return actions;
   };
 
+  // Toggle between showing all orders and recent orders only
+  const toggleViewAll = () => {
+    setShowAllOrders(!showAllOrders);
+  };
+
   return (
     <div className="px-1 sm:px-3 lg:px-6 mt-2 sm:mt-4">
       <div className="bg-white text-black w-full h-auto max-h-[450px] sm:max-h-[550px] rounded-lg shadow-[0_0_8px_rgba(0,0,0,0.15)] sm:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
         {/* Header - Ultra compact for mobile */}
         <div className="flex justify-between items-center px-2 sm:px-4 py-1.5 sm:py-3 border-b border-gray-200">
           <h1 className="text-xs sm:text-base font-semibold tracking-wide">
-            Recent Orders
+            {showAllOrders ? "All Orders" : "Recent Orders"}
           </h1>
-          <a
-            href="#"
-            className="text-[#025cca] text-[10px] sm:text-xs font-semibold hover:underline"
+          <button
+            onClick={toggleViewAll}
+            className="text-[#025cca] text-[10px] sm:text-xs font-semibold hover:underline flex items-center gap-1"
           >
-            View all
-          </a>
+            {showAllOrders ? (
+              <>
+                <FaEyeSlash className="text-[10px]" />
+                Show Less
+              </>
+            ) : (
+              <>
+                <FaEye className="text-[10px]" />
+                View All
+              </>
+            )}
+          </button>
         </div>
 
         {/* Search Bar - Ultra compact */}
@@ -316,11 +341,19 @@ const RecentOrders = () => {
           />
         </div>
 
+        {/* Orders Count Info */}
+        <div className="px-2 sm:px-4 mt-1">
+          <p className="text-[10px] sm:text-xs text-gray-600">
+            Showing {displayOrders.length} of {filteredOrders.length} orders
+            {!showAllOrders && filteredOrders.length > 5 && " (recent 5)"}
+          </p>
+        </div>
+
         {/* Orders List - Card Layout */}
         <div className="mt-1.5 sm:mt-3 px-2 sm:px-4 overflow-y-auto max-h-[320px] sm:max-h-[400px] h-auto scrollbar-hide">
-          {filteredOrders.length > 0 ? (
+          {displayOrders.length > 0 ? (
             <div className="space-y-2 sm:space-y-3 pb-2">
-              {filteredOrders.map((order) => {
+              {displayOrders.map((order) => {
                 const statusConfig = getStatusConfig(order.orderStatus);
                 const StatusIcon = statusConfig.icon;
                 const totalAmount = calculateTotalAmount(order);

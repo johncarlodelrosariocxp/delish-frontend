@@ -134,7 +134,19 @@ export const ketoCheesecakes = [
     name: "Keto Cheesecake - Slice",
     image: cheesecake6,
     category: "Keto Cheesecake",
-    variants: [{ label: "Slice", price: 330 }],
+    variants: [
+      { label: "Mangoes & Cream", price: 190 },
+      { label: "Ube Macapuno", price: 190 },
+      { label: "Strawberry", price: 190 },
+      { label: "Blueberry", price: 190 },
+      { label: "Queso de Bola", price: 180 },
+      { label: "New York", price: 180 },
+      { label: "Baileys", price: 180 },
+      { label: "Coffee Caramel", price: 180 },
+      { label: "Dark Chocolate", price: 175 },
+      { label: "Oreo", price: 175 },
+      { label: "Matcha Zebra", price: 175 },
+    ],
   },
   {
     id: 3,
@@ -720,6 +732,66 @@ export const icedTeaItems = [
   },
 ];
 
+// ➕ Add-ons Category
+export const addOnsItems = [
+  {
+    id: 1,
+    name: "Add Shot",
+    image: coffee,
+    category: "Add-ons",
+    variants: [{ label: "Single", price: 30 }],
+  },
+  {
+    id: 2,
+    name: "Add Whip",
+    image: coffee,
+    category: "Add-ons",
+    variants: [{ label: "Regular", price: 20 }],
+  },
+  {
+    id: 3,
+    name: "Add Syrup",
+    image: coffee,
+    category: "Add-ons",
+    variants: [{ label: "Pump", price: 20 }],
+  },
+  {
+    id: 4,
+    name: "Soy Milk",
+    image: coffee,
+    category: "Add-ons",
+    variants: [{ label: "Substitute", price: 35 }],
+  },
+  {
+    id: 5,
+    name: "Almond Milk",
+    image: coffee,
+    category: "Add-ons",
+    variants: [{ label: "Substitute", price: 45 }],
+  },
+  {
+    id: 6,
+    name: "Oat Milk",
+    image: coffee,
+    category: "Add-ons",
+    variants: [{ label: "Substitute", price: 35 }],
+  },
+  {
+    id: 7,
+    name: "Add Rice",
+    image: cheesecake1,
+    category: "Add-ons",
+    variants: [{ label: "Side", price: 25 }],
+  },
+  {
+    id: 8,
+    name: "Add Egg",
+    image: cheesecake1,
+    category: "Add-ons",
+    variants: [{ label: "Extra", price: 15 }],
+  },
+];
+
 // 🛍️ Popular Dishes
 export const popularDishes = [
   {
@@ -772,7 +844,7 @@ export const popularDishes = [
   },
 ];
 
-// 📊 Menu Sections
+// 📊 Menu Sections (Updated with Add-ons)
 export const menus = [
   {
     id: 1,
@@ -843,6 +915,13 @@ export const menus = [
     bgColor: "#ff9800",
     icon: "🍹",
     items: icedTeaItems,
+  },
+  {
+    id: 11,
+    name: "Add-ons",
+    bgColor: "#607D8B",
+    icon: "➕",
+    items: addOnsItems,
   },
 ];
 

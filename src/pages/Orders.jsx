@@ -11,6 +11,7 @@ import {
   FaCheck,
   FaArrowUp,
   FaPrint,
+  FaCalendar,
 } from "react-icons/fa";
 import {
   keepPreviousData,
@@ -31,7 +32,9 @@ const Orders = () => {
   const [showInvoice, setShowInvoice] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [totalSales, setTotalSales] = useState(0);
+  const [pendingCount, setPendingCount] = useState(0);
   const [updatingOrders, setUpdatingOrders] = useState(new Set());
+  const [dateFilter, setDateFilter] = useState("all"); // "all", "today", "yesterday", "thisMonth", "lastMonth", "thisYear", "lastYear"
   const scrollRef = useRef(null);
 
   const queryClient = useQueryClient();
@@ -160,8 +163,63 @@ const Orders = () => {
 
   const orders = resData?.data?.data || [];
 
+  // Filter orders by date range
+  const filterByDateRange = (order, range) => {
+    if (range === "all") return true;
+
+    const orderDate = new Date(order.createdAt || order.orderDate);
+    const today = new Date();
+
+    switch (range) {
+      case "today":
+        return (
+          orderDate.getDate() === today.getDate() &&
+          orderDate.getMonth() === today.getMonth() &&
+          orderDate.getFullYear() === today.getFullYear()
+        );
+
+      case "yesterday":
+        const yesterday = new Date(today);
+        yesterday.setDate(today.getDate() - 1);
+        return (
+          orderDate.getDate() === yesterday.getDate() &&
+          orderDate.getMonth() === yesterday.getMonth() &&
+          orderDate.getFullYear() === yesterday.getFullYear()
+        );
+
+      case "thisMonth":
+        return (
+          orderDate.getMonth() === today.getMonth() &&
+          orderDate.getFullYear() === today.getFullYear()
+        );
+
+      case "lastMonth":
+        const lastMonth = new Date(today);
+        lastMonth.setMonth(today.getMonth() - 1);
+        return (
+          orderDate.getMonth() === lastMonth.getMonth() &&
+          orderDate.getFullYear() === lastMonth.getFullYear()
+        );
+
+      case "thisYear":
+        return orderDate.getFullYear() === today.getFullYear();
+
+      case "lastYear":
+        return orderDate.getFullYear() === today.getFullYear() - 1;
+
+      default:
+        return true;
+    }
+  };
+
+  // Calculate metrics based on date filter
   useEffect(() => {
-    const completedOrders = orders.filter(
+    const filteredByDate = orders.filter((order) =>
+      filterByDateRange(order, dateFilter)
+    );
+
+    // Calculate total sales from completed orders
+    const completedOrders = filteredByDate.filter(
       (o) =>
         o.orderStatus?.toLowerCase() === "completed" ||
         o.orderStatus?.toLowerCase() === "delivered"
@@ -171,18 +229,25 @@ const Orders = () => {
       0
     );
     setTotalSales(total);
-  }, [orders]);
 
-  // Filter orders based on status and search query
+    // Calculate pending count
+    const pendingOrders = filteredByDate.filter(
+      (o) => o.orderStatus?.toLowerCase() === "pending"
+    );
+    setPendingCount(pendingOrders.length);
+  }, [orders, dateFilter]);
+
+  // Filter orders based on status, search query, and date filter
   const filteredOrders = orders.filter((order) => {
-    // Status filter (removed "ready" status)
+    // Date filter
+    const dateMatch = filterByDateRange(order, dateFilter);
+
+    // Status filter (removed "pending" status)
     const statusMatch =
       status === "all" ||
       (status === "progress" &&
         (order.orderStatus?.toLowerCase() === "in progress" ||
           order.orderStatus?.toLowerCase() === "processing")) ||
-      (status === "pending" &&
-        order.orderStatus?.toLowerCase() === "pending") ||
       (status === "completed" &&
         (order.orderStatus?.toLowerCase() === "completed" ||
           order.orderStatus?.toLowerCase() === "delivered"));
@@ -195,7 +260,7 @@ const Orders = () => {
       order._id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
       order.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase());
 
-    return statusMatch && searchMatch;
+    return dateMatch && statusMatch && searchMatch;
   });
 
   // Calculate and format total amount (matches RecentOrders)
@@ -334,6 +399,26 @@ const Orders = () => {
   const scrollToTop = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  // Get date filter display label
+  const getDateFilterLabel = () => {
+    switch (dateFilter) {
+      case "today":
+        return "Today";
+      case "yesterday":
+        return "Yesterday";
+      case "thisMonth":
+        return "This Month";
+      case "lastMonth":
+        return "Last Month";
+      case "thisYear":
+        return "This Year";
+      case "lastYear":
+        return "Last Year";
+      default:
+        return "All Time";
     }
   };
 
@@ -506,8 +591,8 @@ const Orders = () => {
             </h1>
           </div>
           <div className="flex flex-wrap gap-2 md:gap-4 items-center">
-            {/* Updated status filters - removed "ready" */}
-            {["all", "pending", "progress", "completed"].map((type) => (
+            {/* Updated status filters - removed "pending" */}
+            {["all", "progress", "completed"].map((type) => (
               <button
                 key={type}
                 onClick={() => setStatus(type)}
@@ -532,9 +617,31 @@ const Orders = () => {
                   : type.charAt(0).toUpperCase() + type.slice(1)}
               </button>
             ))}
-            <span className="text-xs sm:text-sm font-semibold text-green-700 ml-2 sm:ml-4 backdrop-blur-sm px-3 py-1 rounded-full glass-effect">
-              Total Sales: {formatCurrency(totalSales)}
-            </span>
+
+            {/* Date Filter Dropdown */}
+            <div className="flex items-center gap-2 backdrop-blur-sm glass-effect rounded-lg px-3 py-2">
+              <FaCalendar className="text-gray-600 text-xs" />
+              <select
+                value={dateFilter}
+                onChange={(e) => setDateFilter(e.target.value)}
+                className="bg-transparent outline-none text-black text-xs sm:text-sm"
+              >
+                <option value="all">All Time</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="thisMonth">This Month</option>
+                <option value="lastMonth">Last Month</option>
+                <option value="thisYear">This Year</option>
+                <option value="lastYear">Last Year</option>
+              </select>
+            </div>
+
+            {/* Metrics Display */}
+            <div className="flex flex-wrap gap-2 md:gap-4">
+              <span className="text-xs sm:text-sm font-semibold text-green-700 backdrop-blur-sm px-3 py-1 rounded-full glass-effect">
+                Sales: {formatCurrency(totalSales)}
+              </span>
+            </div>
           </div>
         </div>
 
@@ -577,15 +684,16 @@ const Orders = () => {
             <div className="text-center backdrop-blur-sm glass-effect rounded-lg p-6">
               <FaReceipt className="mx-auto text-gray-400 text-2xl mb-2" />
               <p className="text-gray-500 text-sm">
-                {searchQuery || status !== "all"
+                {searchQuery || status !== "all" || dateFilter !== "all"
                   ? "No orders found matching your criteria"
                   : "No orders available"}
               </p>
-              {(searchQuery || status !== "all") && (
+              {(searchQuery || status !== "all" || dateFilter !== "all") && (
                 <button
                   onClick={() => {
                     setSearchQuery("");
                     setStatus("all");
+                    setDateFilter("all");
                   }}
                   className="text-[#025cca] text-xs mt-1 hover:underline"
                 >

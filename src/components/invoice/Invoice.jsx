@@ -1,6 +1,6 @@
 import React, { useRef } from "react";
 import { motion } from "framer-motion";
-import { FaCheck } from "react-icons/fa6";
+import { FaCheck, FaPrint, FaTimes, FaReceipt } from "react-icons/fa";
 
 const Invoice = ({ orderInfo, setShowInvoice }) => {
   const invoiceRef = useRef(null);
@@ -12,7 +12,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Order Receipt</title>
+          <title>Order Receipt - DELISH</title>
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
             /* Thermal printer friendly styles */
@@ -22,9 +22,10 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 padding: 0 !important;
                 font-family: 'Courier New', monospace !important;
                 font-size: 12px !important;
-                width: 80mm !important; /* Standard thermal paper width */
+                width: 80mm !important;
                 background: white !important;
                 color: black !important;
+                -webkit-print-color-adjust: exact !important;
               }
               * {
                 box-shadow: none !important;
@@ -32,6 +33,26 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               }
               .no-print { display: none !important; }
               .page-break { page-break-after: always; }
+              .text-center { text-align: center !important; }
+              .text-right { text-align: right !important; }
+              .text-bold { font-weight: bold !important; }
+              .border-top { 
+                border-top: 1px dashed #000 !important; 
+                margin: 8px 0 !important; 
+                padding-top: 8px !important;
+              }
+              .flex-between { 
+                display: flex !important; 
+                justify-content: space-between !important; 
+                align-items: center !important;
+              }
+              .total-section { font-size: 14px !important; font-weight: bold !important; }
+              .success-icon { 
+                text-align: center !important; 
+                margin: 10px 0 !important;
+                font-size: 24px !important;
+                color: green !important;
+              }
             }
             
             /* Screen styles */
@@ -41,6 +62,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 padding: 10px;
                 max-width: 300px;
                 margin: 0 auto;
+                background: #f5f5f5;
               }
             }
             
@@ -48,110 +70,172 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             .receipt-container { 
               width: 100%;
               border: 1px solid #000;
-              padding: 10px;
+              padding: 15px;
+              background: white;
             }
-            .text-center { text-align: center; }
-            .text-right { text-align: right; }
-            .text-bold { font-weight: bold; }
-            .border-top { border-top: 1px dashed #000; margin: 8px 0; padding-top: 8px; }
-            .flex-between { 
-              display: flex; 
-              justify-content: space-between; 
-              align-items: center;
+            .header {
+              text-align: center;
+              margin-bottom: 15px;
             }
-            .items-list { width: 100%; }
-            .total-section { font-size: 14px; font-weight: bold; }
-            .success-icon { 
-              text-align: center; 
+            .company-name {
+              font-size: 18px;
+              font-weight: bold;
+              margin-bottom: 5px;
+            }
+            .receipt-title {
+              font-size: 16px;
+              margin-bottom: 10px;
+            }
+            .items-table {
+              width: 100%;
+              border-collapse: collapse;
               margin: 10px 0;
-              font-size: 24px;
-              color: green;
+            }
+            .items-table td {
+              padding: 2px 0;
+              font-size: 11px;
+            }
+            .discount-item {
+              color: #059669;
+              font-size: 10px;
+            }
+            .free-item {
+              color: #dc2626;
+              font-weight: bold;
+            }
+            .thank-you {
+              text-align: center;
+              margin-top: 15px;
+              font-style: italic;
             }
           </style>
         </head>
         <body>
           <div class="receipt-container">
-            <!-- Success Icon -->
-            <div class="success-icon">✓</div>
-            
             <!-- Header -->
-            <h2 class="text-center">ORDER RECEIPT</h2>
-            <p class="text-center">Thank you for your order!</p>
+            <div class="header">
+              <div class="company-name">DELISH RESTAURANT</div>
+              <div class="receipt-title">ORDER RECEIPT</div>
+              <div class="success-icon">✓</div>
+              <div>Thank you for your order!</div>
+            </div>
             
             <!-- Order Details -->
             <div class="border-top">
-              <p><strong>Order ID:</strong> ${
-                orderInfo.orderDate
-                  ? Math.floor(new Date(orderInfo.orderDate).getTime())
-                  : "N/A"
-              }</p>
-              <p><strong>Name:</strong> ${
-                orderInfo.customerDetails?.name || "N/A"
-              }</p>
-              <p><strong>Phone:</strong> ${
-                orderInfo.customerDetails?.phone || "N/A"
-              }</p>
-              <p><strong>Guests:</strong> ${
-                orderInfo.customerDetails?.guests || "N/A"
-              }</p>
+              <table width="100%">
+                <tr><td><strong>Order ID:</strong></td><td>${
+                  orderInfo.orderDate
+                    ? Math.floor(new Date(orderInfo.orderDate).getTime())
+                    : "N/A"
+                }</td></tr>
+                <tr><td><strong>Name:</strong></td><td>${
+                  orderInfo.customerDetails?.name || "Walk-in Customer"
+                }</td></tr>
+                <tr><td><strong>Phone:</strong></td><td>${
+                  orderInfo.customerDetails?.phone || "Not provided"
+                }</td></tr>
+                <tr><td><strong>Guests:</strong></td><td>${
+                  orderInfo.customerDetails?.guests || "1"
+                }</td></tr>
+                <tr><td><strong>Date:</strong></td><td>${new Date(
+                  orderInfo.orderDate
+                ).toLocaleString()}</td></tr>
+              </table>
             </div>
             
             <!-- Items -->
             <div class="border-top">
-              <p class="text-bold">ITEMS ORDERED</p>
-              ${orderInfo.items
-                ?.map(
-                  (item) => `
-                <div class="flex-between">
-                  <span>${item.name} x${item.quantity}</span>
-                  <span>₱${(item.price * item.quantity).toFixed(2)}</span>
-                </div>
-              `
-                )
-                .join("")}
+              <div class="text-bold">ORDER ITEMS</div>
+              <table class="items-table">
+                ${orderInfo.items
+                  ?.map(
+                    (item) => `
+                  <tr>
+                    <td>${item.name}${item.isFree ? " (FREE)" : ""} x${
+                      item.quantity
+                    }</td>
+                    <td class="text-right">₱${(
+                      item.price * item.quantity
+                    ).toFixed(2)}</td>
+                  </tr>
+                  ${
+                    item.isFree
+                      ? `<tr><td colspan="2" class="free-item">→ Redeemed for free!</td></tr>`
+                      : ""
+                  }
+                `
+                  )
+                  .join("")}
+              </table>
             </div>
             
-            <!-- Totals -->
+            <!-- Discounts & Totals -->
             <div class="border-top">
-              <div class="flex-between">
-                <span>Subtotal:</span>
-                <span>₱${orderInfo.bills?.total?.toFixed(2) || "0.00"}</span>
-              </div>
-              <div class="flex-between">
-                <span>Tax:</span>
-                <span>₱${orderInfo.bills?.tax?.toFixed(2) || "0.00"}</span>
-              </div>
-              <div class="flex-between total-section">
-                <span>GRAND TOTAL:</span>
-                <span>₱${
-                  orderInfo.bills?.totalWithTax?.toFixed(2) || "0.00"
-                }</span>
-              </div>
+              <table width="100%">
+                <tr><td>Subtotal:</td><td class="text-right">₱${
+                  orderInfo.bills?.total?.toFixed(2) || "0.00"
+                }</td></tr>
+                ${
+                  orderInfo.bills?.pwdSssDiscount > 0
+                    ? `<tr><td class="discount-item">PWD/SSS Discount:</td><td class="text-right discount-item">-₱${orderInfo.bills.pwdSssDiscount.toFixed(
+                        2
+                      )}</td></tr>`
+                    : ""
+                }
+                ${
+                  orderInfo.bills?.employeeDiscount > 0
+                    ? `<tr><td class="discount-item">Employee Discount:</td><td class="text-right discount-item">-₱${orderInfo.bills.employeeDiscount.toFixed(
+                        2
+                      )}</td></tr>`
+                    : ""
+                }
+                ${
+                  orderInfo.bills?.redemptionDiscount > 0
+                    ? `<tr><td class="discount-item">Redemption Discount:</td><td class="text-right discount-item">-₱${orderInfo.bills.redemptionDiscount.toFixed(
+                        2
+                      )}</td></tr>`
+                    : ""
+                }
+                <tr><td>VAT (12%):</td><td class="text-right">₱${
+                  orderInfo.bills?.tax?.toFixed(2) || "0.00"
+                }</td></tr>
+                <tr class="total-section">
+                  <td><strong>GRAND TOTAL:</strong></td>
+                  <td class="text-right"><strong>₱${
+                    orderInfo.bills?.totalWithTax?.toFixed(2) || "0.00"
+                  }</strong></td>
+                </tr>
+              </table>
             </div>
             
             <!-- Payment Details -->
             <div class="border-top">
-              <p><strong>Payment Method:</strong> ${
-                orderInfo.paymentMethod || "N/A"
-              }</p>
-              ${
-                orderInfo.paymentMethod !== "Cash"
-                  ? `
-                <p><strong>Razorpay Order ID:</strong> ${
-                  orderInfo.paymentData?.razorpay_order_id || "N/A"
-                }</p>
-                <p><strong>Razorpay Payment ID:</strong> ${
-                  orderInfo.paymentData?.razorpay_payment_id || "N/A"
-                }</p>
-              `
-                  : ""
-              }
+              <table width="100%">
+                <tr><td><strong>Payment Method:</strong></td><td>${
+                  orderInfo.paymentMethod || "Cash"
+                }</td></tr>
+                ${
+                  orderInfo.paymentMethod !== "Cash"
+                    ? `
+                  <tr><td>Razorpay Order ID:</td><td>${
+                    orderInfo.paymentData?.razorpay_order_id || "N/A"
+                  }</td></tr>
+                  <tr><td>Razorpay Payment ID:</td><td>${
+                    orderInfo.paymentData?.razorpay_payment_id || "N/A"
+                  }</td></tr>
+                `
+                    : ""
+                }
+                <tr><td><strong>Status:</strong></td><td>${
+                  orderInfo.orderStatus || "In Progress"
+                }</td></tr>
+              </table>
             </div>
             
             <!-- Footer -->
-            <div class="border-top text-center">
-              <p>Thank you for your business!</p>
-              <p>${new Date().toLocaleString()}</p>
+            <div class="thank-you">
+              <div>Thank you for your purchase!</div>
+              <div>We hope to see you again soon!</div>
             </div>
           </div>
         </body>
@@ -168,11 +252,9 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     printWindow.document.write(printContent);
     printWindow.document.close();
 
-    // Wait for content to load then print
     printWindow.onload = () => {
       setTimeout(() => {
         printWindow.print();
-        // Don't close immediately - let user cancel/confirm print dialog
         printWindow.onafterprint = () => {
           setTimeout(() => printWindow.close(), 100);
         };
@@ -181,35 +263,54 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
   };
 
   const handleThermalPrint = () => {
-    // Generate thermal printer friendly text
     let thermalText = `
+DELISH RESTAURANT
 ORDER RECEIPT
-Thank you for your order!
+✓ Thank you for your order!
 
 Order ID: ${
       orderInfo.orderDate
         ? Math.floor(new Date(orderInfo.orderDate).getTime())
         : "N/A"
     }
-Name: ${orderInfo.customerDetails?.name || "N/A"}
-Phone: ${orderInfo.customerDetails?.phone || "N/A"}
-Guests: ${orderInfo.customerDetails?.guests || "N/A"}
-------------------------------
-ITEMS ORDERED:
+Name: ${orderInfo.customerDetails?.name || "Walk-in Customer"}
+Phone: ${orderInfo.customerDetails?.phone || "Not provided"}
+Guests: ${orderInfo.customerDetails?.guests || "1"}
+Date: ${new Date(orderInfo.orderDate).toLocaleString()}
+${"=".repeat(32)}
+ORDER ITEMS:
 ${orderInfo.items
   ?.map(
     (item) =>
-      `${item.name} x${item.quantity}\n₱${(item.price * item.quantity).toFixed(
-        2
-      )}`
+      `${item.name}${item.isFree ? " (FREE)" : ""} x${item.quantity}\n` +
+      `₱${(item.price * item.quantity).toFixed(2)}${
+        item.isFree ? " → Redeemed for free!" : ""
+      }`
   )
   .join("\n")}
-------------------------------
+${"=".repeat(32)}
+BILL SUMMARY:
 Subtotal: ₱${orderInfo.bills?.total?.toFixed(2) || "0.00"}
-VAT: ₱${orderInfo.bills?.tax?.toFixed(2) || "0.00"}
+${
+  orderInfo.bills?.pwdSssDiscount > 0
+    ? `PWD/SSS Discount: -₱${orderInfo.bills.pwdSssDiscount.toFixed(2)}\n`
+    : ""
+}${
+      orderInfo.bills?.employeeDiscount > 0
+        ? `Employee Discount: -₱${orderInfo.bills.employeeDiscount.toFixed(
+            2
+          )}\n`
+        : ""
+    }${
+      orderInfo.bills?.redemptionDiscount > 0
+        ? `Redemption Discount: -₱${orderInfo.bills.redemptionDiscount.toFixed(
+            2
+          )}\n`
+        : ""
+    }VAT (12%): ₱${orderInfo.bills?.tax?.toFixed(2) || "0.00"}
 GRAND TOTAL: ₱${orderInfo.bills?.totalWithTax?.toFixed(2) || "0.00"}
-------------------------------
-Payment Method: ${orderInfo.paymentMethod || "N/A"}
+${"=".repeat(32)}
+Payment Method: ${orderInfo.paymentMethod || "Cash"}
 ${
   orderInfo.paymentMethod !== "Cash"
     ? `
@@ -218,12 +319,12 @@ Razorpay Payment ID: ${orderInfo.paymentData?.razorpay_payment_id || "N/A"}
 `
     : ""
 }
-------------------------------
+Status: ${orderInfo.orderStatus || "In Progress"}
+${"=".repeat(32)}
 Thank you for your business!
-${new Date().toLocaleString()}
+We hope to see you again soon!
     `.trim();
 
-    // Create a simple text print
     const textBlob = new Blob([thermalText], { type: "text/plain" });
     const textUrl = URL.createObjectURL(textBlob);
 
@@ -239,12 +340,7 @@ ${new Date().toLocaleString()}
     }
   };
 
-  if (
-    !orderInfo ||
-    !orderInfo.customerDetails ||
-    !orderInfo.items ||
-    !orderInfo.bills
-  ) {
+  if (!orderInfo) {
     return (
       <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
         <div className="bg-white p-6 rounded-lg shadow-lg text-center">
@@ -263,140 +359,225 @@ ${new Date().toLocaleString()}
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50">
-      {/* Added mt-8 for top margin */}
-      <div className="bg-white p-4 rounded-lg shadow-lg w-[400px] mt-8">
-        <div ref={invoiceRef} className="p-4 no-print">
-          {/* Receipt Header */}
-          <div className="flex justify-center mb-4">
-            <motion.div
-              initial={{ scale: 0, opacity: 0 }}
-              animate={{ scale: 1.2, opacity: 1 }}
-              transition={{ duration: 0.5, type: "spring", stiffness: 150 }}
-              className="w-12 h-12 border-8 border-green-500 rounded-full flex items-center justify-center shadow-lg bg-green-500"
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-start z-50 overflow-y-auto py-8">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9, y: -20 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, scale: 0.9, y: -20 }}
+        transition={{ duration: 0.3, type: "spring", stiffness: 200 }}
+        className="bg-white p-6 rounded-xl shadow-2xl w-full max-w-md mx-4"
+      >
+        {/* Header */}
+        <div className="text-center mb-6">
+          <motion.div
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.5, type: "spring", stiffness: 150 }}
+            className="w-16 h-16 bg-green-500 rounded-full flex items-center justify-center shadow-lg mx-auto mb-4"
+          >
+            <motion.span
+              initial={{ scale: 0 }}
+              animate={{ scale: 1 }}
+              transition={{ delay: 0.3, duration: 0.3 }}
             >
-              <motion.span
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.3, duration: 0.3 }}
-                className="text-2xl"
-              >
-                <FaCheck className="text-white" />
-              </motion.span>
-            </motion.div>
-          </div>
+              <FaCheck className="text-white text-2xl" />
+            </motion.span>
+          </motion.div>
+          <h2 className="text-2xl font-bold text-gray-800">Order Confirmed!</h2>
+          <p className="text-gray-600 mt-2">
+            Thank you for your order at DELISH
+          </p>
+        </div>
 
-          <h2 className="text-xl font-bold text-center mb-2">Order Receipt</h2>
-          <p className="text-gray-600 text-center">Thank you for your order!</p>
-
+        {/* Receipt Content */}
+        <div ref={invoiceRef} className="space-y-4">
           {/* Order Details */}
-          <div className="mt-4 border-t pt-4 text-sm text-gray-700">
-            <p>
-              <strong>Order ID:</strong>{" "}
-              {orderInfo.orderDate
-                ? Math.floor(new Date(orderInfo.orderDate).getTime())
-                : "N/A"}
-            </p>
-            <p>
-              <strong>Name:</strong> {orderInfo.customerDetails?.name || "N/A"}
-            </p>
-            <p>
-              <strong>Phone:</strong>{" "}
-              {orderInfo.customerDetails?.phone || "N/A"}
-            </p>
-            <p>
-              <strong>Guests:</strong>{" "}
-              {orderInfo.customerDetails?.guests || "N/A"}
-            </p>
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-gray-700 mb-3">Order Details</h3>
+            <div className="grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <span className="text-gray-600">Order ID:</span>
+                <p className="font-medium">
+                  {orderInfo.orderDate
+                    ? Math.floor(new Date(orderInfo.orderDate).getTime())
+                    : "N/A"}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-600">Date:</span>
+                <p className="font-medium">
+                  {new Date(orderInfo.orderDate).toLocaleString()}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-600">Customer:</span>
+                <p className="font-medium">
+                  {orderInfo.customerDetails?.name || "Walk-in Customer"}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-600">Guests:</span>
+                <p className="font-medium">
+                  {orderInfo.customerDetails?.guests || "1"}
+                </p>
+              </div>
+              <div className="col-span-2">
+                <span className="text-gray-600">Status:</span>
+                <p className="font-medium text-green-600">
+                  {orderInfo.orderStatus || "In Progress"}
+                </p>
+              </div>
+            </div>
           </div>
 
-          {/* Items Summary */}
-          <div className="mt-4 border-t pt-4">
-            <h3 className="text-sm font-semibold">Items Ordered</h3>
-            <ul className="text-sm text-gray-700">
+          {/* Items Ordered */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-gray-700 mb-3">Items Ordered</h3>
+            <div className="space-y-2">
               {orderInfo.items?.map((item, index) => (
-                <li
+                <div
                   key={index}
-                  className="flex justify-between items-center text-xs"
+                  className={`flex justify-between items-center p-2 rounded ${
+                    item.isFree ? "bg-red-50 border border-red-200" : "bg-white"
+                  }`}
                 >
-                  <span>
-                    {item.name} x{item.quantity}
-                  </span>
-                  <span>₱{(item.price * item.quantity).toFixed(2)}</span>
-                </li>
+                  <div className="flex-1">
+                    <p className="font-medium text-sm">
+                      {item.name}
+                      {item.isFree && (
+                        <span className="ml-2 text-red-600 text-xs font-semibold">
+                          (FREE)
+                        </span>
+                      )}
+                    </p>
+                    <p className="text-gray-600 text-xs">
+                      {item.quantity} × ₱{item.pricePerQuantity?.toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p
+                      className={`font-semibold text-sm ${
+                        item.isFree ? "text-red-600" : "text-gray-800"
+                      }`}
+                    >
+                      {item.isFree
+                        ? "FREE"
+                        : `₱${(item.price * item.quantity).toFixed(2)}`}
+                    </p>
+                    {item.isFree && (
+                      <p className="text-red-500 text-xs font-semibold">
+                        Redeemed!
+                      </p>
+                    )}
+                  </div>
+                </div>
               ))}
-            </ul>
-          </div>
-
-          {/* Bills Summary */}
-          <div className="mt-4 border-t pt-4 text-sm">
-            <div className="flex justify-between">
-              <span>
-                <strong>Subtotal:</strong>
-              </span>
-              <span>₱{orderInfo.bills?.total?.toFixed(2) || "0.00"}</span>
-            </div>
-            <div className="flex justify-between">
-              <span>
-                <strong>Tax:</strong>
-              </span>
-              <span>₱{orderInfo.bills?.tax?.toFixed(2) || "0.00"}</span>
-            </div>
-            <div className="flex justify-between text-md font-semibold">
-              <span>
-                <strong>Grand Total:</strong>
-              </span>
-              <span>
-                ₱{orderInfo.bills?.totalWithTax?.toFixed(2) || "0.00"}
-              </span>
             </div>
           </div>
 
-          {/* Payment Details */}
-          <div className="mb-2 mt-2 text-xs">
-            <p>
-              <strong>Payment Method:</strong>{" "}
-              {orderInfo.paymentMethod || "N/A"}
-            </p>
-            {orderInfo.paymentMethod !== "Cash" && (
-              <>
-                <p>
-                  <strong>Razorpay Order ID:</strong>{" "}
-                  {orderInfo.paymentData?.razorpay_order_id || "N/A"}
-                </p>
-                <p>
-                  <strong>Razorpay Payment ID:</strong>{" "}
-                  {orderInfo.paymentData?.razorpay_payment_id || "N/A"}
-                </p>
-              </>
-            )}
+          {/* Bill Summary */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-gray-700 mb-3">Bill Summary</h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span>Subtotal:</span>
+                <span>₱{orderInfo.bills?.total?.toFixed(2) || "0.00"}</span>
+              </div>
+
+              {orderInfo.bills?.pwdSssDiscount > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>PWD/SSS Discount:</span>
+                  <span>-₱{orderInfo.bills.pwdSssDiscount.toFixed(2)}</span>
+                </div>
+              )}
+
+              {orderInfo.bills?.employeeDiscount > 0 && (
+                <div className="flex justify-between text-yellow-600">
+                  <span>Employee Discount:</span>
+                  <span>-₱{orderInfo.bills.employeeDiscount.toFixed(2)}</span>
+                </div>
+              )}
+
+              {orderInfo.bills?.redemptionDiscount > 0 && (
+                <div className="flex justify-between text-blue-600">
+                  <span>Redemption Discount:</span>
+                  <span>-₱{orderInfo.bills.redemptionDiscount.toFixed(2)}</span>
+                </div>
+              )}
+
+              <div className="flex justify-between">
+                <span>VAT (12%):</span>
+                <span>₱{orderInfo.bills?.tax?.toFixed(2) || "0.00"}</span>
+              </div>
+
+              <div className="border-t pt-2 mt-2 flex justify-between font-bold text-lg">
+                <span>Grand Total:</span>
+                <span className="text-green-600">
+                  ₱{orderInfo.bills?.totalWithTax?.toFixed(2) || "0.00"}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Payment Information */}
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <h3 className="font-semibold text-gray-700 mb-3">
+              Payment Information
+            </h3>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between">
+                <span>Payment Method:</span>
+                <span className="font-medium">
+                  {orderInfo.paymentMethod || "Cash"}
+                </span>
+              </div>
+              {orderInfo.paymentMethod !== "Cash" && (
+                <>
+                  <div className="flex justify-between">
+                    <span>Razorpay Order ID:</span>
+                    <span className="font-mono text-xs">
+                      {orderInfo.paymentData?.razorpay_order_id || "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Razorpay Payment ID:</span>
+                    <span className="font-mono text-xs">
+                      {orderInfo.paymentData?.razorpay_payment_id || "N/A"}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Buttons */}
-        <div className="flex justify-between mt-4 no-print">
-          <div className="flex gap-2">
+        {/* Action Buttons */}
+        <div className="flex flex-col sm:flex-row gap-3 mt-6">
+          <div className="flex gap-2 flex-1">
             <button
               onClick={handlePrint}
-              className="bg-blue-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-blue-600 transition-colors"
+              className="flex items-center justify-center gap-2 bg-blue-600 text-white px-4 py-3 rounded-lg flex-1 hover:bg-blue-700 transition-colors font-semibold"
             >
+              <FaPrint className="text-sm" />
               Print Receipt
             </button>
             <button
               onClick={handleThermalPrint}
-              className="bg-green-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-green-600 transition-colors"
+              className="flex items-center justify-center gap-2 bg-green-600 text-white px-4 py-3 rounded-lg flex-1 hover:bg-green-700 transition-colors font-semibold"
             >
+              <FaReceipt className="text-sm" />
               Thermal Print
             </button>
           </div>
           <button
             onClick={() => setShowInvoice(false)}
-            className="bg-red-500 text-white px-4 py-2 rounded-lg text-sm hover:bg-red-600 transition-colors"
+            className="flex items-center justify-center gap-2 bg-gray-600 text-white px-4 py-3 rounded-lg hover:bg-gray-700 transition-colors font-semibold sm:w-auto w-full"
           >
+            <FaTimes className="text-sm" />
             Close
           </button>
         </div>
-      </div>
+      </motion.div>
     </div>
   );
 };
