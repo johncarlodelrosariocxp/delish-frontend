@@ -9,6 +9,8 @@ import { logout } from "../../https";
 import { removeUser } from "../../redux/slices/userSlice";
 import { useNavigate } from "react-router-dom";
 import { MdDashboard } from "react-icons/md";
+import { removeCustomer } from "../../redux/slices/customerSlice";
+import { removeAllItems } from "../../redux/slices/cartSlice";
 
 const Header = () => {
   const userData = useSelector((state) => state.user);
@@ -21,7 +23,7 @@ const Header = () => {
   const logoutMutation = useMutation({
     mutationFn: () => logout(),
     onSuccess: () => {
-      console.log("Logout successful, redirecting to /auth");
+      console.log("Logout API successful, clearing local state");
       handleSuccessfulLogout();
     },
     onError: (error) => {
@@ -33,17 +35,40 @@ const Header = () => {
   });
 
   const handleSuccessfulLogout = () => {
-    // Clear Redux state
-    dispatch(removeUser());
+    try {
+      console.log("Starting logout cleanup...");
 
-    // Clear any localStorage/sessionStorage if used
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    sessionStorage.removeItem("token");
-    sessionStorage.removeItem("user");
+      // Clear ALL localStorage items
+      localStorage.clear();
 
-    // Redirect to auth page
-    navigate("/auth", { replace: true });
+      // Clear ALL sessionStorage items
+      sessionStorage.clear();
+
+      // Clear ALL Redux states
+      dispatch(removeUser());
+      dispatch(removeCustomer());
+      dispatch(removeAllItems());
+
+      // Clear cookies explicitly
+      document.cookie.split(";").forEach((c) => {
+        document.cookie = c
+          .replace(/^ +/, "")
+          .replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/");
+      });
+
+      // Add a small delay to ensure state is cleared
+      setTimeout(() => {
+        console.log("Redirecting to /auth");
+        // Use window.location for hard redirect to avoid any React Router cache
+        window.location.href = "/auth";
+        // Alternative: use replace with force reload
+        // navigate('/auth', { replace: true });
+      }, 100);
+    } catch (error) {
+      console.error("Error during logout cleanup:", error);
+      // Fallback: hard redirect
+      window.location.href = "/auth";
+    }
   };
 
   const handleLogoutClick = () => {
