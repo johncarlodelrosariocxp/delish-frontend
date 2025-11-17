@@ -9,17 +9,80 @@ import { useNavigate } from "react-router-dom";
 const Auth = () => {
   const navigate = useNavigate();
   const userData = useSelector((state) => state.user);
+  const [isCheckingAuth, setIsCheckingAuth] = useState(true);
 
   useEffect(() => {
     document.title = "POS | Auth";
 
-    // If user is already logged in, redirect to home
-    if (userData && userData.token) {
+    // ✅ FIXED: Check for actual user data instead of token
+    if (userData && userData._id) {
       navigate("/");
+    } else {
+      // Allow time for authentication check to complete
+      const timer = setTimeout(() => {
+        setIsCheckingAuth(false);
+      }, 500);
+
+      return () => clearTimeout(timer);
     }
   }, [userData, navigate]);
 
   const [isRegister, setIsRegister] = useState(false);
+
+  // Show loading while checking authentication
+  if (isCheckingAuth) {
+    return (
+      <div className="relative flex items-center justify-center min-h-screen w-full overflow-hidden bg-black">
+        {/* 🔹 Background Image */}
+        <img
+          src={restaurant}
+          alt="Restaurant Background"
+          className="absolute inset-0 w-full h-full object-cover brightness-[0.55] scale-105 animate-zoom-fast"
+          loading="eager"
+        />
+
+        {/* 🔹 Overlay & Depth Layers */}
+        <div className="absolute inset-0 bg-gradient-to-br from-black/70 via-black/75 to-yellow-900/10"></div>
+
+        {/* 🔹 Ambient Glow Lights */}
+        <div className="absolute w-72 h-72 bg-yellow-500/25 rounded-full blur-[120px] top-[10%] left-[8%] animate-glow-fast" />
+        <div className="absolute w-96 h-96 bg-yellow-400/20 rounded-full blur-[150px] bottom-[10%] right-[10%] animate-glow-slow" />
+
+        {/* 🔹 Loading Spinner */}
+        <div className="relative z-10 flex flex-col items-center justify-center gap-4">
+          <div className="h-16 w-16 border-4 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-yellow-300 text-lg font-semibold">
+            Checking authentication...
+          </p>
+        </div>
+
+        {/* 🔹 Animations */}
+        <style>{`
+          @keyframes zoom-fast {
+            0%, 100% { transform: scale(1.05); }
+            50% { transform: scale(1.08); }
+          }
+          @keyframes glow-fast {
+            0%, 100% { opacity: 0.25; transform: scale(1); }
+            50% { opacity: 0.4; transform: scale(1.05); }
+          }
+          @keyframes glow-slow {
+            0%, 100% { opacity: 0.2; transform: scale(1); }
+            50% { opacity: 0.3; transform: scale(1.1); }
+          }
+          .animate-zoom-fast {
+            animation: zoom-fast 10s ease-in-out infinite;
+          }
+          .animate-glow-fast {
+            animation: glow-fast 6s ease-in-out infinite;
+          }
+          .animate-glow-slow {
+            animation: glow-slow 12s ease-in-out infinite;
+          }
+        `}</style>
+      </div>
+    );
+  }
 
   return (
     <div className="relative flex items-center justify-center min-h-screen w-full overflow-hidden bg-black">
