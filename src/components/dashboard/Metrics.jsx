@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
 import { getOrders } from "../../https/index";
@@ -12,9 +12,8 @@ import {
   FaExclamationTriangle,
   FaUsers,
   FaStar,
-  FaExchangeAlt,
-  FaHeadset,
 } from "react-icons/fa";
+import PropTypes from "prop-types";
 
 // Premium color palette
 const COLORS = {
@@ -75,13 +74,6 @@ const filterOrdersByPeriod = (orders, period) => {
 
 const getPreviousPeriodData = (orders, currentPeriod) => {
   if (!orders || orders.length === 0) return { orders: [], metrics: null };
-
-  const periodMap = {
-    Day: "Day",
-    Week: "Week",
-    Month: "Month",
-    Year: "Year",
-  };
 
   // Calculate previous period dates
   const now = new Date();
@@ -165,6 +157,12 @@ const ErrorState = ({ message, onRetry }) => (
   </div>
 );
 
+// Add PropTypes for ErrorState
+ErrorState.propTypes = {
+  message: PropTypes.string,
+  onRetry: PropTypes.func,
+};
+
 // Empty state component
 const EmptyState = ({ title, message }) => (
   <div className="text-center py-12 px-6 rounded-2xl bg-gray-50 border border-gray-200">
@@ -173,6 +171,12 @@ const EmptyState = ({ title, message }) => (
     <p className="text-gray-500">{message}</p>
   </div>
 );
+
+// Add PropTypes for EmptyState
+EmptyState.propTypes = {
+  title: PropTypes.string,
+  message: PropTypes.string,
+};
 
 // Utility functions for calculations
 const calculateMetrics = (orders, period) => {
@@ -278,7 +282,6 @@ const calculateTrend = (current, previous, isPositive = true) => {
 
 const Metrics = ({
   rawMetricsData = null,
-  rawItemsData = [],
   title = "Business Performance",
   subtitle = "Comprehensive overview of your business metrics",
   itemTitle = "Performance Insights",
@@ -682,6 +685,17 @@ const Metrics = ({
       </div>
     </div>
   );
+};
+
+// Add PropTypes for Metrics component
+Metrics.propTypes = {
+  rawMetricsData: PropTypes.array,
+  title: PropTypes.string,
+  subtitle: PropTypes.string,
+  itemTitle: PropTypes.string,
+  itemSubtitle: PropTypes.string,
+  onPeriodChange: PropTypes.func,
+  className: PropTypes.string,
 };
 
 export default Metrics;

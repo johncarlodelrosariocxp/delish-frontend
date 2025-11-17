@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { login } from "../../https/index";
 import { enqueueSnackbar } from "notistack";
@@ -73,7 +73,7 @@ const Login = () => {
         });
       }
     },
-    onError: (error) => {
+    onError: () => {
       enqueueSnackbar("Network error. Please try again.", {
         variant: "error",
       });
@@ -155,7 +155,7 @@ const Login = () => {
               Forgot Password?
             </h2>
             <p className="text-[#ababab] text-sm">
-              No worries! Enter your email and we'll send you a reset link.
+              No worries! Enter your email and we&apos;ll send you a reset link.
             </p>
           </div>
 

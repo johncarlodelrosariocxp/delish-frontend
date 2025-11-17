@@ -1,9 +1,10 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import { motion } from "framer-motion";
 import { IoMdClose } from "react-icons/io";
 import { useMutation } from "@tanstack/react-query";
 import { addTable } from "../../https";
-import { enqueueSnackbar } from "notistack"
+import { enqueueSnackbar } from "notistack";
+import PropTypes from "prop-types";
 
 const Modal = ({ setIsTableModalOpen }) => {
   const [tableData, setTableData] = useState({
@@ -29,17 +30,16 @@ const Modal = ({ setIsTableModalOpen }) => {
   const tableMutation = useMutation({
     mutationFn: (reqData) => addTable(reqData),
     onSuccess: (res) => {
-        setIsTableModalOpen(false);
-        const { data } = res;
-        enqueueSnackbar(data.message, { variant: "success" })
+      setIsTableModalOpen(false);
+      const { data } = res;
+      enqueueSnackbar(data.message, { variant: "success" });
     },
     onError: (error) => {
-        const { data } = error.response;
-        enqueueSnackbar(data.message, { variant: "error" })
-        console.log(error);
-    }
-  })
-
+      const { data } = error.response;
+      enqueueSnackbar(data.message, { variant: "error" });
+      console.log(error);
+    },
+  });
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -106,6 +106,11 @@ const Modal = ({ setIsTableModalOpen }) => {
       </motion.div>
     </div>
   );
+};
+
+// Add PropTypes validation
+Modal.propTypes = {
+  setIsTableModalOpen: PropTypes.func.isRequired,
 };
 
 export default Modal;

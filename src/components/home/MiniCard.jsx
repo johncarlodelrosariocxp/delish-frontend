@@ -1,4 +1,4 @@
-import React from "react";
+import PropTypes from "prop-types";
 
 const MiniCard = ({ title, icon, number, footerNum, footerText, currency }) => {
   // Format number with proper currency formatting and error handling
@@ -129,6 +129,15 @@ const MiniCard = ({ title, icon, number, footerNum, footerText, currency }) => {
 };
 
 // Add prop validation
+MiniCard.propTypes = {
+  title: PropTypes.string,
+  icon: PropTypes.node,
+  number: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  footerNum: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
+  footerText: PropTypes.string,
+  currency: PropTypes.bool,
+};
+
 MiniCard.defaultProps = {
   title: "Metric",
   icon: "📊",

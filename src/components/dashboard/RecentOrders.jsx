@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState } from "react";
 import {
   keepPreviousData,
   useMutation,
@@ -8,7 +8,6 @@ import {
 import { enqueueSnackbar } from "notistack";
 import { getOrders, updateOrderStatus } from "../../https/index";
 import { formatDateAndTime } from "../../utils";
-import { useSelector } from "react-redux";
 
 const RecentOrders = () => {
   const queryClient = useQueryClient();
@@ -47,23 +46,27 @@ const RecentOrders = () => {
       const orderDate = new Date(order.orderDate);
 
       switch (timeFilter) {
-        case "today":
+        case "today": {
           const today = new Date();
           return orderDate.toDateString() === today.toDateString();
+        }
 
-        case "week":
+        case "week": {
           const startOfWeek = new Date(now);
           startOfWeek.setDate(now.getDate() - now.getDay());
           startOfWeek.setHours(0, 0, 0, 0);
           return orderDate >= startOfWeek;
+        }
 
-        case "month":
+        case "month": {
           const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
           return orderDate >= startOfMonth;
+        }
 
-        case "year":
+        case "year": {
           const startOfYear = new Date(now.getFullYear(), 0, 1);
           return orderDate >= startOfYear;
+        }
 
         default:
           return true; // "all" - return all orders
@@ -71,6 +74,19 @@ const RecentOrders = () => {
     });
 
     return filteredOrders;
+  };
+
+  const getStatusStyles = (status) => {
+    switch (status) {
+      case "Completed":
+        return "bg-green-100 text-green-800 border-green-200";
+      case "Ready":
+        return "bg-blue-100 text-blue-800 border-blue-200";
+      case "In Progress":
+        return "bg-yellow-100 text-yellow-800 border-yellow-200";
+      default:
+        return "bg-gray-100 text-gray-800 border-gray-200";
+    }
   };
 
   if (isLoading) {
@@ -187,87 +203,72 @@ const RecentOrders = () => {
                 </td>
               </tr>
             ) : (
-              filteredOrders.map((order, index) => {
-                const getStatusStyles = (status) => {
-                  switch (status) {
-                    case "Completed":
-                      return "bg-green-100 text-green-800 border-green-200";
-                    case "Ready":
-                      return "bg-blue-100 text-blue-800 border-blue-200";
-                    case "In Progress":
-                      return "bg-yellow-100 text-yellow-800 border-yellow-200";
-                    default:
-                      return "bg-gray-100 text-gray-800 border-gray-200";
-                  }
-                };
-
-                return (
-                  <tr
-                    key={order._id || index}
-                    className="hover:bg-gray-50 transition-colors duration-200"
-                  >
-                    <td className="p-4">
-                      <div className="font-mono text-sm font-semibold text-gray-700">
-                        #
-                        {Math.floor(new Date(order.orderDate).getTime())
-                          .toString()
-                          .slice(-6)}
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="font-medium text-gray-800">
-                        {order.customerDetails?.name || "Guest"}
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <select
-                        className={`w-full px-3 py-2 rounded-lg border-2 font-medium text-sm transition-all focus:outline-none focus:ring-2 focus:ring-opacity-50 ${getStatusStyles(
-                          order.orderStatus
-                        )}`}
-                        value={order.orderStatus}
-                        onChange={(e) =>
-                          orderStatusUpdateMutation.mutate({
-                            orderId: order._id,
-                            orderStatus: e.target.value,
-                          })
-                        }
-                      >
-                        <option value="In Progress">In Progress</option>
-                        <option value="Ready">Ready</option>
-                        <option value="Completed">Completed</option>
-                      </select>
-                    </td>
-                    <td className="p-4">
-                      <div className="text-sm text-gray-600">
-                        {formatDateAndTime(order.orderDate)}
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="flex items-center gap-2">
-                        <span className="bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs font-medium">
-                          {order.items?.length || 0}
-                        </span>
-                        <span className="text-sm text-gray-600">Items</span>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm font-medium inline-block">
-                        {order.table?.tableNo || "Takeaway"}
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <div className="font-bold text-gray-800">
-                        ₱{order.bills?.totalWithTax?.toFixed(2) || "0.00"}
-                      </div>
-                    </td>
-                    <td className="p-4 text-center">
-                      <div className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm font-medium inline-block">
-                        {order.paymentMethod || "Cash"}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
+              filteredOrders.map((order, index) => (
+                <tr
+                  key={order._id || index}
+                  className="hover:bg-gray-50 transition-colors duration-200"
+                >
+                  <td className="p-4">
+                    <div className="font-mono text-sm font-semibold text-gray-700">
+                      #
+                      {Math.floor(new Date(order.orderDate).getTime())
+                        .toString()
+                        .slice(-6)}
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div className="font-medium text-gray-800">
+                      {order.customerDetails?.name || "Guest"}
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <select
+                      className={`w-full px-3 py-2 rounded-lg border-2 font-medium text-sm transition-all focus:outline-none focus:ring-2 focus:ring-opacity-50 ${getStatusStyles(
+                        order.orderStatus
+                      )}`}
+                      value={order.orderStatus}
+                      onChange={(e) =>
+                        orderStatusUpdateMutation.mutate({
+                          orderId: order._id,
+                          orderStatus: e.target.value,
+                        })
+                      }
+                    >
+                      <option value="In Progress">In Progress</option>
+                      <option value="Ready">Ready</option>
+                      <option value="Completed">Completed</option>
+                    </select>
+                  </td>
+                  <td className="p-4">
+                    <div className="text-sm text-gray-600">
+                      {formatDateAndTime(order.orderDate)}
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div className="flex items-center gap-2">
+                      <span className="bg-gray-200 text-gray-700 px-2 py-1 rounded-full text-xs font-medium">
+                        {order.items?.length || 0}
+                      </span>
+                      <span className="text-sm text-gray-600">Items</span>
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm font-medium inline-block">
+                      {order.table?.tableNo || "Takeaway"}
+                    </div>
+                  </td>
+                  <td className="p-4">
+                    <div className="font-bold text-gray-800">
+                      ₱{order.bills?.totalWithTax?.toFixed(2) || "0.00"}
+                    </div>
+                  </td>
+                  <td className="p-4 text-center">
+                    <div className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm font-medium inline-block">
+                      {order.paymentMethod || "Cash"}
+                    </div>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
