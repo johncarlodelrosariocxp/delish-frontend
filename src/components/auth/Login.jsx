@@ -37,15 +37,22 @@ const Login = () => {
   const loginMutation = useMutation({
     mutationFn: (reqData) => login(reqData),
     onSuccess: (res) => {
-      const { data } = res;
-      console.log(data);
-      const { _id, name, email, phone, role } = data.data;
-      dispatch(setUser({ _id, name, email, phone, role }));
-      navigate("/");
+      if (res?.data?.success) {
+        const { data } = res;
+        console.log(data);
+        const { _id, name, email, phone, role } = data.data;
+        dispatch(setUser({ _id, name, email, phone, role }));
+        navigate("/");
+      } else {
+        enqueueSnackbar(res?.data?.message || "Login failed", {
+          variant: "error",
+        });
+      }
     },
     onError: (error) => {
-      const { response } = error;
-      enqueueSnackbar(response.data.message, { variant: "error" });
+      const errorMessage =
+        error?.response?.data?.message || "Wrong password or email";
+      enqueueSnackbar(errorMessage, { variant: "error" });
     },
   });
 

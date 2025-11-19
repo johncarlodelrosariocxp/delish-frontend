@@ -4,6 +4,11 @@ const MiniCard = ({ title, icon, number, footerNum, footerText, currency }) => {
   // Format number with proper currency formatting and error handling
   const formatNumber = (num) => {
     try {
+      // Handle null, undefined, or invalid values
+      if (num === null || num === undefined || num === "") {
+        return currency ? "₱0.00" : "0";
+      }
+
       const numericValue = Number(num);
 
       // Handle NaN, Infinity, and negative numbers
@@ -34,9 +39,14 @@ const MiniCard = ({ title, icon, number, footerNum, footerText, currency }) => {
     }
   };
 
-  // Determine footer number display and color with proper validation
+  // Determine footer number display and color with proper validation (100% max)
   const getFooterDisplay = () => {
     try {
+      // Handle null, undefined, or invalid values
+      if (footerNum === null || footerNum === undefined || footerNum === "") {
+        return { text: "0%", color: "text-gray-400" };
+      }
+
       const numericFooterNum = Number(footerNum);
 
       // Handle invalid footer numbers
@@ -44,14 +54,17 @@ const MiniCard = ({ title, icon, number, footerNum, footerText, currency }) => {
         return { text: "0%", color: "text-gray-400" };
       }
 
-      if (numericFooterNum > 0)
+      // Cap percentage at ±100%
+      const cappedPercentage = Math.max(Math.min(numericFooterNum, 100), -100);
+
+      if (cappedPercentage > 0)
         return {
-          text: `+${Math.abs(numericFooterNum).toFixed(1)}%`,
+          text: `+${Math.abs(cappedPercentage).toFixed(1)}%`,
           color: "text-[#02ca3a]",
         };
-      if (numericFooterNum < 0)
+      if (cappedPercentage < 0)
         return {
-          text: `-${Math.abs(numericFooterNum).toFixed(1)}%`,
+          text: `-${Math.abs(cappedPercentage).toFixed(1)}%`,
           color: "text-red-500",
         };
       return { text: "0%", color: "text-gray-400" };
@@ -65,18 +78,22 @@ const MiniCard = ({ title, icon, number, footerNum, footerText, currency }) => {
 
   // Determine button background color based on title
   const getButtonColor = () => {
-    switch (title) {
-      case "Total Earnings":
+    const safeTitle = title || "Metric";
+
+    switch (safeTitle.toLowerCase()) {
+      case "total earnings":
+      case "earnings":
         return "bg-[#02ca3a] hover:bg-[#02a32a]";
-      case "Total Orders":
+      case "total orders":
+      case "orders":
         return "bg-blue-500 hover:bg-blue-600";
-      case "In Progress":
+      case "in progress":
         return "bg-orange-500 hover:bg-orange-600";
-      case "Completed":
+      case "completed":
         return "bg-green-500 hover:bg-green-600";
-      case "Pending":
+      case "pending":
         return "bg-yellow-500 hover:bg-yellow-600";
-      case "Cancelled":
+      case "cancelled":
         return "bg-red-500 hover:bg-red-600";
       default:
         return "bg-[#f6b100] hover:bg-[#e6a100]";

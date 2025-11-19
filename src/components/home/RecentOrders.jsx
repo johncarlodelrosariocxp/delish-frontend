@@ -38,18 +38,27 @@ const RecentOrders = () => {
     enqueueSnackbar("Something went wrong!", { variant: "error" });
   }
 
-  // Get all orders
-  const allOrders = resData?.data.data || [];
+  // Get all orders and sort by most recent first
+  const allOrders = React.useMemo(() => {
+    const orders = resData?.data?.data || [];
+    return orders.sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.orderDate || a.date || 0);
+      const dateB = new Date(b.createdAt || b.orderDate || b.date || 0);
+      return dateB - dateA; // Most recent first
+    });
+  }, [resData?.data?.data]);
 
   // Filter orders based on search query
-  const filteredOrders = allOrders.filter(
-    (order) =>
-      order.customerDetails?.name
-        ?.toLowerCase()
-        .includes(searchQuery.toLowerCase()) ||
-      order._id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      order.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredOrders = React.useMemo(() => {
+    return allOrders.filter(
+      (order) =>
+        order.customerDetails?.name
+          ?.toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
+        order._id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
+  }, [allOrders, searchQuery]);
 
   // Show only recent orders (last 5) when not in "show all" mode, otherwise show filtered results
   const displayOrders = showAllOrders
@@ -101,7 +110,7 @@ const RecentOrders = () => {
           color: "text-gray-500",
           bgColor: "bg-gray-50",
           borderColor: "border-gray-200",
-          text: "Unknown",
+          text: status || "Unknown",
         };
     }
   };
@@ -149,9 +158,7 @@ const RecentOrders = () => {
       console.error("Status update error:", error);
 
       // Revert optimistic update on error
-      if (previousOrders) {
-        queryClient.setQueryData(["orders"], previousOrders);
-      }
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
 
       // Show detailed error message
       const errorMessage =
@@ -176,6 +183,8 @@ const RecentOrders = () => {
         month: "short",
         day: "numeric",
         year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
       });
     } catch (error) {
       return "Invalid Date";
@@ -345,7 +354,7 @@ const RecentOrders = () => {
         <div className="px-2 sm:px-4 mt-1">
           <p className="text-[10px] sm:text-xs text-gray-600">
             Showing {displayOrders.length} of {filteredOrders.length} orders
-            {!showAllOrders && filteredOrders.length > 5 && " (recent 5)"}
+            {!showAllOrders && filteredOrders.length > 5 && " (most recent 5)"}
           </p>
         </div>
 
@@ -384,7 +393,9 @@ const RecentOrders = () => {
                             className={`text-[10px] sm:text-xs ${
                               statusConfig.color
                             } ${
-                              order.orderStatus?.toLowerCase() === "in progress"
+                              order.orderStatus?.toLowerCase() ===
+                                "in progress" ||
+                              order.orderStatus?.toLowerCase() === "processing"
                                 ? "animate-spin"
                                 : ""
                             }`}

@@ -22,7 +22,7 @@ const OrderCard = ({
 }) => {
   const [localDeleting, setLocalDeleting] = useState(false);
 
-  // Status configuration (matches RecentOrders)
+  // Status configuration
   const getStatusConfig = (status) => {
     const statusLower = status?.toLowerCase();
     switch (statusLower) {
@@ -34,14 +34,6 @@ const OrderCard = ({
           bgColor: "bg-green-50",
           borderColor: "border-green-200",
           text: "Completed",
-        };
-      case "pending":
-        return {
-          icon: FaClock,
-          color: "text-yellow-500",
-          bgColor: "bg-yellow-50",
-          borderColor: "border-yellow-200",
-          text: "Pending",
         };
       case "in progress":
       case "processing":
@@ -72,7 +64,7 @@ const OrderCard = ({
     }
   };
 
-  // Calculate total amount (matches RecentOrders logic)
+  // Calculate total amount
   const calculateTotalAmount = (order) => {
     if (order.totalAmount !== undefined && order.totalAmount !== null) {
       return order.totalAmount;
@@ -93,7 +85,7 @@ const OrderCard = ({
     return 0;
   };
 
-  // Format currency (matches RecentOrders) - Changed to Philippine Peso
+  // Format currency
   const formatCurrency = (amount) => {
     const numericAmount =
       typeof amount === "number" ? amount : parseFloat(amount) || 0;
@@ -105,7 +97,7 @@ const OrderCard = ({
     }).format(numericAmount);
   };
 
-  // Format date (matches RecentOrders)
+  // Format date with time for better sorting visibility
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     try {
@@ -113,13 +105,15 @@ const OrderCard = ({
         month: "short",
         day: "numeric",
         year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
       });
     } catch (error) {
       return "Invalid Date";
     }
   };
 
-  // Get items count (matches RecentOrders)
+  // Get items count
   const getItemsCount = (order) => {
     if (order.items && Array.isArray(order.items)) {
       return order.items.reduce(
@@ -130,7 +124,7 @@ const OrderCard = ({
     return order.itemsCount || order.quantity || 0;
   };
 
-  // Get items preview text (matches RecentOrders)
+  // Get items preview text
   const getItemsPreview = (order) => {
     if (!order.items || !Array.isArray(order.items)) {
       return "No items";
@@ -191,26 +185,13 @@ const OrderCard = ({
   // Check if action buttons should be shown for an order
   const shouldShowActions = (order) => {
     const status = order.orderStatus?.toLowerCase();
-    return (
-      status === "pending" ||
-      status === "in progress" ||
-      status === "processing"
-    );
+    return status === "in progress" || status === "processing";
   };
 
   // Get available actions for an order
   const getAvailableActions = (order) => {
     const status = order.orderStatus?.toLowerCase();
     const actions = [];
-
-    if (status === "pending") {
-      actions.push({
-        label: "Start Progress",
-        status: "in progress",
-        variant: "primary",
-        icon: FaSpinner,
-      });
-    }
 
     if (status === "in progress" || status === "processing") {
       actions.push({
@@ -229,27 +210,21 @@ const OrderCard = ({
   const deleting = isDeleting || localDeleting;
 
   return (
-    <div
-      className={`border rounded-lg p-4 sm:p-6 ${statusConfig.bgColor} ${
-        statusConfig.borderColor
-      } hover:shadow-md transition-all duration-200 w-full ${
-        deleting ? "opacity-50" : ""
-      }`}
-    >
+    <div className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-all duration-200 w-full h-full flex flex-col">
       {/* Order Header */}
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center gap-2">
-          <FaReceipt className="text-gray-600 text-sm sm:text-base" />
-          <span className="font-mono text-xs sm:text-sm text-gray-700">
+          <FaReceipt className="text-gray-600 text-sm" />
+          <span className="font-mono text-xs text-gray-700">
             #{order._id?.slice(-8) || "N/A"}
           </span>
         </div>
         <div className="flex items-center gap-1">
           {isUpdating || deleting ? (
-            <FaSpinner className="text-blue-500 text-xs sm:text-sm animate-spin" />
+            <FaSpinner className="text-blue-500 text-xs animate-spin" />
           ) : (
             <StatusIcon
-              className={`text-xs sm:text-sm ${statusConfig.color} ${
+              className={`text-xs ${statusConfig.color} ${
                 order.orderStatus?.toLowerCase() === "in progress"
                   ? "animate-spin"
                   : ""
@@ -257,7 +232,7 @@ const OrderCard = ({
             />
           )}
           <span
-            className={`text-xs sm:text-sm font-medium capitalize ${statusConfig.color}`}
+            className={`text-xs font-medium capitalize ${statusConfig.color}`}
           >
             {isUpdating
               ? "Updating..."
@@ -270,15 +245,15 @@ const OrderCard = ({
 
       {/* Customer Info */}
       <div className="flex items-center gap-2 mb-3">
-        <FaUser className="text-gray-500 text-xs sm:text-sm" />
-        <span className="text-xs sm:text-sm font-medium text-gray-800">
+        <FaUser className="text-gray-500 text-xs" />
+        <span className="text-xs font-medium text-gray-800">
           {order.customerDetails?.name || "Unknown Customer"}
         </span>
       </div>
 
       {/* Table Info */}
       {order.table?.tableNo && (
-        <div className="flex items-center gap-2 mb-3 text-xs sm:text-sm text-gray-600">
+        <div className="flex items-center gap-2 mb-3 text-xs text-gray-600">
           <span>Table {order.table.tableNo}</span>
           <span>•</span>
           <span>Dine In</span>
@@ -286,7 +261,7 @@ const OrderCard = ({
       )}
 
       {/* Order Details */}
-      <div className="grid grid-cols-2 gap-3 text-xs sm:text-sm mb-3">
+      <div className="grid grid-cols-2 gap-3 text-xs mb-3">
         <div className="space-y-1">
           <div className="text-gray-600">Date</div>
           <div className="font-medium text-gray-800">
@@ -303,11 +278,11 @@ const OrderCard = ({
 
       {/* Items Preview */}
       {(order.items && order.items.length > 0) || itemsCount > 0 ? (
-        <div className="mt-3 pt-3 border-t border-gray-200 mb-3">
-          <div className="text-xs sm:text-sm text-gray-600 mb-1">
+        <div className="mt-2 pt-2 border-t border-gray-200 mb-3">
+          <div className="text-xs text-gray-600 mb-1">
             Items {itemsCount > 0 && `(${itemsCount})`}
           </div>
-          <div className="text-xs sm:text-sm text-gray-800 line-clamp-1">
+          <div className="text-xs text-gray-800 line-clamp-2">
             {itemsPreview}
           </div>
         </div>
@@ -315,7 +290,7 @@ const OrderCard = ({
 
       {/* Action Buttons */}
       {showActions && availableActions.length > 0 && (
-        <div className="flex gap-2 pt-3 border-t border-gray-200 mb-3">
+        <div className="flex gap-2 pt-2 border-t border-gray-200 mb-3">
           {availableActions.map((action) => {
             const ActionIcon = action.icon;
             return (
@@ -323,33 +298,32 @@ const OrderCard = ({
                 key={action.status}
                 onClick={() => handleStatusChangeLocal(action.status)}
                 disabled={isUpdating || deleting}
-                className={`flex items-center gap-1 px-3 py-2 rounded text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
                   action.variant === "primary"
                     ? "bg-blue-500 hover:bg-blue-600 text-white"
                     : "bg-green-500 hover:bg-green-600 text-white"
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
+                } disabled:opacity-50 disabled:cursor-not-allowed flex-1`}
               >
                 {isUpdating ? (
-                  <FaSpinner className="animate-spin text-[10px]" />
+                  <FaSpinner className="animate-spin text-[8px]" />
                 ) : (
-                  <ActionIcon className="text-[10px]" />
+                  <ActionIcon className="text-[8px]" />
                 )}
-                {action.label}
+                <span className="truncate">{action.label}</span>
               </button>
             );
           })}
         </div>
       )}
 
-      {/* Status Dropdown for manual selection */}
-      <div className="flex gap-2 pt-3 border-t border-gray-200 mb-3">
+      {/* Status Dropdown */}
+      <div className="flex gap-2 pt-2 border-t border-gray-200 mb-3">
         <select
           value={order.orderStatus}
           onChange={(e) => handleStatusChangeLocal(e.target.value)}
           disabled={isUpdating || deleting}
-          className={`flex-1 px-3 py-2 rounded text-xs font-medium border ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor} disabled:opacity-50 disabled:cursor-not-allowed`}
+          className={`flex-1 px-2 py-1 rounded text-xs font-medium border ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor} disabled:opacity-50`}
         >
-          <option value="pending">Pending</option>
           <option value="in progress">In Progress</option>
           <option value="completed">Completed</option>
           <option value="cancelled">Cancelled</option>
@@ -357,11 +331,11 @@ const OrderCard = ({
       </div>
 
       {/* Receipt and Delete Buttons */}
-      <div className="flex gap-2 pt-3 border-t border-gray-200">
+      <div className="flex gap-2 pt-2 border-t border-gray-200 mt-auto">
         <button
           onClick={() => onViewReceipt(order)}
           disabled={deleting}
-          className="flex-1 bg-[#025cca] text-white px-3 py-2 rounded text-xs font-medium flex items-center gap-2 justify-center hover:bg-[#014aa3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-[#025cca] text-white px-2 py-2 rounded text-xs font-medium flex items-center gap-2 justify-center hover:bg-[#014aa3] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <FaPrint className="text-[10px]" />
           View Receipt
@@ -369,7 +343,7 @@ const OrderCard = ({
         <button
           onClick={handleDelete}
           disabled={deleting}
-          className="flex-1 bg-red-500 text-white px-3 py-2 rounded text-xs font-medium flex items-center gap-2 justify-center hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          className="flex-1 bg-red-500 text-white px-2 py-2 rounded text-xs font-medium flex items-center gap-2 justify-center hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {deleting ? (
             <FaSpinner className="animate-spin text-[10px]" />

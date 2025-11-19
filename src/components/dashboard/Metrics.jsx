@@ -40,81 +40,108 @@ const getDateRange = (period) => {
   const now = new Date();
   const start = new Date();
 
-  switch (period) {
-    case "Day":
-      start.setDate(now.getDate() - 1);
-      break;
-    case "Week":
-      start.setDate(now.getDate() - 7);
-      break;
-    case "Month":
-      start.setMonth(now.getMonth() - 1);
-      break;
-    case "Year":
-      start.setFullYear(now.getFullYear() - 1);
-      break;
-    default:
-      start.setDate(now.getDate() - 7);
+  try {
+    switch (period) {
+      case "Day":
+        start.setDate(now.getDate() - 1);
+        break;
+      case "Week":
+        start.setDate(now.getDate() - 7);
+        break;
+      case "Month":
+        start.setMonth(now.getMonth() - 1);
+        break;
+      case "Year":
+        start.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        start.setDate(now.getDate() - 7);
+    }
+    return { start, end: now };
+  } catch (error) {
+    console.error("Error in getDateRange:", error);
+    // Fallback to week range
+    const fallbackStart = new Date();
+    fallbackStart.setDate(now.getDate() - 7);
+    return { start: fallbackStart, end: now };
   }
-
-  return { start, end: now };
 };
 
 const filterOrdersByPeriod = (orders, period) => {
-  if (!orders || orders.length === 0) return [];
+  try {
+    if (!orders || !Array.isArray(orders) || orders.length === 0) return [];
 
-  const { start, end } = getDateRange(period);
-  return orders.filter((order) => {
-    const orderDate = new Date(
-      order.createdAt || order.orderDate || order.date || Date.now()
-    );
-    return orderDate >= start && orderDate <= end;
-  });
+    const { start, end } = getDateRange(period);
+    return orders.filter((order) => {
+      try {
+        const orderDate = new Date(
+          order.createdAt || order.orderDate || order.date || Date.now()
+        );
+        return orderDate >= start && orderDate <= end;
+      } catch {
+        return false;
+      }
+    });
+  } catch (error) {
+    console.error("Error in filterOrdersByPeriod:", error);
+    return [];
+  }
 };
 
 const getPreviousPeriodData = (orders, currentPeriod) => {
-  if (!orders || orders.length === 0) return { orders: [], metrics: null };
+  try {
+    if (!orders || !Array.isArray(orders) || orders.length === 0) {
+      return { orders: [], metrics: null };
+    }
 
-  // Calculate previous period dates
-  const now = new Date();
-  const prevStart = new Date();
-  const prevEnd = new Date();
+    // Calculate previous period dates
+    const now = new Date();
+    const prevStart = new Date();
+    const prevEnd = new Date();
 
-  switch (currentPeriod) {
-    case "Day":
-      prevStart.setDate(now.getDate() - 2);
-      prevEnd.setDate(now.getDate() - 1);
-      break;
-    case "Week":
-      prevStart.setDate(now.getDate() - 14);
-      prevEnd.setDate(now.getDate() - 7);
-      break;
-    case "Month":
-      prevStart.setMonth(now.getMonth() - 2);
-      prevEnd.setMonth(now.getMonth() - 1);
-      break;
-    case "Year":
-      prevStart.setFullYear(now.getFullYear() - 2);
-      prevEnd.setFullYear(now.getFullYear() - 1);
-      break;
-    default:
-      prevStart.setDate(now.getDate() - 14);
-      prevEnd.setDate(now.getDate() - 7);
+    switch (currentPeriod) {
+      case "Day":
+        prevStart.setDate(now.getDate() - 2);
+        prevEnd.setDate(now.getDate() - 1);
+        break;
+      case "Week":
+        prevStart.setDate(now.getDate() - 14);
+        prevEnd.setDate(now.getDate() - 7);
+        break;
+      case "Month":
+        prevStart.setMonth(now.getMonth() - 2);
+        prevEnd.setMonth(now.getMonth() - 1);
+        break;
+      case "Year":
+        prevStart.setFullYear(now.getFullYear() - 2);
+        prevEnd.setFullYear(now.getFullYear() - 1);
+        break;
+      default:
+        prevStart.setDate(now.getDate() - 14);
+        prevEnd.setDate(now.getDate() - 7);
+    }
+
+    const previousOrders = orders.filter((order) => {
+      try {
+        const orderDate = new Date(
+          order.createdAt || order.orderDate || order.date || Date.now()
+        );
+        return orderDate >= prevStart && orderDate <= prevEnd;
+      } catch {
+        return false;
+      }
+    });
+
+    const previousMetrics = calculateMetrics(previousOrders, currentPeriod);
+
+    return {
+      orders: previousOrders,
+      metrics: previousMetrics,
+    };
+  } catch (error) {
+    console.error("Error in getPreviousPeriodData:", error);
+    return { orders: [], metrics: null };
   }
-
-  const previousOrders = orders.filter((order) => {
-    const orderDate = new Date(
-      order.createdAt || order.orderDate || order.date || Date.now()
-    );
-    return orderDate >= prevStart && orderDate <= prevEnd;
-  });
-
-  const previousMetrics = calculateMetrics(previousOrders, currentPeriod);
-
-  return {
-    orders: previousOrders,
-    metrics: previousMetrics,
-  };
 };
 
 // Skeleton loader component
@@ -179,8 +206,105 @@ EmptyState.propTypes = {
 };
 
 // Utility functions for calculations
+const safeNumber = (value, defaultValue = 0) => {
+  if (typeof value === "number" && !isNaN(value)) return value;
+  const num = parseFloat(value);
+  return isNaN(num) ? defaultValue : num;
+};
+
 const calculateMetrics = (orders, period) => {
-  if (!orders || orders.length === 0) {
+  try {
+    if (!orders || !Array.isArray(orders) || orders.length === 0) {
+      return {
+        totalOrders: 0,
+        totalSales: 0,
+        averageOrderValue: 0,
+        ordersCount: 0,
+        uniqueCustomers: 0,
+        topSellingItem: "N/A",
+        completionRate: 0,
+        inProgressOrders: 0,
+        pendingOrders: 0,
+        completedOrders: 0,
+      };
+    }
+
+    const totalSales = orders.reduce((sum, order) => {
+      const orderTotal =
+        order.bills?.totalWithTax || order.totalAmount || order.total || 0;
+      return sum + safeNumber(orderTotal);
+    }, 0);
+
+    const ordersCount = orders.length;
+    const averageOrderValue = ordersCount > 0 ? totalSales / ordersCount : 0;
+
+    // Calculate additional metrics
+    const uniqueCustomers = new Set(
+      orders
+        .map((order) => {
+          const customerName =
+            order.customerDetails?.name ||
+            order.customerName ||
+            "Unknown Customer";
+          return customerName || "Unknown Customer";
+        })
+        .filter((name) => name && name !== "Unknown Customer")
+    ).size;
+
+    // Find top selling item
+    const itemCounts = {};
+    orders.forEach((order) => {
+      if (order.items && Array.isArray(order.items)) {
+        order.items.forEach((item) => {
+          const itemName = item.name || item.productName || "Unknown Item";
+          const quantity = safeNumber(item.quantity, 1);
+          if (itemName) {
+            itemCounts[itemName] = (itemCounts[itemName] || 0) + quantity;
+          }
+        });
+      }
+    });
+
+    const topSellingItem =
+      Object.keys(itemCounts).length > 0
+        ? Object.keys(itemCounts).reduce((a, b) =>
+            itemCounts[a] > itemCounts[b] ? a : b
+          )
+        : "N/A";
+
+    // Calculate order status metrics
+    const completedOrders = orders.filter((order) => {
+      const status = (order.orderStatus || "").toLowerCase();
+      return status === "completed" || status === "delivered";
+    }).length;
+
+    const inProgressOrders = orders.filter((order) => {
+      const status = (order.orderStatus || "").toLowerCase();
+      return status === "in progress" || status === "processing";
+    }).length;
+
+    const pendingOrders = orders.filter((order) => {
+      const status = (order.orderStatus || "").toLowerCase();
+      return status === "pending";
+    }).length;
+
+    const completionRate =
+      ordersCount > 0 ? (completedOrders / ordersCount) * 100 : 0;
+
+    return {
+      totalOrders: ordersCount,
+      totalSales,
+      averageOrderValue,
+      ordersCount,
+      uniqueCustomers,
+      topSellingItem: topSellingItem || "N/A",
+      completionRate,
+      inProgressOrders,
+      pendingOrders,
+      completedOrders,
+    };
+  } catch (error) {
+    console.error("Error in calculateMetrics:", error);
     return {
       totalOrders: 0,
       totalSales: 0,
@@ -191,93 +315,30 @@ const calculateMetrics = (orders, period) => {
       completionRate: 0,
       inProgressOrders: 0,
       pendingOrders: 0,
+      completedOrders: 0,
     };
   }
-
-  const totalSales = orders.reduce(
-    (sum, order) =>
-      sum +
-      (order.bills?.totalWithTax || order.totalAmount || order.total || 0),
-    0
-  );
-  const ordersCount = orders.length;
-  const averageOrderValue = ordersCount > 0 ? totalSales / ordersCount : 0;
-
-  // Calculate additional metrics
-  const uniqueCustomers = new Set(
-    orders.map(
-      (order) =>
-        order.customerDetails?.name || order.customerName || "Unknown Customer"
-    )
-  ).size;
-
-  // Find top selling item
-  const itemCounts = {};
-  orders.forEach((order) => {
-    if (order.items && Array.isArray(order.items)) {
-      order.items.forEach((item) => {
-        const itemName = item.name || item.productName || "Unknown Item";
-        itemCounts[itemName] =
-          (itemCounts[itemName] || 0) + (item.quantity || 1);
-      });
-    }
-  });
-
-  const topSellingItem =
-    Object.keys(itemCounts).length > 0
-      ? Object.keys(itemCounts).reduce((a, b) =>
-          itemCounts[a] > itemCounts[b] ? a : b
-        )
-      : "N/A";
-
-  // Calculate order status metrics
-  const completedOrders = orders.filter(
-    (order) =>
-      order.orderStatus?.toLowerCase() === "completed" ||
-      order.orderStatus?.toLowerCase() === "delivered"
-  ).length;
-
-  const inProgressOrders = orders.filter(
-    (order) =>
-      order.orderStatus?.toLowerCase() === "in progress" ||
-      order.orderStatus?.toLowerCase() === "processing"
-  ).length;
-
-  const pendingOrders = orders.filter(
-    (order) => order.orderStatus?.toLowerCase() === "pending"
-  ).length;
-
-  const completionRate =
-    ordersCount > 0 ? (completedOrders / ordersCount) * 100 : 0;
-
-  return {
-    totalOrders: ordersCount,
-    totalSales,
-    averageOrderValue,
-    ordersCount,
-    uniqueCustomers,
-    topSellingItem,
-    completionRate,
-    inProgressOrders,
-    pendingOrders,
-    completedOrders,
-  };
 };
 
 const calculateTrend = (current, previous, isPositive = true) => {
-  if (previous === undefined || previous === null || previous === 0) {
+  try {
+    if (previous === undefined || previous === null || previous === 0) {
+      return { percentage: null, isIncrease: true };
+    }
+
+    const percentage = ((current - previous) / previous) * 100;
+
+    // For metrics where decrease is positive (like return rate), invert the logic
+    const isIncrease = isPositive ? percentage >= 0 : percentage <= 0;
+
+    return {
+      percentage: Math.abs(percentage).toFixed(1),
+      isIncrease,
+    };
+  } catch (error) {
+    console.error("Error in calculateTrend:", error);
     return { percentage: null, isIncrease: true };
   }
-
-  const percentage = ((current - previous) / previous) * 100;
-
-  // For metrics where decrease is positive (like return rate), invert the logic
-  const isIncrease = isPositive ? percentage >= 0 : percentage <= 0;
-
-  return {
-    percentage: Math.abs(percentage).toFixed(1),
-    isIncrease,
-  };
 };
 
 const Metrics = ({
@@ -302,143 +363,184 @@ const Metrics = ({
     isFetching,
   } = useQuery({
     queryKey: ["ordersForMetrics"],
-    queryFn: getOrders,
-    retry: 3,
+    queryFn: async () => {
+      try {
+        const response = await getOrders();
+        return response;
+      } catch (err) {
+        console.error("Error fetching orders:", err);
+        throw err;
+      }
+    },
+    retry: 2,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
-    staleTime: 5 * 60 * 1000, // 5 minutes
-    gcTime: 10 * 60 * 1000, // 10 minutes
+    staleTime: 5 * 60 * 1000,
+    gcTime: 10 * 60 * 1000,
   });
+
+  // Safely get orders data with fallbacks
+  const ordersData = useMemo(() => {
+    try {
+      if (rawMetricsData && Array.isArray(rawMetricsData)) {
+        return rawMetricsData;
+      }
+      if (resData?.data?.data && Array.isArray(resData.data.data)) {
+        return resData.data.data;
+      }
+      if (resData?.data && Array.isArray(resData.data)) {
+        return resData.data;
+      }
+      if (Array.isArray(resData)) {
+        return resData;
+      }
+      return [];
+    } catch (error) {
+      console.error("Error processing orders data:", error);
+      return [];
+    }
+  }, [resData, rawMetricsData]);
 
   // Process and memoize metrics data based on period
   const { metricsData, itemsData, filteredOrders } = useMemo(() => {
-    const allOrders =
-      rawMetricsData || resData?.data?.data || resData?.data || [];
-    const currentPeriodOrders = filterOrdersByPeriod(allOrders, period);
-    const currentMetrics = calculateMetrics(currentPeriodOrders, period);
+    try {
+      const currentPeriodOrders = filterOrdersByPeriod(ordersData, period);
+      const currentMetrics = calculateMetrics(currentPeriodOrders, period);
 
-    // Get previous period data for trend calculation
-    const previousData = getPreviousPeriodData(allOrders, period);
-    setPreviousPeriodData(previousData.metrics);
+      // Get previous period data for trend calculation
+      const previousData = getPreviousPeriodData(ordersData, period);
+      setPreviousPeriodData(previousData.metrics);
 
-    // Calculate trends
-    const orderTrend = calculateTrend(
-      currentMetrics.totalOrders,
-      previousData.metrics?.totalOrders
-    );
+      // Calculate trends
+      const orderTrend = calculateTrend(
+        currentMetrics.totalOrders,
+        previousData.metrics?.totalOrders
+      );
 
-    const revenueTrend = calculateTrend(
-      currentMetrics.totalSales,
-      previousData.metrics?.totalSales
-    );
+      const revenueTrend = calculateTrend(
+        currentMetrics.totalSales,
+        previousData.metrics?.totalSales
+      );
 
-    const aovTrend = calculateTrend(
-      currentMetrics.averageOrderValue,
-      previousData.metrics?.averageOrderValue
-    );
+      const aovTrend = calculateTrend(
+        currentMetrics.averageOrderValue,
+        previousData.metrics?.averageOrderValue
+      );
 
-    const completionTrend = calculateTrend(
-      currentMetrics.completionRate,
-      previousData.metrics?.completionRate
-    );
+      const completionTrend = calculateTrend(
+        currentMetrics.completionRate,
+        previousData.metrics?.completionRate
+      );
 
-    const customerTrend = calculateTrend(
-      currentMetrics.uniqueCustomers,
-      previousData.metrics?.uniqueCustomers
-    );
+      const customerTrend = calculateTrend(
+        currentMetrics.uniqueCustomers,
+        previousData.metrics?.uniqueCustomers
+      );
 
-    const inProgressTrend = calculateTrend(
-      currentMetrics.inProgressOrders,
-      previousData.metrics?.inProgressOrders
-    );
+      const inProgressTrend = calculateTrend(
+        currentMetrics.inProgressOrders,
+        previousData.metrics?.inProgressOrders
+      );
 
-    const premiumMetrics = [
-      {
-        title: "Total Orders",
-        value: currentMetrics.totalOrders.toLocaleString(),
-        subtitle: `Completed transactions (${period.toLowerCase()})`,
-        percentage: orderTrend.percentage,
-        isIncrease: orderTrend.isIncrease,
-        color: COLORS.primary.blue,
-        icon: FaShoppingCart,
-        format: "number",
-      },
-      {
-        title: "Total Revenue",
-        value: `₱${currentMetrics.totalSales.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}`,
-        subtitle: `Gross sales (${period.toLowerCase()})`,
-        percentage: revenueTrend.percentage,
-        isIncrease: revenueTrend.isIncrease,
-        color: COLORS.primary.green,
-        icon: FaMoneyBillWave,
-        format: "currency",
-      },
-      {
-        title: "Avg Order Value",
-        value: `₱${currentMetrics.averageOrderValue.toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}`,
-        subtitle: "Average per transaction",
-        percentage: aovTrend.percentage,
-        isIncrease: aovTrend.isIncrease,
-        color: COLORS.primary.purple,
-        icon: FaChartLine,
-        format: "currency",
-      },
-    ];
+      const premiumMetrics = [
+        {
+          title: "Total Orders",
+          value: currentMetrics.totalOrders.toLocaleString(),
+          subtitle: `Completed transactions (${period.toLowerCase()})`,
+          percentage: orderTrend.percentage,
+          isIncrease: orderTrend.isIncrease,
+          color: COLORS.primary.blue,
+          icon: FaShoppingCart,
+          format: "number",
+        },
+        {
+          title: "Total Revenue",
+          value: `₱${currentMetrics.totalSales.toLocaleString(undefined, {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2,
+          })}`,
+          subtitle: `Gross sales (${period.toLowerCase()})`,
+          percentage: revenueTrend.percentage,
+          isIncrease: revenueTrend.isIncrease,
+          color: COLORS.primary.green,
+          icon: FaMoneyBillWave,
+          format: "currency",
+        },
+        {
+          title: "Avg Order Value",
+          value: `₱${currentMetrics.averageOrderValue.toLocaleString(
+            undefined,
+            {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            }
+          )}`,
+          subtitle: "Average per transaction",
+          percentage: aovTrend.percentage,
+          isIncrease: aovTrend.isIncrease,
+          color: COLORS.primary.purple,
+          icon: FaChartLine,
+          format: "currency",
+        },
+      ];
 
-    // Dynamic items data based on actual metrics
-    const premiumItems = [
-      {
-        title: "Completion Rate",
-        value: `${currentMetrics.completionRate.toFixed(1)}%`,
-        subtitle: "Successful orders",
-        percentage: completionTrend.percentage,
-        isIncrease: completionTrend.isIncrease,
-        color: COLORS.primary.orange,
-        icon: FaStar,
-      },
-      {
-        title: "Unique Customers",
-        value: currentMetrics.uniqueCustomers.toLocaleString(),
-        subtitle: "Total customers",
-        percentage: customerTrend.percentage,
-        isIncrease: customerTrend.isIncrease,
-        color: COLORS.primary.green,
-        icon: FaUsers,
-      },
-      {
-        title: "In Progress",
-        value: currentMetrics.inProgressOrders.toLocaleString(),
-        subtitle: "Active orders",
-        percentage: inProgressTrend.percentage,
-        isIncrease: inProgressTrend.isIncrease,
-        color: COLORS.primary.purple,
-        icon: FaClock,
-      },
-      {
-        title: "Top Product",
-        value:
-          currentMetrics.topSellingItem.length > 20
-            ? currentMetrics.topSellingItem.substring(0, 20) + "..."
-            : currentMetrics.topSellingItem,
-        subtitle: "Most popular item",
-        percentage: null,
-        isIncrease: true,
-        color: COLORS.primary.blue,
-        icon: FaChartLine,
-      },
-    ];
+      // Dynamic items data based on actual metrics
+      const premiumItems = [
+        {
+          title: "Completion Rate",
+          value: `${currentMetrics.completionRate.toFixed(1)}%`,
+          subtitle: "Successful orders",
+          percentage: completionTrend.percentage,
+          isIncrease: completionTrend.isIncrease,
+          color: COLORS.primary.orange,
+          icon: FaStar,
+        },
+        {
+          title: "Unique Customers",
+          value: currentMetrics.uniqueCustomers.toLocaleString(),
+          subtitle: "Total customers",
+          percentage: customerTrend.percentage,
+          isIncrease: customerTrend.isIncrease,
+          color: COLORS.primary.green,
+          icon: FaUsers,
+        },
+        {
+          title: "In Progress",
+          value: currentMetrics.inProgressOrders.toLocaleString(),
+          subtitle: "Active orders",
+          percentage: inProgressTrend.percentage,
+          isIncrease: inProgressTrend.isIncrease,
+          color: COLORS.primary.purple,
+          icon: FaClock,
+        },
+        {
+          title: "Top Product",
+          value:
+            currentMetrics.topSellingItem &&
+            currentMetrics.topSellingItem.length > 20
+              ? currentMetrics.topSellingItem.substring(0, 20) + "..."
+              : currentMetrics.topSellingItem || "N/A",
+          subtitle: "Most popular item",
+          percentage: null,
+          isIncrease: true,
+          color: COLORS.primary.blue,
+          icon: FaChartLine,
+        },
+      ];
 
-    return {
-      metricsData: premiumMetrics,
-      itemsData: premiumItems,
-      filteredOrders: currentPeriodOrders,
-    };
-  }, [resData, rawMetricsData, period]);
+      return {
+        metricsData: premiumMetrics,
+        itemsData: premiumItems,
+        filteredOrders: currentPeriodOrders,
+      };
+    } catch (error) {
+      console.error("Error processing metrics data:", error);
+      return {
+        metricsData: [],
+        itemsData: [],
+        filteredOrders: [],
+      };
+    }
+  }, [ordersData, period]);
 
   // Handle period change
   const handlePeriodChange = (newPeriod) => {
@@ -449,7 +551,10 @@ const Metrics = ({
   // Show error notification
   useEffect(() => {
     if (isError) {
-      enqueueSnackbar("Failed to load metrics data", { variant: "error" });
+      enqueueSnackbar("Failed to load metrics data. Please try again.", {
+        variant: "error",
+        autoHideDuration: 4000,
+      });
     }
   }, [isError]);
 
@@ -546,7 +651,7 @@ const Metrics = ({
 
         {/* Premium Metrics Grid */}
         <div className="mb-12">
-          {metricsData.length === 0 ? (
+          {!metricsData || metricsData.length === 0 ? (
             <EmptyState
               title="No Data Available"
               message="There are no metrics to display for the selected period."
@@ -554,7 +659,7 @@ const Metrics = ({
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
               {metricsData.map((metric, index) => {
-                const IconComponent = metric.icon;
+                const IconComponent = metric.icon || FaChartLine;
                 return (
                   <div
                     key={index}
@@ -610,7 +715,7 @@ const Metrics = ({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {itemsData.length === 0 ? (
+            {!itemsData || itemsData.length === 0 ? (
               <div className="col-span-full">
                 <EmptyState
                   title="No Insights Available"
@@ -619,7 +724,7 @@ const Metrics = ({
               </div>
             ) : (
               itemsData.map((item, idx) => {
-                const IconComponent = item.icon;
+                const IconComponent = item.icon || FaChartLine;
                 return (
                   <div
                     key={idx}

@@ -14,16 +14,12 @@ const Auth = () => {
   useEffect(() => {
     document.title = "POS | Auth";
 
-    // ✅ FIXED: Check for actual user data instead of token
+    // ✅ FIXED: Immediate authentication check - removed artificial delay
     if (userData && userData._id) {
       navigate("/");
     } else {
-      // Allow time for authentication check to complete
-      const timer = setTimeout(() => {
-        setIsCheckingAuth(false);
-      }, 500);
-
-      return () => clearTimeout(timer);
+      // ✅ FIXED: Remove setTimeout for immediate rendering
+      setIsCheckingAuth(false);
     }
   }, [userData, navigate]);
 
