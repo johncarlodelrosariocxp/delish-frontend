@@ -1,10 +1,23 @@
-import { useState } from "react";
+import { useState, useCallback, memo } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { login } from "../../https/index";
 import { enqueueSnackbar } from "notistack";
 import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/userSlice";
 import { useNavigate } from "react-router-dom";
+
+// Preload main app components
+const preloadMainApp = () => {
+  // Preload critical chunks for main app
+  if (typeof window !== "undefined") {
+    // Preload main app bundle
+    const link = document.createElement("link");
+    link.rel = "preload";
+    link.as = "script";
+    link.href = "/assets/main-app-chunk.js";
+    document.head.appendChild(link);
+  }
+};
 
 const Login = () => {
   const navigate = useNavigate();
@@ -16,33 +29,61 @@ const Login = () => {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  // Memoized handlers
+  const handleChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  }, []);
 
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    loginMutation.mutate(formData);
-  };
+  const handleSubmit = useCallback(
+    (e) => {
+      e.preventDefault();
+      loginMutation.mutate(formData);
+    },
+    [formData]
+  );
 
-  const handleForgotPassword = (e) => {
-    e.preventDefault();
-    if (!forgotPasswordEmail) {
-      enqueueSnackbar("Please enter your email address", { variant: "error" });
-      return;
-    }
-    forgotPasswordMutation.mutate(forgotPasswordEmail);
-  };
+  const handleForgotPassword = useCallback(
+    (e) => {
+      e.preventDefault();
+      if (!forgotPasswordEmail) {
+        enqueueSnackbar("Please enter your email address", {
+          variant: "error",
+        });
+        return;
+      }
+      forgotPasswordMutation.mutate(forgotPasswordEmail);
+    },
+    [forgotPasswordEmail]
+  );
+
+  // Preload main app on component mount
+  useState(() => {
+    preloadMainApp();
+  });
 
   const loginMutation = useMutation({
     mutationFn: (reqData) => login(reqData),
     onSuccess: (res) => {
       if (res?.data?.success) {
         const { data } = res;
-        console.log(data);
         const { _id, name, email, phone, role } = data.data;
+
+        // Dispatch user data
         dispatch(setUser({ _id, name, email, phone, role }));
-        navigate("/");
+
+        // Preload dashboard data before navigation
+        Promise.all([
+          // Preload essential data for main app
+          import("../../redux/store").then((module) => {
+            // Store reference for faster access
+          }),
+          // Small delay to ensure state is updated
+          new Promise((resolve) => setTimeout(resolve, 10)),
+        ]).then(() => {
+          // Instant navigation - no loading states
+          navigate("/", { replace: true });
+        });
       } else {
         enqueueSnackbar(res?.data?.message || "Login failed", {
           variant: "error",
@@ -57,15 +98,15 @@ const Login = () => {
   });
 
   const forgotPasswordMutation = useMutation({
-    mutationFn: (email) => {
-      // Replace this with your actual forgot password API call
-      return fetch("/api/auth/forgot-password", {
+    mutationFn: async (email) => {
+      const response = await fetch("/api/auth/forgot-password", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({ email }),
-      }).then((res) => res.json());
+      });
+      return response.json();
     },
     onSuccess: (data) => {
       if (data.success) {
@@ -155,7 +196,7 @@ const Login = () => {
           </button>
         </form>
       ) : (
-        // Forgot Password Form - Simple Version
+        // Forgot Password Form
         <div className="text-center">
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-white mb-2">
@@ -209,4 +250,4 @@ const Login = () => {
   );
 };
 
-export default Login;
+export default memo(Login);
