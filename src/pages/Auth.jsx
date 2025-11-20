@@ -1,147 +1,181 @@
-import React, { useEffect, useState, useCallback } from "react";
+import React, {
+  useEffect,
+  useState,
+  useCallback,
+  useMemo,
+  lazy,
+  Suspense,
+} from "react";
 import restaurant from "../assets/images/restaurant-img.jpg";
 import logo from "../assets/images/delish.png";
-import Register from "../components/auth/Register";
-import Login from "../components/auth/Login";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
+
+// Lazy load components with preloading
+const Register = lazy(() => import("../components/auth/Register"));
+const Login = lazy(() => import("../components/auth/Login"));
+
+// Preload critical components immediately
+const preloadComponents = () => {
+  import("../components/auth/Login");
+  import("../components/auth/Register");
+};
 
 const Auth = () => {
   const navigate = useNavigate();
   const userData = useSelector((state) => state.user);
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [isRegister, setIsRegister] = useState(false);
+  const [imageLoaded, setImageLoaded] = useState(false);
 
-  // Optimized authentication check with useCallback
+  // Preload components on mount
+  useEffect(() => {
+    preloadComponents();
+  }, []);
+
+  // Ultra-fast authentication check
   const checkAuthentication = useCallback(() => {
+    // Immediate check without waiting for React state updates
     if (userData?._id) {
       navigate("/", { replace: true });
-    } else {
-      setIsCheckingAuth(false);
+      return true;
     }
+    setIsCheckingAuth(false);
+    return false;
   }, [userData, navigate]);
 
+  // Optimized effect with immediate execution
   useEffect(() => {
     document.title = "POS | Auth";
-    checkAuthentication();
+
+    // Immediate check on mount
+    const timer = setTimeout(() => {
+      if (!checkAuthentication()) {
+        setIsCheckingAuth(false);
+      }
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [checkAuthentication]);
 
-  // Preload main application routes for faster navigation
+  // Preload main app routes in background
   useEffect(() => {
-    // Preload main application chunks
-    const preloadRoutes = async () => {
-      try {
-        // This will preload the main bundle for faster navigation after login
-        const module = await import(
-          /* webpackChunkName: "main-app" */ "../App"
-        );
-      } catch (error) {
-        console.log("Preloading main app");
+    const preloadApp = () => {
+      // Use requestIdleCallback for non-critical preloading
+      if ("requestIdleCallback" in window) {
+        requestIdleCallback(() => {
+          import(/* webpackPrefetch: true */ "../App");
+        });
+      } else {
+        setTimeout(() => {
+          import(/* webpackPrefetch: true */ "../App");
+        }, 1000);
       }
     };
 
-    preloadRoutes();
+    preloadApp();
   }, []);
 
-  // Show loading while checking authentication
+  // Memoized background styles to prevent recalculation
+  const backgroundStyles = useMemo(
+    () => ({
+      backgroundImage: `url(${restaurant})`,
+      filter: "brightness(0.55)",
+    }),
+    []
+  );
+
+  // Fast loading fallback
   if (isCheckingAuth) {
     return (
       <div className="relative flex items-center justify-center min-h-screen w-full overflow-hidden bg-black">
-        {/* Optimized Background with lower quality placeholder technique */}
+        {/* Minimal background with inline blur hash placeholder */}
         <div
-          className="absolute inset-0 w-full h-full bg-cover bg-center scale-105 animate-zoom-fast"
-          style={{
-            backgroundImage: `url(${restaurant})`,
-            filter: "brightness(0.55)",
-          }}
+          className="absolute inset-0 bg-gray-900"
+          style={backgroundStyles}
         />
 
-        {/* Minimal overlay */}
-        <div className="absolute inset-0 bg-black/60"></div>
-
-        {/* Fast loading spinner */}
-        <div className="relative z-10 flex flex-col items-center justify-center gap-4">
-          <div className="h-12 w-12 border-3 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-yellow-300 text-sm font-medium">
-            Checking authentication...
-          </p>
+        {/* Fast loading indicator */}
+        <div className="relative z-10 flex flex-col items-center justify-center gap-3">
+          <div className="h-8 w-8 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-yellow-300 text-xs font-medium">Loading...</p>
         </div>
-
-        {/* Inline minimal animations */}
-        <style>{`
-          @keyframes zoom-fast {
-            0%, 100% { transform: scale(1.05); }
-            50% { transform: scale(1.08); }
-          }
-          .animate-zoom-fast {
-            animation: zoom-fast 8s ease-in-out infinite;
-          }
-        `}</style>
       </div>
     );
   }
 
   return (
     <div className="relative flex items-center justify-center min-h-screen w-full overflow-hidden bg-black">
-      {/* Optimized Background Image */}
-      <div
-        className="absolute inset-0 w-full h-full bg-cover bg-center scale-105 animate-zoom-fast"
-        style={{
-          backgroundImage: `url(${restaurant})`,
-          filter: "brightness(0.55)",
-        }}
-      />
+      {/* Optimized Background with priority loading */}
+      <div className="absolute inset-0 w-full h-full">
+        <img
+          src={restaurant}
+          alt="Restaurant Background"
+          className="w-full h-full object-cover scale-105"
+          style={{ filter: "brightness(0.55)" }}
+          loading="eager"
+          decoding="async"
+          onLoad={() => setImageLoaded(true)}
+        />
+        {!imageLoaded && (
+          <div className="absolute inset-0 bg-gray-900 animate-pulse"></div>
+        )}
+      </div>
 
-      {/* Simplified Overlay */}
-      <div className="absolute inset-0 bg-black/50"></div>
+      {/* Minimal Overlay */}
+      <div className="absolute inset-0 bg-black/40"></div>
 
-      {/* Minimal Ambient Effects */}
-      <div className="absolute w-60 h-60 bg-yellow-500/10 rounded-full blur-100 top-10 left-8" />
-      <div className="absolute w-80 h-80 bg-yellow-400/10 rounded-full blur-120 bottom-10 right-10" />
-
-      {/* Main Content */}
-      <div className="relative z-10 flex flex-col lg:flex-row items-center justify-center w-full max-w-6xl mx-auto px-4 py-8 gap-8">
-        {/* Left Section (Form) */}
-        <div className="flex-1 flex flex-col items-center justify-center w-full">
-          <div className="relative bg-white/5 backdrop-blur-md border border-yellow-200/10 rounded-2xl shadow-xl p-8 w-full max-w-sm text-white">
-            {/* Logo & Title */}
-            <div className="flex flex-col items-center gap-3 mb-6">
-              <div className="relative h-20 w-20 flex items-center justify-center rounded-full bg-white shadow-md border border-yellow-200/30">
+      {/* Main Content Container */}
+      <div className="relative z-10 flex flex-col lg:flex-row items-center justify-center w-full max-w-6xl mx-auto px-4 py-6 gap-6">
+        {/* Left Section - Form */}
+        <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm">
+          <div className="relative bg-white/5 backdrop-blur-sm border border-yellow-200/10 rounded-xl shadow-lg p-6 w-full text-white">
+            {/* Optimized Logo Section */}
+            <div className="flex flex-col items-center gap-2 mb-4">
+              <div className="h-16 w-16 flex items-center justify-center rounded-full bg-white shadow-sm">
                 <img
                   src={logo}
                   alt="Delish Logo"
-                  className="h-18 w-18 object-contain"
+                  className="h-14 w-14 object-contain"
                   loading="eager"
+                  decoding="sync"
                 />
               </div>
-              <h1 className="text-2xl font-semibold text-yellow-300 text-center">
+              <h1 className="text-xl font-semibold text-yellow-300 text-center">
                 Delish Cheesecake
               </h1>
             </div>
 
-            {/* Title */}
-            <h2 className="text-lg text-center font-semibold text-yellow-300 mb-6">
+            {/* Form Title */}
+            <h2 className="text-base text-center font-semibold text-yellow-300 mb-4">
               {isRegister ? "Employee Registration" : "Employee Login"}
             </h2>
 
-            {/* Forms */}
-            <div className="w-full">
+            {/* Lazy Loaded Forms with Suspense */}
+            <Suspense
+              fallback={
+                <div className="flex justify-center py-8">
+                  <div className="h-6 w-6 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
+                </div>
+              }
+            >
               {isRegister ? (
                 <Register setIsRegister={setIsRegister} />
               ) : (
                 <Login />
               )}
-            </div>
+            </Suspense>
 
-            {/* Switch Text */}
-            <div className="flex justify-center mt-6">
+            {/* Switch Auth Mode */}
+            <div className="flex justify-center mt-4">
               <p className="text-xs text-gray-300">
-                {isRegister
-                  ? "Already have an account?"
-                  : "Don't have an account?"}{" "}
+                {isRegister ? "Have an account?" : "No account?"}{" "}
                 <button
                   onClick={() => setIsRegister(!isRegister)}
-                  className="text-yellow-400 font-semibold hover:text-yellow-300 transition-colors focus:outline-none"
+                  className="text-yellow-400 font-medium hover:text-yellow-300 transition-colors duration-150 focus:outline-none"
+                  aria-label={
+                    isRegister ? "Switch to login" : "Switch to register"
+                  }
                 >
                   {isRegister ? "Sign in" : "Sign up"}
                 </button>
@@ -150,16 +184,16 @@ const Auth = () => {
           </div>
         </div>
 
-        {/* Right Section (Quote) */}
-        <div className="flex-1 flex items-center justify-center w-full">
-          <div className="relative bg-white/5 backdrop-blur-md border border-yellow-200/10 rounded-2xl shadow-xl p-8 text-center text-white max-w-md">
-            <h3 className="text-xl font-semibold text-yellow-300 mb-3">
+        {/* Right Section - Quote (Only on larger screens) */}
+        <div className="hidden lg:flex flex-1 items-center justify-center">
+          <div className="relative bg-white/5 backdrop-blur-sm border border-yellow-200/10 rounded-xl shadow-lg p-6 text-center text-white max-w-md">
+            <h3 className="text-lg font-semibold text-yellow-300 mb-2">
               "At Delish Cheesecake..."
             </h3>
-            <blockquote className="text-sm italic leading-relaxed text-gray-100">
-              We don't just serve desserts — we serve{" "}
-              <span className="text-yellow-400 font-medium">moments</span>.
-              Every plate is a promise of warmth, flavor, and{" "}
+            <blockquote className="text-xs italic leading-relaxed text-gray-100">
+              We serve{" "}
+              <span className="text-yellow-400 font-medium">moments</span>
+              of warmth and flavor with genuine{" "}
               <span className="text-yellow-300 font-medium">
                 Filipino hospitality
               </span>
@@ -168,19 +202,9 @@ const Auth = () => {
           </div>
         </div>
       </div>
-
-      {/* Optimized Animations */}
-      <style>{`
-        @keyframes zoom-fast {
-          0%, 100% { transform: scale(1.05); }
-          50% { transform: scale(1.08); }
-        }
-        .animate-zoom-fast {
-          animation: zoom-fast 10s ease-in-out infinite;
-        }
-      `}</style>
     </div>
   );
 };
 
+// Export with React.memo and display name
 export default React.memo(Auth);
