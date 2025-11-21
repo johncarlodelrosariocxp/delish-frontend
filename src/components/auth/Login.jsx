@@ -1,16 +1,18 @@
-import { useState, useCallback, memo } from "react";
+// src/components/auth/Login.jsx
+import { useState, useCallback, memo, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { login } from "../../https/index";
 import { enqueueSnackbar } from "notistack";
 import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/userSlice";
 import { useNavigate } from "react-router-dom";
+import { axiosWrapper } from "../../https/axiosWrapper";
 
-// Preload main app components
+// =============================
+// 🔧 Preload main app bundle
+// =============================
 const preloadMainApp = () => {
-  // Preload critical chunks for main app
   if (typeof window !== "undefined") {
-    // Preload main app bundle
     const link = document.createElement("link");
     link.rel = "preload";
     link.as = "script";
@@ -22,14 +24,19 @@ const preloadMainApp = () => {
 const Login = () => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
-  const [formData, setFormData] = useState({
-    email: "",
-    password: "",
-  });
+
+  const [formData, setFormData] = useState({ email: "", password: "" });
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
 
-  // Memoized handlers
+  // ✅ Preload main app on mount
+  useEffect(() => {
+    preloadMainApp();
+  }, []);
+
+  // =============================
+  // 📌 Handlers
+  // =============================
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -57,31 +64,23 @@ const Login = () => {
     [forgotPasswordEmail]
   );
 
-  // Preload main app on component mount
-  useState(() => {
-    preloadMainApp();
-  });
-
+  // =============================
+  // 📌 Login Mutation
+  // =============================
   const loginMutation = useMutation({
     mutationFn: (reqData) => login(reqData),
     onSuccess: (res) => {
       if (res?.data?.success) {
-        const { data } = res;
-        const { _id, name, email, phone, role } = data.data;
+        const { _id, name, email, phone, role } = res.data.data;
 
-        // Dispatch user data
+        // Save user in Redux
         dispatch(setUser({ _id, name, email, phone, role }));
 
         // Preload dashboard data before navigation
         Promise.all([
-          // Preload essential data for main app
-          import("../../redux/store").then((module) => {
-            // Store reference for faster access
-          }),
-          // Small delay to ensure state is updated
+          import("../../redux/store"),
           new Promise((resolve) => setTimeout(resolve, 10)),
         ]).then(() => {
-          // Instant navigation - no loading states
           navigate("/", { replace: true });
         });
       } else {
@@ -97,17 +96,12 @@ const Login = () => {
     },
   });
 
+  // =============================
+  // 📌 Forgot Password Mutation
+  // =============================
   const forgotPasswordMutation = useMutation({
-    mutationFn: async (email) => {
-      const response = await fetch("/api/auth/forgot-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ email }),
-      });
-      return response.json();
-    },
+    mutationFn: (email) =>
+      axiosWrapper.post("/api/auth/forgot-password", { email }),
     onSuccess: (data) => {
       if (data.success) {
         enqueueSnackbar("Password reset link sent to your email", {
@@ -121,13 +115,17 @@ const Login = () => {
         });
       }
     },
-    onError: () => {
-      enqueueSnackbar("Network error. Please try again.", {
-        variant: "error",
-      });
+    onError: (error) => {
+      enqueueSnackbar(
+        error?.response?.data?.message || "Network error. Please try again.",
+        { variant: "error" }
+      );
     },
   });
 
+  // =============================
+  // 📌 Render
+  // =============================
   return (
     <div>
       {!showForgotPassword ? (
@@ -149,11 +147,13 @@ const Login = () => {
                 onChange={handleChange}
                 placeholder="Enter employee email"
                 autoComplete="email"
+                aria-label="Employee Email"
                 className="bg-transparent flex-1 text-white focus:outline-none"
                 required
               />
             </div>
           </div>
+
           <div>
             <label
               htmlFor="password"
@@ -170,6 +170,7 @@ const Login = () => {
                 onChange={handleChange}
                 placeholder="Enter password"
                 autoComplete="current-password"
+                aria-label="Employee Password"
                 className="bg-transparent flex-1 text-white focus:outline-none"
                 required
               />
@@ -217,6 +218,7 @@ const Login = () => {
                   onChange={(e) => setForgotPasswordEmail(e.target.value)}
                   placeholder="Enter your email address"
                   autoComplete="email"
+                  aria-label="Forgot Password Email"
                   className="bg-transparent flex-1 text-white focus:outline-none"
                   required
                 />
