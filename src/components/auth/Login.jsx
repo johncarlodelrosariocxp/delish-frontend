@@ -1,12 +1,12 @@
 // src/components/auth/Login.jsx
-import { useState, useCallback, memo } from "react";
+import { useState, useCallback, memo, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { login } from "../../https/index";
 import { enqueueSnackbar } from "notistack";
 import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/userSlice";
 import { useNavigate } from "react-router-dom";
-import { axiosWrapper } from "../../https/axiosWrapper";
+import { axiosWrapper } from "../../https/axiosWrapper"; // Fixed import
 
 const Login = () => {
   const navigate = useNavigate();
@@ -15,6 +15,30 @@ const Login = () => {
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
+  const [isMobile, setIsMobile] = useState(false);
+  const [isProduction, setIsProduction] = useState(false);
+
+  // Detect environment and device type
+  useEffect(() => {
+    // Check if production
+    setIsProduction(import.meta.env.PROD);
+
+    // Check if mobile device
+    const checkMobile = () => {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      );
+    };
+
+    setIsMobile(checkMobile());
+
+    // Log connection info for debugging
+    console.log("🔧 Login Environment Info:");
+    console.log("   Mode:", import.meta.env.MODE);
+    console.log("   Production:", import.meta.env.PROD);
+    console.log("   Mobile Device:", checkMobile());
+    console.log("   VITE_API_URL:", import.meta.env.VITE_API_URL);
+  }, []);
 
   // =============================
   // 📌 Handlers
@@ -67,22 +91,48 @@ const Login = () => {
       }
     },
     onError: (error) => {
-      console.error("Login error:", error);
+      console.error("Login error details:", {
+        code: error.code,
+        message: error.message,
+        response: error.response?.data,
+        url: error.config?.url,
+      });
 
-      // Enhanced error handling for mobile
       let errorMessage = "Wrong password or email";
+      let helpMessage = "";
 
       if (error?.code === "NETWORK_ERROR" || error?.code === "ECONNREFUSED") {
-        errorMessage =
-          "Cannot connect to server. Please check:\n• Backend is running\n• Same WiFi network\n• Correct IP address";
+        if (isProduction) {
+          errorMessage = "Cannot connect to backend server";
+          helpMessage =
+            "The backend server might be down or not deployed. Please check your backend deployment on Render/Railway.";
+        } else {
+          errorMessage = "Cannot connect to server";
+          helpMessage =
+            "Please ensure:\n• Backend is running on port 8000\n• You're on the same WiFi network\n• Using correct IP address for mobile";
+        }
+      } else if (error?.response?.status === 404) {
+        errorMessage = "Server endpoint not found";
+        helpMessage =
+          "The backend API endpoint is not available. Please check backend deployment.";
       } else if (error?.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
 
       enqueueSnackbar(errorMessage, {
         variant: "error",
-        autoHideDuration: 5000, // Longer duration for mobile users
+        autoHideDuration: 6000,
       });
+
+      // Show additional help for mobile users in development
+      if (helpMessage && isMobile && !isProduction) {
+        setTimeout(() => {
+          enqueueSnackbar(helpMessage, {
+            variant: "info",
+            autoHideDuration: 8000,
+          });
+        }, 1000);
+      }
     },
   });
 
@@ -91,7 +141,7 @@ const Login = () => {
   // =============================
   const forgotPasswordMutation = useMutation({
     mutationFn: (email) =>
-      axiosWrapper.post("/api/user/forgot-password", { email }), // Fixed endpoint
+      axiosWrapper.post("/api/user/forgot-password", { email }),
     onSuccess: (res) => {
       if (res?.data?.success) {
         enqueueSnackbar("Password reset link sent to your email", {
@@ -129,10 +179,17 @@ const Login = () => {
   // =============================
   return (
     <div className="w-full max-w-md mx-auto p-6">
-      {/* Connection Status Indicator */}
-      <div className="mb-4 p-3 bg-blue-900 bg-opacity-20 rounded-lg border border-blue-700">
-        <p className="text-blue-300 text-sm text-center">
-          📱 <strong>Mobile Access:</strong> Use your computer's IP address
+      {/* Environment Indicator */}
+      <div
+        className={`mb-4 p-3 rounded-lg border text-center text-sm ${
+          isProduction
+            ? "bg-green-900 bg-opacity-20 border-green-700 text-green-300"
+            : "bg-blue-900 bg-opacity-20 border-blue-700 text-blue-300"
+        }`}
+      >
+        <p>
+          {isProduction ? "🚀 PRODUCTION" : "🔧 DEVELOPMENT"} |
+          {isMobile ? " 📱 MOBILE" : " 💻 DESKTOP"}
         </p>
       </div>
 
@@ -233,12 +290,23 @@ const Login = () => {
             )}
           </button>
 
-          {/* Mobile Help Text */}
+          {/* Environment-specific Help Text */}
           <div className="mt-4 p-3 bg-gray-800 rounded-lg">
             <p className="text-gray-400 text-xs text-center">
-              💡 <strong>Mobile Tip:</strong> If login fails, ensure:
-              <br />• Backend is running on port 8000
-              <br />• You're on the same WiFi network
+              {isProduction ? (
+                <>
+                  🚀 <strong>Production Mode</strong>
+                  <br />
+                  Ensure backend is deployed and running
+                </>
+              ) : (
+                <>
+                  💡 <strong>Development Tips:</strong>
+                  <br />• Backend running on port 8000
+                  <br />• Same WiFi network for mobile
+                  <br />• Use computer IP for mobile access
+                </>
+              )}
             </p>
           </div>
         </form>
