@@ -94,6 +94,7 @@ const Register = ({ setIsRegister }) => {
       e.preventDefault();
 
       if (validateForm()) {
+        console.log("📤 Submitting registration data:", formData);
         registerMutation.mutate(formData);
       } else {
         enqueueSnackbar("Please fix the errors in the form", {
@@ -108,8 +109,13 @@ const Register = ({ setIsRegister }) => {
   // 📌 Register Mutation
   // =============================
   const registerMutation = useMutation({
-    mutationFn: (reqData) => register(reqData),
+    mutationFn: (reqData) => {
+      console.log("🚀 Making registration request with:", reqData);
+      return register(reqData);
+    },
     onSuccess: (res) => {
+      console.log("✅ Registration success response:", res);
+
       if (res?.data?.success) {
         enqueueSnackbar(res.data.message || "Account created successfully!", {
           variant: "success",
@@ -130,36 +136,85 @@ const Register = ({ setIsRegister }) => {
           setIsRegister(false);
         }, 1500);
       } else {
-        enqueueSnackbar(res?.data?.message || "Registration failed", {
-          variant: "error",
-        });
+        console.warn("⚠️ Registration response without success:", res);
+        enqueueSnackbar(
+          res?.data?.message || "Registration failed - no success flag",
+          {
+            variant: "error",
+          }
+        );
       }
     },
     onError: (error) => {
-      console.error("Registration error:", error);
+      console.error("❌ Registration error details:", {
+        fullError: error,
+        code: error.code,
+        message: error.message,
+        response: error.response,
+        request: error.request,
+        config: error.config,
+      });
 
       let errorMessage = "Registration failed. Please try again.";
+      let detailedMessage = "";
 
+      // Network errors
       if (error?.code === "NETWORK_ERROR" || error?.code === "ECONNREFUSED") {
-        errorMessage =
-          "Cannot connect to server. Please check your connection.";
-      } else if (error?.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error?.response?.data?.error) {
-        // Handle validation errors from backend
-        if (typeof error.response.data.error === "object") {
-          const backendErrors = error.response.data.error;
-          const firstError = Object.values(backendErrors)[0];
-          errorMessage = firstError || "Please check your input";
+        errorMessage = "Cannot connect to server. Please check:";
+        detailedMessage =
+          "• Backend server is running\n• Correct API URL\n• Network connection";
+      }
+      // No response from server
+      else if (error?.request && !error?.response) {
+        errorMessage = "No response from server. Please check:";
+        detailedMessage =
+          "• Backend is running on port 8000\n• CORS is configured\n• Server is accessible";
+      }
+      // Backend response with error
+      else if (error?.response) {
+        const status = error.response.status;
+        const data = error.response.data;
+
+        console.log("🔍 Backend response details:", { status, data });
+
+        if (status === 400) {
+          errorMessage = data?.message || "Invalid data provided";
+          if (data?.error) {
+            if (typeof data.error === "object") {
+              const firstError = Object.values(data.error)[0];
+              errorMessage = firstError || "Please check your input";
+            } else {
+              errorMessage = data.error;
+            }
+          }
+        } else if (status === 409) {
+          errorMessage = data?.message || "User already exists with this email";
+        } else if (status === 500) {
+          errorMessage =
+            data?.message || "Server error. Please try again later.";
         } else {
-          errorMessage = error.response.data.error;
+          errorMessage = data?.message || `Server error (${status})`;
         }
       }
 
+      // Show main error
       enqueueSnackbar(errorMessage, {
         variant: "error",
-        autoHideDuration: 5000,
+        autoHideDuration: 6000,
       });
+
+      // Show detailed help for network issues
+      if (
+        detailedMessage &&
+        (error?.code === "NETWORK_ERROR" || error?.code === "ECONNREFUSED")
+      ) {
+        setTimeout(() => {
+          enqueueSnackbar(detailedMessage, {
+            variant: "info",
+            autoHideDuration: 8000,
+          });
+        }, 1000);
+      }
     },
   });
 
@@ -174,6 +229,16 @@ const Register = ({ setIsRegister }) => {
           Create a new employee account for Delish POS
         </p>
       </div>
+
+      {/* Debug Info - Remove in production */}
+      {process.env.NODE_ENV === "development" && (
+        <div className="mb-4 p-3 bg-yellow-900 bg-opacity-20 border border-yellow-700 rounded-lg">
+          <p className="text-yellow-300 text-xs">
+            🔧 <strong>Debug Mode</strong> - Check browser console for detailed
+            error logs
+          </p>
+        </div>
+      )}
 
       <form onSubmit={handleSubmit}>
         {/* Name Field */}
@@ -249,7 +314,7 @@ const Register = ({ setIsRegister }) => {
               name="phone"
               value={formData.phone}
               onChange={handleChange}
-              placeholder="Enter employee phone"
+              placeholder="Enter employee phone (10-15 digits)"
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
               disabled={registerMutation.isLoading}
@@ -371,6 +436,18 @@ const Register = ({ setIsRegister }) => {
           features. Cashier accounts have limited access for daily operations.
         </p>
       </div>
+
+      {/* Troubleshooting Guide */}
+      {registerMutation.isError && (
+        <div className="mt-4 p-3 bg-red-900 bg-opacity-20 border border-red-700 rounded-lg">
+          <p className="text-red-300 text-xs">
+            🔧 <strong>Troubleshooting:</strong>
+            <br />• Check if backend server is running
+            <br />• Verify API endpoint: /api/user/register
+            <br />• Check browser console for detailed errors
+          </p>
+        </div>
+      )}
     </div>
   );
 };
