@@ -19,6 +19,7 @@ const Register = ({ setIsRegister }) => {
 
   const [isMobile, setIsMobile] = useState(false);
   const [isProduction, setIsProduction] = useState(false);
+  const [backendStatus, setBackendStatus] = useState("checking");
 
   // Detect environment and device type
   useEffect(() => {
@@ -33,7 +34,33 @@ const Register = ({ setIsRegister }) => {
     };
 
     setIsMobile(checkMobile());
+
+    // Check backend connection
+    checkBackendConnection();
   }, []);
+
+  // Check if backend is running
+  const checkBackendConnection = async () => {
+    try {
+      const response = await fetch("http://localhost:8000/health", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        setBackendStatus("connected");
+        console.log("✅ Backend is running");
+      } else {
+        setBackendStatus("error");
+        console.log("❌ Backend returned error status");
+      }
+    } catch (error) {
+      setBackendStatus("disconnected");
+      console.log("❌ Backend connection failed:", error.message);
+    }
+  };
 
   // =============================
   // 📌 Handlers
@@ -63,9 +90,21 @@ const Register = ({ setIsRegister }) => {
         return;
       }
 
+      // Check backend before submitting
+      if (backendStatus !== "connected") {
+        enqueueSnackbar(
+          "Backend server is not running. Please start the backend server first.",
+          {
+            variant: "error",
+            autoHideDuration: 8000,
+          }
+        );
+        return;
+      }
+
       registerMutation.mutate(formData);
     },
-    [formData]
+    [formData, backendStatus]
   );
 
   // =============================
@@ -99,33 +138,89 @@ const Register = ({ setIsRegister }) => {
       }
     },
     onError: (error) => {
-      console.error("Registration error:", error);
+      console.error("Registration error details:", {
+        code: error.code,
+        message: error.message,
+        response: error.response,
+        config: error.config,
+      });
 
       let errorMessage = "Registration failed. Please try again.";
 
       if (error?.code === "NETWORK_ERROR" || error?.code === "ECONNREFUSED") {
-        if (isProduction) {
-          errorMessage = "Cannot connect to backend server";
-        } else {
-          errorMessage =
-            "Cannot connect to server. Please check backend is running.";
-        }
+        errorMessage = "Cannot connect to backend server. Please check:";
+
+        enqueueSnackbar(errorMessage, {
+          variant: "error",
+          autoHideDuration: 8000,
+        });
+
+        // Show detailed instructions
+        setTimeout(() => {
+          enqueueSnackbar(
+            "• Open terminal in delish-backend folder\n• Run: npm start\n• Ensure server runs on port 8000",
+            { variant: "info", autoHideDuration: 10000 }
+          );
+        }, 1000);
       } else if (error?.response?.data?.message) {
         errorMessage = error.response.data.message;
+        enqueueSnackbar(errorMessage, {
+          variant: "error",
+          autoHideDuration: 5000,
+        });
+      } else {
+        enqueueSnackbar(errorMessage, {
+          variant: "error",
+          autoHideDuration: 5000,
+        });
       }
-
-      enqueueSnackbar(errorMessage, {
-        variant: "error",
-        autoHideDuration: 5000,
-      });
     },
   });
+
+  // Get backend status color
+  const getBackendStatusColor = () => {
+    switch (backendStatus) {
+      case "connected":
+        return "bg-green-900 border-green-700 text-green-300";
+      case "disconnected":
+        return "bg-red-900 border-red-700 text-red-300";
+      case "error":
+        return "bg-yellow-900 border-yellow-700 text-yellow-300";
+      default:
+        return "bg-blue-900 border-blue-700 text-blue-300";
+    }
+  };
+
+  const getBackendStatusText = () => {
+    switch (backendStatus) {
+      case "connected":
+        return "✅ Backend Connected";
+      case "disconnected":
+        return "❌ Backend Disconnected";
+      case "error":
+        return "⚠️ Backend Error";
+      default:
+        return "🔍 Checking Backend...";
+    }
+  };
 
   // =============================
   // 📌 Render
   // =============================
   return (
     <div className="w-full max-w-md mx-auto p-6">
+      {/* Backend Status Indicator */}
+      <div
+        className={`mb-4 p-3 rounded-lg border text-center text-sm ${getBackendStatusColor()}`}
+      >
+        <p>{getBackendStatusText()}</p>
+        {backendStatus !== "connected" && (
+          <p className="text-xs mt-1 opacity-80">
+            Start backend: <code>cd delish-backend && npm start</code>
+          </p>
+        )}
+      </div>
+
       {/* Environment Indicator */}
       <div
         className={`mb-4 p-3 rounded-lg border text-center text-sm ${
@@ -162,7 +257,9 @@ const Register = ({ setIsRegister }) => {
               placeholder="Enter employee name"
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
-              disabled={registerMutation.isLoading}
+              disabled={
+                registerMutation.isLoading || backendStatus !== "connected"
+              }
             />
           </div>
         </div>
@@ -181,7 +278,9 @@ const Register = ({ setIsRegister }) => {
               placeholder="Enter employee email"
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
-              disabled={registerMutation.isLoading}
+              disabled={
+                registerMutation.isLoading || backendStatus !== "connected"
+              }
             />
           </div>
         </div>
@@ -200,7 +299,9 @@ const Register = ({ setIsRegister }) => {
               placeholder="Enter employee phone"
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
-              disabled={registerMutation.isLoading}
+              disabled={
+                registerMutation.isLoading || backendStatus !== "connected"
+              }
             />
           </div>
         </div>
@@ -219,7 +320,9 @@ const Register = ({ setIsRegister }) => {
               placeholder="Enter password"
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
-              disabled={registerMutation.isLoading}
+              disabled={
+                registerMutation.isLoading || backendStatus !== "connected"
+              }
             />
           </div>
         </div>
@@ -235,7 +338,9 @@ const Register = ({ setIsRegister }) => {
                 key={role}
                 type="button"
                 onClick={() => handleRoleSelection(role)}
-                disabled={registerMutation.isLoading}
+                disabled={
+                  registerMutation.isLoading || backendStatus !== "connected"
+                }
                 className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
                   formData.role === role
                     ? "bg-yellow-400 text-gray-900 shadow-lg"
@@ -251,7 +356,7 @@ const Register = ({ setIsRegister }) => {
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={registerMutation.isLoading}
+          disabled={registerMutation.isLoading || backendStatus !== "connected"}
           className="w-full rounded-lg mt-6 py-4 text-lg bg-yellow-400 text-gray-900 font-bold hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-yellow-500/25"
         >
           {registerMutation.isLoading ? (
@@ -278,6 +383,8 @@ const Register = ({ setIsRegister }) => {
               </svg>
               Creating Account...
             </span>
+          ) : backendStatus !== "connected" ? (
+            "Start Backend First"
           ) : (
             "Create Account"
           )}
@@ -295,6 +402,23 @@ const Register = ({ setIsRegister }) => {
           </button>
         </div>
       </form>
+
+      {/* Troubleshooting Guide */}
+      {backendStatus !== "connected" && (
+        <div className="mt-4 p-3 bg-red-900 bg-opacity-20 border border-red-700 rounded-lg">
+          <p className="text-red-300 text-xs">
+            🔧 <strong>To fix this issue:</strong>
+            <br />
+            1. Open terminal in <code>delish-backend</code> folder
+            <br />
+            2. Run: <code>npm start</code>
+            <br />
+            3. Wait for "POS Server is listening on port 8000" message
+            <br />
+            4. Refresh this page
+          </p>
+        </div>
+      )}
 
       {/* Environment-specific Help Text */}
       <div className="mt-4 p-3 bg-gray-800 rounded-lg">
