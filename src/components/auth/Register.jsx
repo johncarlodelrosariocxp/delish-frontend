@@ -1,10 +1,14 @@
-import { useState, useCallback, memo } from "react";
-import { register } from "../../https";
+// src/components/auth/Register.jsx
+import { useState, useCallback, memo, useEffect } from "react";
+import { register } from "../../https/index";
 import { useMutation } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
+import { useNavigate } from "react-router-dom";
 import PropTypes from "prop-types";
 
 const Register = ({ setIsRegister }) => {
+  const navigate = useNavigate();
+
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -13,94 +17,53 @@ const Register = ({ setIsRegister }) => {
     role: "",
   });
 
-  const [errors, setErrors] = useState({});
+  const [isMobile, setIsMobile] = useState(false);
+  const [isProduction, setIsProduction] = useState(false);
+
+  // Detect environment and device type
+  useEffect(() => {
+    // Check if production
+    setIsProduction(import.meta.env.PROD);
+
+    // Check if mobile device
+    const checkMobile = () => {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      );
+    };
+
+    setIsMobile(checkMobile());
+  }, []);
 
   // =============================
   // 📌 Handlers
   // =============================
-  const handleChange = useCallback(
-    (e) => {
-      const { name, value } = e.target;
-      setFormData((prev) => ({
-        ...prev,
-        [name]: value,
-      }));
+  const handleChange = useCallback((e) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+  }, []);
 
-      // Clear error when user starts typing
-      if (errors[name]) {
-        setErrors((prev) => ({ ...prev, [name]: "" }));
-      }
-    },
-    [errors]
-  );
-
-  const handleRoleSelection = useCallback(
-    (selectedRole) => {
-      setFormData((prev) => ({ ...prev, role: selectedRole }));
-
-      // Clear role error
-      if (errors.role) {
-        setErrors((prev) => ({ ...prev, role: "" }));
-      }
-    },
-    [errors]
-  );
-
-  // =============================
-  // 📌 Validation
-  // =============================
-  const validateForm = () => {
-    const newErrors = {};
-
-    // Name validation
-    if (!formData.name.trim()) {
-      newErrors.name = "Name is required";
-    } else if (formData.name.trim().length < 2) {
-      newErrors.name = "Name must be at least 2 characters";
-    }
-
-    // Email validation
-    if (!formData.email.trim()) {
-      newErrors.email = "Email is required";
-    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
-      newErrors.email = "Please enter a valid email address";
-    }
-
-    // Phone validation
-    if (!formData.phone.trim()) {
-      newErrors.phone = "Phone number is required";
-    } else if (!/^\d{10,15}$/.test(formData.phone.replace(/\D/g, ""))) {
-      newErrors.phone = "Please enter a valid phone number (10-15 digits)";
-    }
-
-    // Password validation
-    if (!formData.password) {
-      newErrors.password = "Password is required";
-    } else if (formData.password.length < 6) {
-      newErrors.password = "Password must be at least 6 characters";
-    }
-
-    // Role validation
-    if (!formData.role) {
-      newErrors.role = "Please select a role";
-    }
-
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
+  const handleRoleSelection = useCallback((selectedRole) => {
+    setFormData((prev) => ({ ...prev, role: selectedRole }));
+  }, []);
 
   const handleSubmit = useCallback(
     (e) => {
       e.preventDefault();
 
-      if (validateForm()) {
-        console.log("📤 Submitting registration data:", formData);
-        registerMutation.mutate(formData);
-      } else {
-        enqueueSnackbar("Please fix the errors in the form", {
-          variant: "error",
-        });
+      // Basic validation
+      if (
+        !formData.name ||
+        !formData.email ||
+        !formData.phone ||
+        !formData.password ||
+        !formData.role
+      ) {
+        enqueueSnackbar("Please fill in all fields", { variant: "error" });
+        return;
       }
+
+      registerMutation.mutate(formData);
     },
     [formData]
   );
@@ -109,13 +72,8 @@ const Register = ({ setIsRegister }) => {
   // 📌 Register Mutation
   // =============================
   const registerMutation = useMutation({
-    mutationFn: (reqData) => {
-      console.log("🚀 Making registration request with:", reqData);
-      return register(reqData);
-    },
+    mutationFn: (reqData) => register(reqData),
     onSuccess: (res) => {
-      console.log("✅ Registration success response:", res);
-
       if (res?.data?.success) {
         enqueueSnackbar(res.data.message || "Account created successfully!", {
           variant: "success",
@@ -129,92 +87,37 @@ const Register = ({ setIsRegister }) => {
           password: "",
           role: "",
         });
-        setErrors({});
 
         // Switch to login after delay
         setTimeout(() => {
           setIsRegister(false);
         }, 1500);
       } else {
-        console.warn("⚠️ Registration response without success:", res);
-        enqueueSnackbar(
-          res?.data?.message || "Registration failed - no success flag",
-          {
-            variant: "error",
-          }
-        );
+        enqueueSnackbar(res?.data?.message || "Registration failed", {
+          variant: "error",
+        });
       }
     },
     onError: (error) => {
-      console.error("❌ Registration error details:", {
-        fullError: error,
-        code: error.code,
-        message: error.message,
-        response: error.response,
-        request: error.request,
-        config: error.config,
-      });
+      console.error("Registration error:", error);
 
       let errorMessage = "Registration failed. Please try again.";
-      let detailedMessage = "";
 
-      // Network errors
       if (error?.code === "NETWORK_ERROR" || error?.code === "ECONNREFUSED") {
-        errorMessage = "Cannot connect to server. Please check:";
-        detailedMessage =
-          "• Backend server is running\n• Correct API URL\n• Network connection";
-      }
-      // No response from server
-      else if (error?.request && !error?.response) {
-        errorMessage = "No response from server. Please check:";
-        detailedMessage =
-          "• Backend is running on port 8000\n• CORS is configured\n• Server is accessible";
-      }
-      // Backend response with error
-      else if (error?.response) {
-        const status = error.response.status;
-        const data = error.response.data;
-
-        console.log("🔍 Backend response details:", { status, data });
-
-        if (status === 400) {
-          errorMessage = data?.message || "Invalid data provided";
-          if (data?.error) {
-            if (typeof data.error === "object") {
-              const firstError = Object.values(data.error)[0];
-              errorMessage = firstError || "Please check your input";
-            } else {
-              errorMessage = data.error;
-            }
-          }
-        } else if (status === 409) {
-          errorMessage = data?.message || "User already exists with this email";
-        } else if (status === 500) {
-          errorMessage =
-            data?.message || "Server error. Please try again later.";
+        if (isProduction) {
+          errorMessage = "Cannot connect to backend server";
         } else {
-          errorMessage = data?.message || `Server error (${status})`;
+          errorMessage =
+            "Cannot connect to server. Please check backend is running.";
         }
+      } else if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
       }
 
-      // Show main error
       enqueueSnackbar(errorMessage, {
         variant: "error",
-        autoHideDuration: 6000,
+        autoHideDuration: 5000,
       });
-
-      // Show detailed help for network issues
-      if (
-        detailedMessage &&
-        (error?.code === "NETWORK_ERROR" || error?.code === "ECONNREFUSED")
-      ) {
-        setTimeout(() => {
-          enqueueSnackbar(detailedMessage, {
-            variant: "info",
-            autoHideDuration: 8000,
-          });
-        }, 1000);
-      }
     },
   });
 
@@ -223,6 +126,20 @@ const Register = ({ setIsRegister }) => {
   // =============================
   return (
     <div className="w-full max-w-md mx-auto p-6">
+      {/* Environment Indicator */}
+      <div
+        className={`mb-4 p-3 rounded-lg border text-center text-sm ${
+          isProduction
+            ? "bg-green-900 bg-opacity-20 border-green-700 text-green-300"
+            : "bg-blue-900 bg-opacity-20 border-blue-700 text-blue-300"
+        }`}
+      >
+        <p>
+          {isProduction ? "🚀 PRODUCTION" : "🔧 DEVELOPMENT"} |
+          {isMobile ? " 📱 MOBILE" : " 💻 DESKTOP"}
+        </p>
+      </div>
+
       <div className="text-center mb-6">
         <h2 className="text-2xl font-bold text-white mb-2">Create Account</h2>
         <p className="text-[#ababab] text-sm">
@@ -230,29 +147,13 @@ const Register = ({ setIsRegister }) => {
         </p>
       </div>
 
-      {/* Debug Info - Remove in production */}
-      {process.env.NODE_ENV === "development" && (
-        <div className="mb-4 p-3 bg-yellow-900 bg-opacity-20 border border-yellow-700 rounded-lg">
-          <p className="text-yellow-300 text-xs">
-            🔧 <strong>Debug Mode</strong> - Check browser console for detailed
-            error logs
-          </p>
-        </div>
-      )}
-
       <form onSubmit={handleSubmit}>
         {/* Name Field */}
-        <div className="mb-4">
-          <label className="block text-[#ababab] mb-2 text-sm font-medium">
-            Employee Name *
+        <div>
+          <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+            Employee Name
           </label>
-          <div
-            className={`flex items-center rounded-lg p-4 bg-[#1f1f1f] border transition-colors ${
-              errors.name
-                ? "border-red-500"
-                : "border-gray-700 focus-within:border-yellow-400"
-            }`}
-          >
+          <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f] border border-gray-700 focus-within:border-yellow-400 transition-colors">
             <input
               type="text"
               name="name"
@@ -264,23 +165,14 @@ const Register = ({ setIsRegister }) => {
               disabled={registerMutation.isLoading}
             />
           </div>
-          {errors.name && (
-            <p className="text-red-400 text-xs mt-1">{errors.name}</p>
-          )}
         </div>
 
         {/* Email Field */}
-        <div className="mb-4">
-          <label className="block text-[#ababab] mb-2 text-sm font-medium">
-            Employee Email *
+        <div>
+          <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+            Employee Email
           </label>
-          <div
-            className={`flex items-center rounded-lg p-4 bg-[#1f1f1f] border transition-colors ${
-              errors.email
-                ? "border-red-500"
-                : "border-gray-700 focus-within:border-yellow-400"
-            }`}
-          >
+          <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f] border border-gray-700 focus-within:border-yellow-400 transition-colors">
             <input
               type="email"
               name="email"
@@ -292,77 +184,52 @@ const Register = ({ setIsRegister }) => {
               disabled={registerMutation.isLoading}
             />
           </div>
-          {errors.email && (
-            <p className="text-red-400 text-xs mt-1">{errors.email}</p>
-          )}
         </div>
 
         {/* Phone Field */}
-        <div className="mb-4">
-          <label className="block text-[#ababab] mb-2 text-sm font-medium">
-            Employee Phone *
+        <div>
+          <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+            Employee Phone
           </label>
-          <div
-            className={`flex items-center rounded-lg p-4 bg-[#1f1f1f] border transition-colors ${
-              errors.phone
-                ? "border-red-500"
-                : "border-gray-700 focus-within:border-yellow-400"
-            }`}
-          >
+          <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f] border border-gray-700 focus-within:border-yellow-400 transition-colors">
             <input
               type="tel"
               name="phone"
               value={formData.phone}
               onChange={handleChange}
-              placeholder="Enter employee phone (10-15 digits)"
+              placeholder="Enter employee phone"
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
               disabled={registerMutation.isLoading}
             />
           </div>
-          {errors.phone && (
-            <p className="text-red-400 text-xs mt-1">{errors.phone}</p>
-          )}
         </div>
 
         {/* Password Field */}
-        <div className="mb-4">
-          <label className="block text-[#ababab] mb-2 text-sm font-medium">
-            Password *
+        <div>
+          <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+            Password
           </label>
-          <div
-            className={`flex items-center rounded-lg p-4 bg-[#1f1f1f] border transition-colors ${
-              errors.password
-                ? "border-red-500"
-                : "border-gray-700 focus-within:border-yellow-400"
-            }`}
-          >
+          <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f] border border-gray-700 focus-within:border-yellow-400 transition-colors">
             <input
               type="password"
               name="password"
               value={formData.password}
               onChange={handleChange}
-              placeholder="Enter password (min. 6 characters)"
+              placeholder="Enter password"
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
               disabled={registerMutation.isLoading}
             />
           </div>
-          {errors.password && (
-            <p className="text-red-400 text-xs mt-1">{errors.password}</p>
-          )}
         </div>
 
         {/* Role Selection */}
-        <div className="mb-6">
-          <label className="block text-[#ababab] mb-2 text-sm font-medium">
-            Choose your role *
+        <div>
+          <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+            Choose your role
           </label>
-          {errors.role && (
-            <p className="text-red-400 text-xs mb-2">{errors.role}</p>
-          )}
-
-          <div className="flex gap-3">
+          <div className="flex gap-3 mt-4">
             {["Cashier", "Admin"].map((role) => (
               <button
                 key={role}
@@ -385,7 +252,7 @@ const Register = ({ setIsRegister }) => {
         <button
           type="submit"
           disabled={registerMutation.isLoading}
-          className="w-full rounded-lg py-4 text-lg bg-yellow-400 text-gray-900 font-bold hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-yellow-500/25"
+          className="w-full rounded-lg mt-6 py-4 text-lg bg-yellow-400 text-gray-900 font-bold hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-yellow-500/25"
         >
           {registerMutation.isLoading ? (
             <span className="flex items-center justify-center">
@@ -429,25 +296,25 @@ const Register = ({ setIsRegister }) => {
         </div>
       </form>
 
-      {/* Help Text */}
-      <div className="mt-6 p-3 bg-gray-800 rounded-lg">
+      {/* Environment-specific Help Text */}
+      <div className="mt-4 p-3 bg-gray-800 rounded-lg">
         <p className="text-gray-400 text-xs text-center">
-          💡 <strong>Note:</strong> Admin accounts have full access to all
-          features. Cashier accounts have limited access for daily operations.
+          {isProduction ? (
+            <>
+              🚀 <strong>Production Mode</strong>
+              <br />
+              Ensure backend is deployed and running
+            </>
+          ) : (
+            <>
+              💡 <strong>Development Tips:</strong>
+              <br />• Backend running on port 8000
+              <br />• Same WiFi network for mobile
+              <br />• Use computer IP for mobile access
+            </>
+          )}
         </p>
       </div>
-
-      {/* Troubleshooting Guide */}
-      {registerMutation.isError && (
-        <div className="mt-4 p-3 bg-red-900 bg-opacity-20 border border-red-700 rounded-lg">
-          <p className="text-red-300 text-xs">
-            🔧 <strong>Troubleshooting:</strong>
-            <br />• Check if backend server is running
-            <br />• Verify API endpoint: /api/user/register
-            <br />• Check browser console for detailed errors
-          </p>
-        </div>
-      )}
     </div>
   );
 };
