@@ -1,6 +1,6 @@
 // Header.jsx
 import { useState, useEffect } from "react";
-import { FaUserCircle, FaBell, FaBars, FaTimes, FaBox } from "react-icons/fa";
+import { FaUserCircle, FaBars, FaTimes, FaBox } from "react-icons/fa";
 import logo from "../../assets/images/delish.jpg";
 import { useDispatch, useSelector } from "react-redux";
 import { IoLogOut } from "react-icons/io5";
@@ -74,12 +74,6 @@ const Header = () => {
       icon: <FaBox className="text-white text-xl" />,
       show: true,
     },
-    {
-      name: "Notifications",
-      path: "#",
-      icon: <FaBell className="text-white text-xl" />,
-      show: true,
-    },
   ];
 
   return (
@@ -112,6 +106,17 @@ const Header = () => {
 
         {/* Desktop Navigation - Hidden on mobile */}
         <div className="hidden sm:flex items-center gap-4">
+          {/* Dashboard Button for Desktop - Admin Only */}
+          {userData.role === "Admin" && (
+            <button
+              onClick={() => navigate("/dashboard")}
+              className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+            >
+              <MdDashboard className="text-white text-lg" />
+              <span className="text-sm font-medium">Dashboard</span>
+            </button>
+          )}
+
           {/* Inventory Button for Desktop */}
           <button
             onClick={() => navigate("/inventory")}
@@ -123,16 +128,6 @@ const Header = () => {
 
           {/* Desktop User Info */}
           <div className="flex items-center gap-4">
-            <div className="flex items-center gap-3">
-              {userData.role === "Admin" && (
-                <MdDashboard
-                  onClick={() => navigate("/dashboard")}
-                  className="text-white text-xl cursor-pointer hover:text-gray-200 transition-colors"
-                />
-              )}
-              <FaBell className="text-white text-xl cursor-pointer hover:text-gray-200 transition-colors" />
-            </div>
-
             <div className="flex items-center gap-3 cursor-pointer">
               <FaUserCircle className="text-white text-2xl" />
               <div className="flex flex-col items-start">
@@ -174,6 +169,20 @@ const Header = () => {
 
             {/* Menu Items */}
             <div className="space-y-4">
+              {/* Dashboard Button for Mobile - Admin Only */}
+              {userData.role === "Admin" && (
+                <div
+                  onClick={() => {
+                    navigate("/dashboard");
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="flex items-center gap-3 p-3 bg-gray-600 rounded-lg cursor-pointer hover:bg-gray-700 transition-colors"
+                >
+                  <MdDashboard className="text-white text-xl" />
+                  <span className="text-white font-medium">Dashboard</span>
+                </div>
+              )}
+
               {/* Inventory Button for Mobile */}
               <div
                 onClick={() => {

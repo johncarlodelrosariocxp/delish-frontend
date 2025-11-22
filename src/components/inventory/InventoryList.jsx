@@ -4,9 +4,39 @@ import {
   SwapOutlined,
   DeleteOutlined,
   ExclamationCircleOutlined,
+  PlusOutlined,
+  MinusOutlined,
 } from "@ant-design/icons";
+import { updateInventoryItem } from "../../https";
 
-const InventoryList = ({ data, onEdit, onTransfer, onDelete, loading }) => {
+const InventoryList = ({
+  data,
+  onEdit,
+  onTransfer,
+  onDelete,
+  loading,
+  onRefresh,
+}) => {
+  const handleQuantityUpdate = async (item, location, change) => {
+    try {
+      const currentQuantity = item[location] || 0;
+      const newQuantity = Math.max(0, currentQuantity + change);
+
+      await updateInventoryItem({
+        itemId: item._id,
+        [location]: newQuantity,
+      });
+
+      // Call parent's refresh function instead of reloading the page
+      if (onRefresh) {
+        onRefresh();
+      }
+    } catch (error) {
+      console.error("Error updating quantity:", error);
+      alert("Error updating quantity");
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-8">
@@ -21,22 +51,16 @@ const InventoryList = ({ data, onEdit, onTransfer, onDelete, loading }) => {
         <thead className="bg-gray-50">
           <tr>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Item Name
+              Item
+            </th>
+            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              Shop Stock
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Stock Room
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Shop
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Price/Cost
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Supplier
-            </th>
-            <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-              Status
+              Min Level
             </th>
             <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Actions
@@ -45,22 +69,12 @@ const InventoryList = ({ data, onEdit, onTransfer, onDelete, loading }) => {
         </thead>
         <tbody className="bg-white divide-y divide-gray-200">
           {data.map((item) => {
-            // Extract quantity from the string (e.g., "9 pack" -> 9)
-            const stockRoomQuantity =
-              typeof item.stockRoomQuantity === "string"
-                ? parseInt(item.stockRoomQuantity.split(" ")[0]) || 0
-                : item.stockRoomQuantity || 0;
+            const shopQuantity = item.shopQuantity || 0;
+            const stockRoomQuantity = item.stockRoomQuantity || 0;
+            const minStockLevel = item.minStockLevel || 5;
 
-            const shopQuantity =
-              typeof item.shopQuantity === "string"
-                ? parseInt(item.shopQuantity.split(" ")[0]) || 0
-                : item.shopQuantity || 0;
-
-            const minStockLevel = item.minStockLevel || 0;
-            const unit = item.unit || "pcs";
-
-            const isStockRoomLow = stockRoomQuantity <= minStockLevel;
             const isShopLow = shopQuantity <= minStockLevel;
+            const isStockRoomLow = stockRoomQuantity <= minStockLevel;
 
             return (
               <tr key={item._id} className="hover:bg-gray-50">
@@ -73,43 +87,85 @@ const InventoryList = ({ data, onEdit, onTransfer, onDelete, loading }) => {
                   </div>
                 </td>
 
+                {/* Shop Quantity */}
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
-                    <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                        isStockRoomLow
-                          ? "bg-red-100 text-red-800"
-                          : "bg-green-100 text-green-800"
-                      }`}
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() =>
+                        handleQuantityUpdate(item, "shopQuantity", -1)
+                      }
+                      className="p-1 text-red-600 hover:bg-red-50 rounded"
+                      disabled={shopQuantity <= 0}
                     >
-                      {stockRoomQuantity} {unit}
-                    </span>
-                    {isStockRoomLow && (
-                      <div
-                        className="ml-1 text-red-500 cursor-help"
-                        title="Low stock alert"
-                      >
-                        <ExclamationCircleOutlined />
-                      </div>
-                    )}
-                  </div>
-                </td>
+                      <MinusOutlined />
+                    </button>
 
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="flex items-center">
                     <span
-                      className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                      className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium min-w-12 justify-center ${
                         isShopLow
-                          ? "bg-red-100 text-red-800"
-                          : "bg-blue-100 text-blue-800"
+                          ? "bg-red-100 text-red-800 border border-red-300"
+                          : "bg-green-100 text-green-800 border border-green-300"
                       }`}
                     >
-                      {shopQuantity} {unit}
+                      {shopQuantity}
                     </span>
+
+                    <button
+                      onClick={() =>
+                        handleQuantityUpdate(item, "shopQuantity", 1)
+                      }
+                      className="p-1 text-green-600 hover:bg-green-50 rounded"
+                    >
+                      <PlusOutlined />
+                    </button>
+
                     {isShopLow && (
                       <div
-                        className="ml-1 text-red-500 cursor-help"
-                        title="Low stock alert"
+                        className="text-red-500 cursor-help"
+                        title="Low stock - needs restocking"
+                      >
+                        <ExclamationCircleOutlined />
+                      </div>
+                    )}
+                  </div>
+                </td>
+
+                {/* Stock Room Quantity */}
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center space-x-2">
+                    <button
+                      onClick={() =>
+                        handleQuantityUpdate(item, "stockRoomQuantity", -1)
+                      }
+                      className="p-1 text-red-600 hover:bg-red-50 rounded"
+                      disabled={stockRoomQuantity <= 0}
+                    >
+                      <MinusOutlined />
+                    </button>
+
+                    <span
+                      className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium min-w-12 justify-center ${
+                        isStockRoomLow
+                          ? "bg-red-100 text-red-800 border border-red-300"
+                          : "bg-blue-100 text-blue-800 border border-blue-300"
+                      }`}
+                    >
+                      {stockRoomQuantity}
+                    </span>
+
+                    <button
+                      onClick={() =>
+                        handleQuantityUpdate(item, "stockRoomQuantity", 1)
+                      }
+                      className="p-1 text-green-600 hover:bg-green-50 rounded"
+                    >
+                      <PlusOutlined />
+                    </button>
+
+                    {isStockRoomLow && (
+                      <div
+                        className="text-red-500 cursor-help"
+                        title="Low stock - needs restocking"
                       >
                         <ExclamationCircleOutlined />
                       </div>
@@ -118,27 +174,8 @@ const InventoryList = ({ data, onEdit, onTransfer, onDelete, loading }) => {
                 </td>
 
                 <td className="px-6 py-4 whitespace-nowrap">
-                  <div className="text-sm text-gray-900">
-                    Price: ₱{item.price}
-                  </div>
-                  <div className="text-sm text-gray-500">
-                    Cost: ₱{item.cost}
-                  </div>
-                </td>
-
-                <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                  {item.supplier || "-"}
-                </td>
-
-                <td className="px-6 py-4 whitespace-nowrap">
-                  <span
-                    className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                      item.isActive
-                        ? "bg-green-100 text-green-800"
-                        : "bg-gray-100 text-gray-800"
-                    }`}
-                  >
-                    {item.isActive ? "Active" : "Inactive"}
+                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-gray-100 text-gray-800">
+                    {minStockLevel}
                   </span>
                 </td>
 

@@ -83,11 +83,13 @@ const StockTransfer = ({ item, visible, onClose, onSuccess }) => {
             </h4>
             <div className="text-sm text-blue-700">
               <p>
-                <strong>Stock Room:</strong> {item.stockRoomQuantity}{" "}
-                {item.unit}
+                <strong>Shop:</strong> {item.shopQuantity}
               </p>
               <p>
-                <strong>Shop:</strong> {item.shopQuantity} {item.unit}
+                <strong>Stock Room:</strong> {item.stockRoomQuantity}
+              </p>
+              <p>
+                <strong>Min Level:</strong> {item.minStockLevel}
               </p>
             </div>
           </div>
@@ -146,7 +148,7 @@ const StockTransfer = ({ item, visible, onClose, onSuccess }) => {
             />
             {formData.from && (
               <p className="text-xs text-gray-500 mt-1">
-                Maximum: {getMaxQuantity()} {item?.unit}
+                Maximum: {getMaxQuantity()} items available
               </p>
             )}
           </div>
