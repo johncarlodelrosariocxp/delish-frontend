@@ -1,9 +1,105 @@
 import React, { useRef } from "react";
 import { motion } from "framer-motion";
-import { FaCheck, FaPrint, FaTimes, FaReceipt } from "react-icons/fa";
+import {
+  FaCheck,
+  FaPrint,
+  FaTimes,
+  FaReceipt,
+  FaBluetooth,
+  FaCashRegister,
+} from "react-icons/fa";
 
 const Invoice = ({ orderInfo, setShowInvoice }) => {
   const invoiceRef = useRef(null);
+
+  // Thermal printer ESC/POS commands
+  const thermalCommands = {
+    INIT: "\x1B\x40", // Initialize printer
+    ALIGN_LEFT: "\x1B\x61\x00", // Left alignment
+    ALIGN_CENTER: "\x1B\x61\x01", // Center alignment
+    ALIGN_RIGHT: "\x1B\x61\x02", // Right alignment
+    BOLD_ON: "\x1B\x45\x01", // Bold on
+    BOLD_OFF: "\x1B\x45\x00", // Bold off
+    CUT: "\x1D\x56\x41\x10", // Full cut
+    FEED_LINE: "\x0A", // Feed line
+    TEXT_NORMAL: "\x1B\x21\x00", // Normal text
+    TEXT_LARGE: "\x1B\x21\x10", // Double height
+    // Cash drawer commands for POS58D_UB
+    DRAWER_KICK_2: "\x1B\x70\x00\x19\xFA", // Kick drawer pin 2
+    DRAWER_KICK_5: "\x1B\x70\x01\x19\xFA", // Kick drawer pin 5
+  };
+
+  // Function to open cash drawer
+  const openCashDrawer = async () => {
+    try {
+      console.log("Attempting to open cash drawer...");
+
+      // For mobile devices, we'll use Bluetooth to send the drawer command
+      if (navigator.bluetooth) {
+        await sendDrawerCommandViaBluetooth();
+      } else {
+        // Fallback for devices without Bluetooth API support
+        console.log("Bluetooth API not available, using alternative method");
+        alert(
+          "Cash drawer should open automatically. If not, please open it manually."
+        );
+      }
+    } catch (error) {
+      console.error("Failed to open cash drawer:", error);
+      alert("Please open the cash drawer manually.");
+    }
+  };
+
+  // Send drawer command via Bluetooth
+  const sendDrawerCommandViaBluetooth = async () => {
+    try {
+      console.log("Searching for Bluetooth printer...");
+
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          "000018f0-0000-1000-8000-00805f9b34fb",
+          "00001101-0000-1000-8000-00805f9b34fb",
+        ],
+      });
+
+      console.log("Connecting to device...");
+      const server = await device.gatt.connect();
+
+      let service;
+      try {
+        service = await server.getPrimaryService(
+          "000018f0-0000-1000-8000-00805f9b34fb"
+        );
+      } catch (error) {
+        service = await server.getPrimaryService(
+          "00001101-0000-1000-8000-00805f9b34fb"
+        );
+      }
+
+      const characteristics = await service.getCharacteristics();
+      const writeCharacteristic = characteristics.find(
+        (char) => char.properties.write || char.properties.writeWithoutResponse
+      );
+
+      if (writeCharacteristic) {
+        // Send cash drawer open command
+        const encoder = new TextEncoder();
+        const drawerCommand = encoder.encode(thermalCommands.DRAWER_KICK_2);
+        await writeCharacteristic.writeValue(drawerCommand);
+        console.log("Cash drawer command sent successfully");
+
+        // Disconnect after sending command
+        setTimeout(() => {
+          device.gatt.disconnect();
+          console.log("Disconnected from Bluetooth device");
+        }, 500);
+      }
+    } catch (error) {
+      console.error("Bluetooth drawer command failed:", error);
+      throw error;
+    }
+  };
 
   const handlePrint = () => {
     if (!invoiceRef.current) return;
@@ -201,65 +297,257 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       setTimeout(() => {
         printWindow.print();
         printWindow.onafterprint = () => {
+          // Open cash drawer after printing
+          openCashDrawer();
           setTimeout(() => printWindow.close(), 100);
         };
       }, 250);
     };
   };
 
-  const handleThermalPrint = () => {
-    let thermalText = `
-DELISH RESTAURANT
-ORDER RECEIPT
-✓ Thank you!
+  const generateThermalText = (includeDrawerCommand = false) => {
+    const orderId = orderInfo.orderDate
+      ? Math.floor(new Date(orderInfo.orderDate).getTime()).toString().slice(-6)
+      : "N/A";
 
-Order ID: ${
-      orderInfo.orderDate
-        ? Math.floor(new Date(orderInfo.orderDate).getTime())
-        : "N/A"
+    const customerName = orderInfo.customerDetails?.name || "Walk-in Customer";
+    const orderDate = new Date(orderInfo.orderDate).toLocaleString();
+
+    let receiptText = thermalCommands.INIT; // Initialize printer
+
+    // Header
+    receiptText += thermalCommands.ALIGN_CENTER;
+    receiptText += thermalCommands.TEXT_LARGE;
+    receiptText += "DELISH RESTAURANT\n";
+    receiptText += thermalCommands.TEXT_NORMAL;
+    receiptText += "ORDER RECEIPT\n";
+    receiptText += "✓ Thank you!\n\n";
+
+    // Order Info
+    receiptText += thermalCommands.ALIGN_LEFT;
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += `Order ID: ${orderId}\n`;
+    receiptText += `Name: ${customerName}\n`;
+    receiptText += `Date: ${orderDate}\n`;
+    receiptText += thermalCommands.BOLD_OFF;
+    receiptText += "=".repeat(32) + "\n\n";
+
+    // Items
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += "ORDER ITEMS:\n";
+    receiptText += thermalCommands.BOLD_OFF;
+
+    orderInfo.items?.forEach((item) => {
+      const itemName =
+        item.name.length > 20 ? item.name.substring(0, 17) + "..." : item.name;
+      const line = `${itemName}${item.isFree ? " (FREE)" : ""} x${
+        item.quantity
+      }`;
+      const price = item.isFree
+        ? "FREE"
+        : `₱${(item.price * item.quantity).toFixed(2)}`;
+
+      receiptText += line;
+      receiptText += " ".repeat(Math.max(1, 32 - line.length - price.length));
+      receiptText += price + "\n";
+    });
+
+    receiptText += "\n" + "=".repeat(32) + "\n";
+
+    // Bill Summary
+    receiptText += "Subtotal:";
+    receiptText += " ".repeat(
+      32 -
+        "Subtotal:".length -
+        (orderInfo.bills?.total?.toFixed(2) || "0.00").length -
+        1
+    );
+    receiptText += `₱${orderInfo.bills?.total?.toFixed(2) || "0.00"}\n`;
+
+    if (orderInfo.bills?.pwdSssDiscount > 0) {
+      receiptText += "PWD/SSS Discount:";
+      receiptText += " ".repeat(
+        32 -
+          "PWD/SSS Discount:".length -
+          orderInfo.bills.pwdSssDiscount.toFixed(2).length -
+          1
+      );
+      receiptText += `-₱${orderInfo.bills.pwdSssDiscount.toFixed(2)}\n`;
     }
-Name: ${orderInfo.customerDetails?.name || "Walk-in"}
-Date: ${new Date(orderInfo.orderDate).toLocaleDateString()}
-${"=".repeat(28)}
-ITEMS:
-${orderInfo.items
-  ?.map(
-    (item) =>
-      `${item.name}${item.isFree ? " (FREE)" : ""} x${item.quantity} - ₱${(
-        item.price * item.quantity
-      ).toFixed(2)}`
-  )
-  .join("\n")}
-${"=".repeat(28)}
-Subtotal: ₱${orderInfo.bills?.total?.toFixed(2) || "0.00"}
-${
-  orderInfo.bills?.pwdSssDiscount > 0
-    ? `PWD/SSS: -₱${orderInfo.bills.pwdSssDiscount.toFixed(2)}\n`
-    : ""
-}${
-      orderInfo.bills?.employeeDiscount > 0
-        ? `Emp Disc: -₱${orderInfo.bills.employeeDiscount.toFixed(2)}\n`
-        : ""
-    }VAT (12%): ₱${orderInfo.bills?.tax?.toFixed(2) || "0.00"}
-TOTAL: ₱${orderInfo.bills?.totalWithTax?.toFixed(2) || "0.00"}
-${"=".repeat(28)}
-Payment: ${orderInfo.paymentMethod || "Cash"}
-Status: ${orderInfo.orderStatus || "In Progress"}
-Thank you!
-    `.trim();
 
-    const textBlob = new Blob([thermalText], { type: "text/plain" });
+    if (orderInfo.bills?.employeeDiscount > 0) {
+      receiptText += "Employee Discount:";
+      receiptText += " ".repeat(
+        32 -
+          "Employee Discount:".length -
+          orderInfo.bills.employeeDiscount.toFixed(2).length -
+          1
+      );
+      receiptText += `-₱${orderInfo.bills.employeeDiscount.toFixed(2)}\n`;
+    }
+
+    receiptText += "VAT (12%):";
+    receiptText += " ".repeat(
+      32 -
+        "VAT (12%):".length -
+        (orderInfo.bills?.tax?.toFixed(2) || "0.00").length -
+        1
+    );
+    receiptText += `₱${orderInfo.bills?.tax?.toFixed(2) || "0.00"}\n`;
+
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += "TOTAL:";
+    receiptText += " ".repeat(
+      32 -
+        "TOTAL:".length -
+        (orderInfo.bills?.totalWithTax?.toFixed(2) || "0.00").length -
+        1
+    );
+    receiptText += `₱${orderInfo.bills?.totalWithTax?.toFixed(2) || "0.00"}\n`;
+    receiptText += thermalCommands.BOLD_OFF;
+
+    receiptText += "=".repeat(32) + "\n\n";
+
+    // Payment Info
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += `Payment: ${orderInfo.paymentMethod || "Cash"}\n`;
+    receiptText += `Status: ${orderInfo.orderStatus || "In Progress"}\n`;
+    receiptText += thermalCommands.BOLD_OFF;
+
+    receiptText += "\n" + thermalCommands.ALIGN_CENTER;
+    receiptText += "Thank you for your purchase!\n";
+    receiptText += "Please come again!\n\n";
+
+    // Add cash drawer command if requested
+    if (includeDrawerCommand) {
+      receiptText += thermalCommands.DRAWER_KICK_2;
+    }
+
+    // Feed and cut
+    receiptText += thermalCommands.FEED_LINE;
+    receiptText += thermalCommands.FEED_LINE;
+    receiptText += thermalCommands.CUT;
+
+    return receiptText;
+  };
+
+  const handleBluetoothPrint = async () => {
+    try {
+      if (!navigator.bluetooth) {
+        alert(
+          "Bluetooth is not supported in this browser. Please use Chrome Mobile or Samsung Internet browser."
+        );
+        return;
+      }
+
+      console.log("Requesting Bluetooth device...");
+
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          "000018f0-0000-1000-8000-00805f9b34fb",
+          "00001101-0000-1000-8000-00805f9b34fb",
+        ],
+      });
+
+      console.log("Connecting to GATT server...");
+      const server = await device.gatt.connect();
+
+      let service;
+      try {
+        service = await server.getPrimaryService(
+          "000018f0-0000-1000-8000-00805f9b34fb"
+        );
+      } catch (error) {
+        console.log("POS service not found, trying SPP...");
+        service = await server.getPrimaryService(
+          "00001101-0000-1000-8000-00805f9b34fb"
+        );
+      }
+
+      console.log("Getting characteristics...");
+      const characteristics = await service.getCharacteristics();
+
+      const writeCharacteristic = characteristics.find(
+        (char) => char.properties.write || char.properties.writeWithoutResponse
+      );
+
+      if (!writeCharacteristic) {
+        throw new Error("No writable characteristic found");
+      }
+
+      // Generate receipt with drawer command
+      const receiptText = generateThermalText(true);
+
+      const encoder = new TextEncoder();
+      const data = encoder.encode(receiptText);
+
+      console.log("Sending data to printer...");
+      await writeCharacteristic.writeValue(data);
+
+      console.log("Print job sent successfully!");
+      alert("Receipt printed successfully! Cash drawer should open.");
+
+      // Disconnect from device
+      setTimeout(() => device.gatt.disconnect(), 1000);
+    } catch (error) {
+      console.error("Bluetooth printing failed:", error);
+
+      if (error.name === "NotFoundError") {
+        alert(
+          "No Bluetooth printer found. Please:\n1. Turn on your POS58D_UB printer\n2. Make sure it's in pairing mode\n3. Check Bluetooth is enabled on your device"
+        );
+      } else if (error.name === "NetworkError") {
+        alert(
+          "Connection failed. Please check:\n1. Printer is within range\n2. No other device is connected to the printer\n3. Try re-pairing the device"
+        );
+      } else if (error.name === "SecurityError") {
+        alert(
+          "Bluetooth permission denied. Please allow Bluetooth access in your browser settings."
+        );
+      } else {
+        alert(`Printing error: ${error.message}. Trying alternative method...`);
+        handleThermalPrint();
+      }
+    }
+  };
+
+  const handleThermalPrint = () => {
+    const receiptText = generateThermalText();
+
+    // Remove ESC/POS commands for text display
+    const cleanText = receiptText
+      .replace(/\x1B\[[0-9;]*[A-Za-z]/g, "")
+      .replace(/\x1B\x40/g, "")
+      .replace(/\x1D\x56\x41\x10/g, "")
+      .trim();
+
+    const textBlob = new Blob([cleanText], { type: "text/plain" });
     const textUrl = URL.createObjectURL(textBlob);
 
     const textWindow = window.open(textUrl, "_blank");
     if (textWindow) {
       setTimeout(() => {
         textWindow.print();
+        // Open cash drawer after thermal print
+        openCashDrawer();
         setTimeout(() => {
           textWindow.close();
           URL.revokeObjectURL(textUrl);
         }, 100);
       }, 500);
+    }
+  };
+
+  // Test cash drawer function
+  const handleTestDrawer = async () => {
+    try {
+      await openCashDrawer();
+      alert("Cash drawer command sent!");
+    } catch (error) {
+      alert(
+        "Failed to open cash drawer automatically. Please open it manually."
+      );
     }
   };
 
@@ -288,30 +576,30 @@ Thank you!
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.15 }}
-        className="bg-white rounded-lg shadow-xl w-full max-w-[280px] max-h-[85vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-lg shadow-xl w-full max-w-[320px] max-h-[90vh] overflow-hidden flex flex-col"
       >
         {/* Header */}
-        <div className="text-center p-3 border-b">
+        <div className="text-center p-4 border-b">
           <motion.div
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.2 }}
-            className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-2"
+            className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-2"
           >
-            <FaCheck className="text-white text-sm" />
+            <FaCheck className="text-white text-base" />
           </motion.div>
-          <h2 className="text-lg font-bold text-gray-800">Confirmed!</h2>
-          <p className="text-gray-600 text-[11px] mt-0.5">Thank you</p>
+          <h2 className="text-xl font-bold text-gray-800">Order Confirmed!</h2>
+          <p className="text-gray-600 text-xs mt-1">Thank you for your order</p>
         </div>
 
         {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-3 space-y-2" ref={invoiceRef}>
+        <div className="flex-1 overflow-y-auto p-4 space-y-3" ref={invoiceRef}>
           {/* Order Details */}
-          <div className="bg-gray-50 p-2 rounded">
-            <h3 className="font-semibold text-gray-700 text-[11px] mb-1.5">
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <h3 className="font-semibold text-gray-700 text-sm mb-2">
               Order Details
             </h3>
-            <div className="grid grid-cols-2 gap-1 text-[10px]">
+            <div className="grid grid-cols-2 gap-2 text-xs">
               <div>
                 <span className="text-gray-600">ID:</span>
                 <p className="font-medium truncate">
@@ -338,15 +626,15 @@ Thank you!
           </div>
 
           {/* Items Ordered */}
-          <div className="bg-gray-50 p-2 rounded">
-            <h3 className="font-semibold text-gray-700 text-[11px] mb-1.5">
-              Items
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <h3 className="font-semibold text-gray-700 text-sm mb-2">
+              Items Ordered
             </h3>
-            <div className="space-y-1.5 max-h-24 overflow-y-auto">
+            <div className="space-y-2 max-h-32 overflow-y-auto">
               {orderInfo.items?.map((item, index) => (
                 <div
                   key={index}
-                  className={`flex justify-between items-start p-1.5 rounded text-[10px] ${
+                  className={`flex justify-between items-start p-2 rounded text-xs ${
                     item.isFree ? "bg-red-50 border border-red-200" : "bg-white"
                   }`}
                 >
@@ -363,7 +651,7 @@ Thank you!
                       {item.quantity} × ₱{item.pricePerQuantity?.toFixed(2)}
                     </p>
                   </div>
-                  <div className="text-right min-w-14">
+                  <div className="text-right min-w-16">
                     <p
                       className={`font-semibold ${
                         item.isFree ? "text-red-600" : "text-gray-800"
@@ -380,11 +668,11 @@ Thank you!
           </div>
 
           {/* Bill Summary */}
-          <div className="bg-gray-50 p-2 rounded">
-            <h3 className="font-semibold text-gray-700 text-[11px] mb-1.5">
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <h3 className="font-semibold text-gray-700 text-sm mb-2">
               Bill Summary
             </h3>
-            <div className="space-y-1 text-[10px]">
+            <div className="space-y-1 text-xs">
               <div className="flex justify-between">
                 <span>Subtotal:</span>
                 <span>₱{orderInfo.bills?.total?.toFixed(2) || "0.00"}</span>
@@ -409,7 +697,7 @@ Thank you!
                 <span>₱{orderInfo.bills?.tax?.toFixed(2) || "0.00"}</span>
               </div>
 
-              <div className="border-t pt-1.5 mt-1.5 flex justify-between font-bold text-[11px]">
+              <div className="border-t pt-2 mt-2 flex justify-between font-bold text-sm">
                 <span>Total:</span>
                 <span className="text-green-600">
                   ₱{orderInfo.bills?.totalWithTax?.toFixed(2) || "0.00"}
@@ -419,11 +707,11 @@ Thank you!
           </div>
 
           {/* Payment Information */}
-          <div className="bg-gray-50 p-2 rounded">
-            <h3 className="font-semibold text-gray-700 text-[11px] mb-1.5">
-              Payment
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <h3 className="font-semibold text-gray-700 text-sm mb-2">
+              Payment Information
             </h3>
-            <div className="space-y-1 text-[10px]">
+            <div className="space-y-1 text-xs">
               <div className="flex justify-between">
                 <span>Method:</span>
                 <span className="font-medium">
@@ -440,29 +728,43 @@ Thank you!
           </div>
         </div>
 
-        {/* Action Buttons */}
-        <div className="p-3 border-t bg-gray-50">
-          <div className="flex gap-1.5 mb-1.5">
+        {/* Action Buttons - Mobile Optimized */}
+        <div className="p-4 border-t bg-gray-50">
+          <div className="grid grid-cols-2 gap-2 mb-2">
             <button
               onClick={handlePrint}
-              className="flex items-center justify-center gap-1 bg-blue-600 text-white px-2 py-1.5 rounded flex-1 hover:bg-blue-700 transition-colors text-[10px] font-semibold"
+              className="flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-3 rounded-lg hover:bg-blue-700 transition-colors text-xs font-semibold"
             >
-              <FaPrint className="text-[8px]" />
+              <FaPrint className="text-xs" />
               Print
             </button>
             <button
-              onClick={handleThermalPrint}
-              className="flex items-center justify-center gap-1 bg-green-600 text-white px-2 py-1.5 rounded flex-1 hover:bg-green-700 transition-colors text-[10px] font-semibold"
+              onClick={handleBluetoothPrint}
+              className="flex items-center justify-center gap-2 bg-purple-600 text-white px-3 py-3 rounded-lg hover:bg-purple-700 transition-colors text-xs font-semibold"
             >
-              <FaReceipt className="text-[8px]" />
+              <FaBluetooth className="text-xs" />
+              Bluetooth
+            </button>
+            <button
+              onClick={handleThermalPrint}
+              className="flex items-center justify-center gap-2 bg-green-600 text-white px-3 py-3 rounded-lg hover:bg-green-700 transition-colors text-xs font-semibold"
+            >
+              <FaReceipt className="text-xs" />
               Thermal
+            </button>
+            <button
+              onClick={handleTestDrawer}
+              className="flex items-center justify-center gap-2 bg-orange-600 text-white px-3 py-3 rounded-lg hover:bg-orange-700 transition-colors text-xs font-semibold"
+            >
+              <FaCashRegister className="text-xs" />
+              Drawer
             </button>
           </div>
           <button
             onClick={() => setShowInvoice(false)}
-            className="flex items-center justify-center gap-1 bg-gray-600 text-white px-2 py-1.5 rounded hover:bg-gray-700 transition-colors w-full text-[10px] font-semibold"
+            className="flex items-center justify-center gap-2 bg-gray-600 text-white px-3 py-3 rounded-lg hover:bg-gray-700 transition-colors w-full text-xs font-semibold"
           >
-            <FaTimes className="text-[8px]" />
+            <FaTimes className="text-xs" />
             Close
           </button>
         </div>
