@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useRef, useState } from "react";
 import { motion } from "framer-motion";
 import {
   FaCheck,
@@ -7,10 +7,15 @@ import {
   FaReceipt,
   FaBluetooth,
   FaCashRegister,
+  FaLink,
+  FaUnlink,
 } from "react-icons/fa";
 
 const Invoice = ({ orderInfo, setShowInvoice }) => {
   const invoiceRef = useRef(null);
+  const [bluetoothDevice, setBluetoothDevice] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
 
   // Thermal printer ESC/POS commands
   const thermalCommands = {
@@ -29,30 +34,17 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     DRAWER_KICK_5: "\x1B\x70\x01\x19\xFA", // Kick drawer pin 5
   };
 
-  // Function to open cash drawer
-  const openCashDrawer = async () => {
+  // Connect to Bluetooth printer
+  const connectBluetooth = async () => {
     try {
-      console.log("Attempting to open cash drawer...");
-
-      // For mobile devices, we'll use Bluetooth to send the drawer command
-      if (navigator.bluetooth) {
-        await sendDrawerCommandViaBluetooth();
-      } else {
-        // Fallback for devices without Bluetooth API support
-        console.log("Bluetooth API not available, using alternative method");
+      if (!navigator.bluetooth) {
         alert(
-          "Cash drawer should open automatically. If not, please open it manually."
+          "Bluetooth is not supported in this browser. Please use Chrome Mobile or Samsung Internet browser."
         );
+        return;
       }
-    } catch (error) {
-      console.error("Failed to open cash drawer:", error);
-      alert("Please open the cash drawer manually.");
-    }
-  };
 
-  // Send drawer command via Bluetooth
-  const sendDrawerCommandViaBluetooth = async () => {
-    try {
+      setIsConnecting(true);
       console.log("Searching for Bluetooth printer...");
 
       const device = await navigator.bluetooth.requestDevice({
@@ -82,22 +74,117 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         (char) => char.properties.write || char.properties.writeWithoutResponse
       );
 
-      if (writeCharacteristic) {
-        // Send cash drawer open command
-        const encoder = new TextEncoder();
-        const drawerCommand = encoder.encode(thermalCommands.DRAWER_KICK_2);
-        await writeCharacteristic.writeValue(drawerCommand);
-        console.log("Cash drawer command sent successfully");
-
-        // Disconnect after sending command
-        setTimeout(() => {
-          device.gatt.disconnect();
-          console.log("Disconnected from Bluetooth device");
-        }, 500);
+      if (!writeCharacteristic) {
+        throw new Error("No writable characteristic found");
       }
+
+      setBluetoothDevice({ device, server, writeCharacteristic });
+      setIsConnected(true);
+      setIsConnecting(false);
+
+      alert("Successfully connected to Bluetooth printer!");
+
+      // Handle device disconnection
+      device.addEventListener("gattserverdisconnected", () => {
+        setIsConnected(false);
+        setBluetoothDevice(null);
+        console.log("Bluetooth device disconnected");
+      });
+    } catch (error) {
+      setIsConnecting(false);
+      console.error("Bluetooth connection failed:", error);
+
+      if (error.name === "NotFoundError") {
+        alert(
+          "No Bluetooth printer found. Please:\n1. Turn on your POS58D_UB printer\n2. Make sure it's in pairing mode\n3. Check Bluetooth is enabled on your device"
+        );
+      } else if (error.name === "NetworkError") {
+        alert(
+          "Connection failed. Please check:\n1. Printer is within range\n2. No other device is connected to the printer\n3. Try re-pairing the device"
+        );
+      } else if (error.name === "SecurityError") {
+        alert(
+          "Bluetooth permission denied. Please allow Bluetooth access in your browser settings."
+        );
+      } else {
+        alert(`Connection error: ${error.message}`);
+      }
+    }
+  };
+
+  // Disconnect from Bluetooth printer
+  const disconnectBluetooth = async () => {
+    if (bluetoothDevice) {
+      try {
+        bluetoothDevice.device.gatt.disconnect();
+        setIsConnected(false);
+        setBluetoothDevice(null);
+        alert("Disconnected from Bluetooth printer");
+      } catch (error) {
+        console.error("Error disconnecting:", error);
+      }
+    }
+  };
+
+  // Function to open cash drawer
+  const openCashDrawer = async () => {
+    try {
+      console.log("Attempting to open cash drawer...");
+
+      if (bluetoothDevice && isConnected) {
+        await sendDrawerCommandViaBluetooth();
+      } else {
+        // If not connected, try to connect first
+        alert(
+          "Not connected to printer. Please connect to Bluetooth first or open drawer manually."
+        );
+      }
+    } catch (error) {
+      console.error("Failed to open cash drawer:", error);
+      alert("Please open the cash drawer manually.");
+    }
+  };
+
+  // Send drawer command via Bluetooth
+  const sendDrawerCommandViaBluetooth = async () => {
+    try {
+      if (!bluetoothDevice || !isConnected) {
+        throw new Error("Not connected to Bluetooth device");
+      }
+
+      const encoder = new TextEncoder();
+      const drawerCommand = encoder.encode(thermalCommands.DRAWER_KICK_2);
+      await bluetoothDevice.writeCharacteristic.writeValue(drawerCommand);
+      console.log("Cash drawer command sent successfully");
+      alert("Cash drawer opened successfully!");
     } catch (error) {
       console.error("Bluetooth drawer command failed:", error);
       throw error;
+    }
+  };
+
+  // Print via Bluetooth
+  const printViaBluetooth = async () => {
+    try {
+      if (!bluetoothDevice || !isConnected) {
+        alert("Please connect to Bluetooth printer first.");
+        return;
+      }
+
+      // Generate receipt with drawer command
+      const receiptText = generateThermalText(true);
+
+      const encoder = new TextEncoder();
+      const data = encoder.encode(receiptText);
+
+      console.log("Sending data to printer...");
+      await bluetoothDevice.writeCharacteristic.writeValue(data);
+
+      console.log("Print job sent successfully!");
+      alert("Receipt printed successfully! Cash drawer should open.");
+    } catch (error) {
+      console.error("Bluetooth printing failed:", error);
+      alert(`Printing error: ${error.message}. Please try again.`);
     }
   };
 
@@ -431,87 +518,6 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     return receiptText;
   };
 
-  const handleBluetoothPrint = async () => {
-    try {
-      if (!navigator.bluetooth) {
-        alert(
-          "Bluetooth is not supported in this browser. Please use Chrome Mobile or Samsung Internet browser."
-        );
-        return;
-      }
-
-      console.log("Requesting Bluetooth device...");
-
-      const device = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: [
-          "000018f0-0000-1000-8000-00805f9b34fb",
-          "00001101-0000-1000-8000-00805f9b34fb",
-        ],
-      });
-
-      console.log("Connecting to GATT server...");
-      const server = await device.gatt.connect();
-
-      let service;
-      try {
-        service = await server.getPrimaryService(
-          "000018f0-0000-1000-8000-00805f9b34fb"
-        );
-      } catch (error) {
-        console.log("POS service not found, trying SPP...");
-        service = await server.getPrimaryService(
-          "00001101-0000-1000-8000-00805f9b34fb"
-        );
-      }
-
-      console.log("Getting characteristics...");
-      const characteristics = await service.getCharacteristics();
-
-      const writeCharacteristic = characteristics.find(
-        (char) => char.properties.write || char.properties.writeWithoutResponse
-      );
-
-      if (!writeCharacteristic) {
-        throw new Error("No writable characteristic found");
-      }
-
-      // Generate receipt with drawer command
-      const receiptText = generateThermalText(true);
-
-      const encoder = new TextEncoder();
-      const data = encoder.encode(receiptText);
-
-      console.log("Sending data to printer...");
-      await writeCharacteristic.writeValue(data);
-
-      console.log("Print job sent successfully!");
-      alert("Receipt printed successfully! Cash drawer should open.");
-
-      // Disconnect from device
-      setTimeout(() => device.gatt.disconnect(), 1000);
-    } catch (error) {
-      console.error("Bluetooth printing failed:", error);
-
-      if (error.name === "NotFoundError") {
-        alert(
-          "No Bluetooth printer found. Please:\n1. Turn on your POS58D_UB printer\n2. Make sure it's in pairing mode\n3. Check Bluetooth is enabled on your device"
-        );
-      } else if (error.name === "NetworkError") {
-        alert(
-          "Connection failed. Please check:\n1. Printer is within range\n2. No other device is connected to the printer\n3. Try re-pairing the device"
-        );
-      } else if (error.name === "SecurityError") {
-        alert(
-          "Bluetooth permission denied. Please allow Bluetooth access in your browser settings."
-        );
-      } else {
-        alert(`Printing error: ${error.message}. Trying alternative method...`);
-        handleThermalPrint();
-      }
-    }
-  };
-
   const handleThermalPrint = () => {
     const receiptText = generateThermalText();
 
@@ -536,18 +542,6 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           URL.revokeObjectURL(textUrl);
         }, 100);
       }, 500);
-    }
-  };
-
-  // Test cash drawer function
-  const handleTestDrawer = async () => {
-    try {
-      await openCashDrawer();
-      alert("Cash drawer command sent!");
-    } catch (error) {
-      alert(
-        "Failed to open cash drawer automatically. Please open it manually."
-      );
     }
   };
 
@@ -590,6 +584,23 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           </motion.div>
           <h2 className="text-xl font-bold text-gray-800">Order Confirmed!</h2>
           <p className="text-gray-600 text-xs mt-1">Thank you for your order</p>
+
+          {/* Connection Status */}
+          <div
+            className={`mt-2 px-3 py-1 rounded-full text-xs font-semibold ${
+              isConnected
+                ? "bg-green-100 text-green-800"
+                : isConnecting
+                ? "bg-yellow-100 text-yellow-800"
+                : "bg-red-100 text-red-800"
+            }`}
+          >
+            {isConnected
+              ? "✓ Bluetooth Connected"
+              : isConnecting
+              ? "Connecting..."
+              : "Bluetooth Disconnected"}
+          </div>
         </div>
 
         {/* Scrollable Content */}
@@ -730,7 +741,49 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
         {/* Action Buttons - Mobile Optimized */}
         <div className="p-4 border-t bg-gray-50">
-          <div className="grid grid-cols-2 gap-2 mb-2">
+          {/* Connection Buttons */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <button
+              onClick={isConnected ? disconnectBluetooth : connectBluetooth}
+              disabled={isConnecting}
+              className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg transition-colors text-xs font-semibold ${
+                isConnected
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : isConnecting
+                  ? "bg-gray-400 text-white cursor-not-allowed"
+                  : "bg-blue-600 text-white hover:bg-blue-700"
+              }`}
+            >
+              {isConnecting ? (
+                <FaBluetooth className="text-xs animate-pulse" />
+              ) : isConnected ? (
+                <FaUnlink className="text-xs" />
+              ) : (
+                <FaLink className="text-xs" />
+              )}
+              {isConnecting
+                ? "Connecting..."
+                : isConnected
+                ? "Disconnect"
+                : "Connect BT"}
+            </button>
+
+            <button
+              onClick={openCashDrawer}
+              disabled={!isConnected}
+              className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg transition-colors text-xs font-semibold ${
+                isConnected
+                  ? "bg-orange-600 text-white hover:bg-orange-700"
+                  : "bg-gray-400 text-white cursor-not-allowed"
+              }`}
+            >
+              <FaCashRegister className="text-xs" />
+              Open Drawer
+            </button>
+          </div>
+
+          {/* Print Buttons */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
             <button
               onClick={handlePrint}
               className="flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-3 rounded-lg hover:bg-blue-700 transition-colors text-xs font-semibold"
@@ -738,13 +791,20 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               <FaPrint className="text-xs" />
               Print
             </button>
+
             <button
-              onClick={handleBluetoothPrint}
-              className="flex items-center justify-center gap-2 bg-purple-600 text-white px-3 py-3 rounded-lg hover:bg-purple-700 transition-colors text-xs font-semibold"
+              onClick={printViaBluetooth}
+              disabled={!isConnected}
+              className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg transition-colors text-xs font-semibold ${
+                isConnected
+                  ? "bg-purple-600 text-white hover:bg-purple-700"
+                  : "bg-gray-400 text-white cursor-not-allowed"
+              }`}
             >
               <FaBluetooth className="text-xs" />
-              Bluetooth
+              Print via BT
             </button>
+
             <button
               onClick={handleThermalPrint}
               className="flex items-center justify-center gap-2 bg-green-600 text-white px-3 py-3 rounded-lg hover:bg-green-700 transition-colors text-xs font-semibold"
@@ -752,21 +812,15 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               <FaReceipt className="text-xs" />
               Thermal
             </button>
+
             <button
-              onClick={handleTestDrawer}
-              className="flex items-center justify-center gap-2 bg-orange-600 text-white px-3 py-3 rounded-lg hover:bg-orange-700 transition-colors text-xs font-semibold"
+              onClick={() => setShowInvoice(false)}
+              className="flex items-center justify-center gap-2 bg-gray-600 text-white px-3 py-3 rounded-lg hover:bg-gray-700 transition-colors text-xs font-semibold"
             >
-              <FaCashRegister className="text-xs" />
-              Drawer
+              <FaTimes className="text-xs" />
+              Close
             </button>
           </div>
-          <button
-            onClick={() => setShowInvoice(false)}
-            className="flex items-center justify-center gap-2 bg-gray-600 text-white px-3 py-3 rounded-lg hover:bg-gray-700 transition-colors w-full text-xs font-semibold"
-          >
-            <FaTimes className="text-xs" />
-            Close
-          </button>
         </div>
       </motion.div>
     </div>
