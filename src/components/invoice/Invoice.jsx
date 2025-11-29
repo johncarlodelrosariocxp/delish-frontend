@@ -11,14 +11,6 @@ import {
   FaUnlink,
 } from "react-icons/fa";
 
-/**
- * The Invoice component displays order details and handles printing functionality
- * via Web Print API and Web Bluetooth API (for thermal printers and cash drawers).
- *
- * The 'automatic print and open drawer' logic is primarily implemented in:
- * 1. printViaBluetooth: Sends the receipt text along with the DRAWER_KICK_2 command. (Recommended for thermal POS)
- * 2. handlePrint: Uses the browser's print dialog, and calls openCashDrawer() after printing.
- */
 const Invoice = ({ orderInfo, setShowInvoice }) => {
   const invoiceRef = useRef(null);
   const [bluetoothDevice, setBluetoothDevice] = useState(null);
@@ -33,18 +25,16 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     ALIGN_RIGHT: "\x1B\x61\x02", // Right alignment
     BOLD_ON: "\x1B\x45\x01", // Bold on
     BOLD_OFF: "\x1B\x45\x00", // Bold off
-    CUT: "\x1D\x56\x41\x10", // Full cut (might vary, \x1D\x56\x00 is another common one)
-    FEED_LINE: "\x0A", // Feed line (LF - Line Feed)
+    CUT: "\x1D\x56\x41\x10", // Full cut
+    FEED_LINE: "\x0A", // Feed line (LF)
     TEXT_NORMAL: "\x1B\x21\x00", // Normal text
     TEXT_LARGE: "\x1B\x21\x10", // Double height
-    // Cash drawer commands for POS58D_UB or similar models
-    DRAWER_KICK_2: "\x1B\x70\x00\x19\xFA", // Kick drawer pin 2 (pulse time)
-    DRAWER_KICK_5: "\x1B\x70\x01\x19\xFA", // Kick drawer pin 5 (pulse time)
+    // Cash drawer commands (POS58D_UB specific)
+    DRAWER_KICK_2: "\x1B\x70\x00\x19\xFA", // Kick drawer pin 2
+    DRAWER_KICK_5: "\x1B\x70\x01\x19\xFA", // Kick drawer pin 5
   };
 
-  /**
-   * Connects to a Bluetooth printer using Web Bluetooth API.
-   */
+  // Connect to Bluetooth printer
   const connectBluetooth = async () => {
     if (!navigator.bluetooth) {
       alert(
@@ -57,24 +47,17 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       setIsConnecting(true);
       console.log("Searching for Bluetooth printer...");
 
-      // Filter for devices that support one of the common services for SPP/Printers
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: false,
         optionalServices: [
           "000018f0-0000-1000-8000-00805f9b34fb", // Common printer service
           "00001101-0000-1000-8000-00805f9b34fb", // SPP (Serial Port Profile)
         ],
-        filters: [
-          // Add filters if you know the name or prefix of your printer
-          // { namePrefix: 'POS' }
-        ],
       });
 
-      console.log("Connecting to GATT server...");
+      console.log("Connecting to device...");
       const server = await device.gatt.connect();
 
-      // Attempt to find the correct service and writable characteristic
-      let service;
       let writeCharacteristic = null;
       const servicesToTry = [
         "000018f0-0000-1000-8000-00805f9b34fb",
@@ -83,7 +66,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
       for (const serviceUuid of servicesToTry) {
         try {
-          service = await server.getPrimaryService(serviceUuid);
+          const service = await server.getPrimaryService(serviceUuid);
           const characteristics = await service.getCharacteristics();
           writeCharacteristic = characteristics.find(
             (char) =>
@@ -91,16 +74,12 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           );
           if (writeCharacteristic) break;
         } catch (error) {
-          console.log(
-            `Service ${serviceUuid} not found or characteristic missing.`
-          );
+          console.log(`Service ${serviceUuid} not found.`);
         }
       }
 
       if (!writeCharacteristic) {
-        throw new Error(
-          "No writable characteristic found in supported services."
-        );
+        throw new Error("No writable characteristic found");
       }
 
       setBluetoothDevice({ device, server, writeCharacteristic });
@@ -137,14 +116,11 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     }
   };
 
-  /**
-   * Disconnects from the currently connected Bluetooth printer.
-   */
+  // Disconnect from Bluetooth printer
   const disconnectBluetooth = () => {
     if (bluetoothDevice) {
       try {
         bluetoothDevice.device.gatt.disconnect();
-        // The event listener will handle state update, but we do it immediately for UI feedback
         setIsConnected(false);
         setBluetoothDevice(null);
         alert("Disconnected from Bluetooth printer");
@@ -154,9 +130,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     }
   };
 
-  /**
-   * Sends the cash drawer kick command via Bluetooth.
-   */
+  // Send drawer command via Bluetooth
   const sendDrawerCommandViaBluetooth = async () => {
     try {
       if (!bluetoothDevice || !isConnected) {
@@ -164,20 +138,16 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       }
 
       const encoder = new TextEncoder();
-      // Using DRAWER_KICK_2 (Pin 2) as default
       const drawerCommand = encoder.encode(thermalCommands.DRAWER_KICK_2);
       await bluetoothDevice.writeCharacteristic.writeValue(drawerCommand);
       console.log("Cash drawer command sent successfully");
-      return true;
     } catch (error) {
       console.error("Bluetooth drawer command failed:", error);
       throw error;
     }
   };
 
-  /**
-   * Function to open cash drawer - attempts Bluetooth kick or alerts for manual open.
-   */
+  // Function to open cash drawer
   const openCashDrawer = async () => {
     try {
       console.log("Attempting to open cash drawer...");
@@ -186,37 +156,35 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         await sendDrawerCommandViaBluetooth();
         alert("Cash drawer opened successfully!");
       } else {
+        // If not connected, try to connect first
         alert(
           "Not connected to printer. Please connect to Bluetooth first or open drawer manually."
         );
       }
     } catch (error) {
       console.error("Failed to open cash drawer:", error);
-      alert(
-        "Failed to send drawer command. Please open the cash drawer manually."
-      );
+      alert("Please open the cash drawer manually.");
     }
   };
 
   /**
-   * Prints the receipt and opens the cash drawer *via Bluetooth* using ESC/POS commands.
-   * This is the preferred method for automated thermal printing/drawer action.
+   * ✅ FIX: This is the most reliable way to print and open the drawer
+   * for a thermal printer, as the kick command is part of the print job.
    */
   const printViaBluetooth = async () => {
     try {
       if (!bluetoothDevice || !isConnected) {
-        alert("Please connect to a Bluetooth printer first.");
+        alert("Please connect to Bluetooth printer first.");
         return;
       }
 
-      // Generate receipt *including* the drawer command
+      // Generate receipt *with* the drawer command included (true)
       const receiptText = generateThermalText(true);
 
       const encoder = new TextEncoder();
       const data = encoder.encode(receiptText);
 
-      console.log("Sending data to printer (with drawer kick)...");
-      // Split large data into chunks if needed, but for receipts, typically one write is fine
+      console.log("Sending data to printer (including drawer kick)...");
       await bluetoothDevice.writeCharacteristic.writeValue(data);
 
       console.log("Print job sent successfully!");
@@ -227,14 +195,10 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     }
   };
 
-  /**
-   * Prints the receipt via the *Web Print API* (browser dialog).
-   * It attempts to open the cash drawer after the user completes the print job.
-   */
+  // Print via Web Print API (HTML)
   const handlePrint = () => {
     if (!invoiceRef.current) return;
 
-    // Use orderInfo to construct the HTML content dynamically
     const printContent = `
       <!DOCTYPE html>
       <html>
@@ -249,13 +213,11 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 padding: 0 !important;
                 font-family: 'Courier New', monospace !important;
                 font-size: 10px !important;
-                /* Set width to a common receipt size, e.g., 80mm or 58mm */
-                width: 80mm !important; 
+                width: 80mm !important;
                 background: white !important;
                 color: black !important;
                 -webkit-print-color-adjust: exact !important;
               }
-              /* ... (rest of the print styles) ... */
               * {
                 box-shadow: none !important;
                 background: transparent !important;
@@ -276,8 +238,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 color: green !important;
               }
             }
-            
-            /* Common styles for the print preview window */
+            /* Common styles */
             .receipt-container { 
               width: 100%;
               border: 1px solid #000;
@@ -337,7 +298,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                   orderInfo.orderDate
                     ? Math.floor(new Date(orderInfo.orderDate).getTime())
                         .toString()
-                        .slice(-6) // Use last 6 digits for brevity
+                        .slice(-6)
                     : "N/A"
                 }</td></tr>
                 <tr><td><strong>Name:</strong></td><td>${
@@ -359,13 +320,9 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                     <td>${item.name}${item.isFree ? " (FREE)" : ""} x${
                       item.quantity || 1
                     }</td>
-                    <td class="text-right">${
-                      item.isFree
-                        ? "FREE"
-                        : `₱${(
-                            (item.price || 0) * (item.quantity || 1)
-                          ).toFixed(2)}`
-                    }</td>
+                    <td class="text-right">₱${(
+                      (item.price || 0) * (item.quantity || 1)
+                    ).toFixed(2)}</td>
                   </tr>
                 `
                   )
@@ -435,9 +392,8 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     printWindow.onload = () => {
       setTimeout(() => {
         printWindow.print();
-        // This event fires after the print dialog is closed (printed or cancelled).
         printWindow.onafterprint = () => {
-          // Open cash drawer after printing via Web Print API
+          // Attempt to open cash drawer after the browser print dialog closes
           openCashDrawer();
           setTimeout(() => printWindow.close(), 100);
         };
@@ -445,13 +401,8 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     };
   };
 
-  /**
-   * Generates the receipt text encoded with ESC/POS thermal printer commands.
-   * @param {boolean} includeDrawerCommand - Whether to include the cash drawer kick command.
-   * @returns {string} The formatted receipt string with ESC/POS commands.
-   */
   const generateThermalText = (includeDrawerCommand = false) => {
-    const LINE_WIDTH = 32; // Standard width for 58mm printer at normal font size
+    const LINE_WIDTH = 32;
     const orderId = orderInfo.orderDate
       ? Math.floor(new Date(orderInfo.orderDate).getTime()).toString().slice(-6)
       : "N/A";
@@ -461,9 +412,9 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       orderInfo.orderDate || Date.now()
     ).toLocaleString();
 
-    let receiptText = thermalCommands.INIT; // Initialize printer
+    let receiptText = thermalCommands.INIT;
 
-    // --- Header ---
+    // Header
     receiptText += thermalCommands.ALIGN_CENTER;
     receiptText += thermalCommands.TEXT_LARGE;
     receiptText += "DELISH RESTAURANT\n";
@@ -471,7 +422,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     receiptText += "ORDER RECEIPT\n";
     receiptText += "✓ Thank you!\n\n";
 
-    // --- Order Info ---
+    // Order Info
     receiptText += thermalCommands.ALIGN_LEFT;
     receiptText += thermalCommands.BOLD_ON;
     receiptText += `Order ID: ${orderId}\n`;
@@ -480,7 +431,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     receiptText += thermalCommands.BOLD_OFF;
     receiptText += "=".repeat(LINE_WIDTH) + "\n\n";
 
-    // --- Items ---
+    // Items
     receiptText += thermalCommands.BOLD_ON;
     receiptText += "ORDER ITEMS:\n";
     receiptText += thermalCommands.BOLD_OFF;
@@ -509,28 +460,18 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
     receiptText += "\n" + "=".repeat(LINE_WIDTH) + "\n";
 
-    // --- Bill Summary ---
+    // Bill Summary
+    const subtotal = orderInfo.bills?.total || 0;
+    const pwdDiscount = orderInfo.bills?.pwdSssDiscount || 0;
+    const empDiscount = orderInfo.bills?.employeeDiscount || 0;
+    const tax = orderInfo.bills?.tax || 0;
+    const total = orderInfo.bills?.totalWithTax || 0;
+
     const billItems = [
-      {
-        label: "Subtotal:",
-        value: orderInfo.bills?.total || 0,
-        isDiscount: false,
-      },
-      {
-        label: "PWD/SSS Discount:",
-        value: orderInfo.bills?.pwdSssDiscount || 0,
-        isDiscount: true,
-      },
-      {
-        label: "Employee Discount:",
-        value: orderInfo.bills?.employeeDiscount || 0,
-        isDiscount: true,
-      },
-      {
-        label: "VAT (12%):",
-        value: orderInfo.bills?.tax || 0,
-        isDiscount: false,
-      },
+      { label: "Subtotal:", value: subtotal, isDiscount: false },
+      { label: "PWD/SSS Discount:", value: pwdDiscount, isDiscount: true },
+      { label: "Employee Discount:", value: empDiscount, isDiscount: true },
+      { label: "VAT (12%):", value: tax, isDiscount: false },
     ];
 
     billItems.forEach(({ label, value, isDiscount }) => {
@@ -541,11 +482,17 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         const spacing = " ".repeat(
           Math.max(1, LINE_WIDTH - label.length - displayValue.length)
         );
-        receiptText += `${label}${spacing}${displayValue}\n`;
+        if (isDiscount) {
+          receiptText += `${label.padEnd(
+            LINE_WIDTH - displayValue.length,
+            " "
+          )}${displayValue}\n`;
+        } else {
+          receiptText += `${label}${spacing}${displayValue}\n`;
+        }
       }
     });
 
-    const total = orderInfo.bills?.totalWithTax || 0;
     receiptText += thermalCommands.BOLD_ON;
     const totalLabel = "TOTAL:";
     const totalDisplayValue = `₱${total.toFixed(2)}`;
@@ -557,7 +504,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
     receiptText += "=".repeat(LINE_WIDTH) + "\n\n";
 
-    // --- Payment Info ---
+    // Payment Info
     receiptText += thermalCommands.BOLD_ON;
     receiptText += `Payment: ${orderInfo.paymentMethod || "Cash"}\n`;
     receiptText += `Status: ${orderInfo.orderStatus || "In Progress"}\n`;
@@ -567,11 +514,12 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     receiptText += "Thank you for your purchase!\n";
     receiptText += "Please come again!\n\n";
 
-    // --- Cash Drawer and Cut ---
+    // Add cash drawer command if requested
     if (includeDrawerCommand) {
       receiptText += thermalCommands.DRAWER_KICK_2;
     }
 
+    // Feed and cut
     receiptText += thermalCommands.FEED_LINE;
     receiptText += thermalCommands.FEED_LINE;
     receiptText += thermalCommands.CUT;
@@ -579,18 +527,12 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     return receiptText;
   };
 
-  /**
-   * Prints the thermal text by opening a new window with a text blob and immediately printing.
-   * This is a fallback/alternative to Web Print API or direct Bluetooth.
-   */
   const handleThermalPrint = () => {
-    // Generates the raw thermal text (excluding drawer command for this print method)
-    const receiptText = generateThermalText(false);
+    const receiptText = generateThermalText();
 
-    // Remove ESC/POS and control commands for text display
+    // Remove ESC/POS commands for text display
     const cleanText = receiptText
       .replace(/[\x00-\x1F\x7F-\x9F]/g, (char) => {
-        // Remove most control codes, keeping Line Feed (\x0A)
         return char === "\x0A" ? "\n" : "";
       })
       .trim();
@@ -600,13 +542,13 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
     const textWindow = window.open(textUrl, "_blank");
     if (textWindow) {
-      textWindow.document.write("<pre>" + cleanText + "</pre>"); // Display text in fixed width font
+      textWindow.document.write("<pre>" + cleanText + "</pre>");
       textWindow.document.close();
 
       textWindow.onload = () => {
         setTimeout(() => {
           textWindow.print();
-          // Open cash drawer after print
+          // Open cash drawer after thermal print
           openCashDrawer();
           setTimeout(() => {
             textWindow.close();
