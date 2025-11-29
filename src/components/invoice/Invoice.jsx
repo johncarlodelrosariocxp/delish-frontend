@@ -1,24 +1,95 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import {
-  FaCheck,
-  FaPrint,
-  FaTimes,
-  FaReceipt,
-  FaBluetooth,
-  FaCashRegister,
-  FaLink,
-  FaUnlink,
-  FaSync,
-  FaExclamationTriangle,
-} from "react-icons/fa";
+
+// --- Custom Icon Components (Replacements for react-icons/fa) ---
+const IconCheck = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 512 512"
+    fill="currentColor"
+  >
+    <path d="M470.6 105.4c12.5 12.5 12.5 32.8 0 45.3l-256 256c-12.5 12.5-32.8 12.5-45.3 0l-128-128c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0L192 338.7 425.4 105.4c12.5-12.5 32.8-12.5 45.3 0z" />
+  </svg>
+);
+const IconPrint = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 512 512"
+    fill="currentColor"
+  >
+    <path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H384v96h64V64c0-35.3-28.7-64-64-64H128zM384 352c35.3 0 64-28.7 64-64V224H288 224 64v64c0 35.3 28.7 64 64 64H384zm64 64H128c-35.3 0-64-28.7-64-64V224H128 384 448v128c0 35.3-28.7 64-64 64zM392 480a24 24 0 1 0 0-48 24 24 0 1 0 0 48z" />
+  </svg>
+);
+const IconTimes = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 320 512"
+    fill="currentColor"
+  >
+    <path d="M310.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L160 210.7 54.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L114.7 256 9.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L160 301.3 265.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L205.3 256 310.6 150.6z" />
+  </svg>
+);
+const IconReceipt = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 384 512"
+    fill="currentColor"
+  >
+    <path d="M336 64H48C21.5 64 0 85.5 0 112v288c0 26.5 21.5 48 48 48h288c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48zm-6 208a10.4 10.4 0 0 1 0 20.8 10.4 10.4 0 1 1 0-20.8zm-192 0a10.4 10.4 0 0 1 0 20.8 10.4 10.4 0 1 1 0-20.8zM240 192a16 16 0 1 1 0 32 16 16 0 1 1 0-32zm-96 0a16 16 0 1 1 0 32 16 16 0 1 1 0-32zM288 384H96a16 16 0 0 1 0-32h192a16 16 0 0 1 0 32z" />
+  </svg>
+);
+const IconBluetooth = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 448 512"
+    fill="currentColor"
+  >
+    <path d="M294.7 32.4L32 232.1h148.2L124.9 397c-6.8 17.7 2.1 37.6 19.8 44.4s37.6-2.1 44.4-19.8l108.5-281.2c4.7-12.2-4.1-25.7-16.3-30.4s-25.7 4.1-30.4 16.3L130.6 307.7l-47.5-123.6 220-141.7c16.5-10.6 37.3-5.2 47.9 11.3s5.2 37.3-11.3 47.9L170.8 256l113.8 113.8c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L125.4 278.4 294.7 32.4zM240 376c0-22.1 17.9-40 40-40s40 17.9 40 40-17.9 40-40 40-40-17.9-40-40zM280 40c22.1 0 40 17.9 40 40s-17.9 40-40 40-40-17.9-40-40 17.9-40 40-40z" />
+  </svg>
+);
+const IconCashRegister = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 576 512"
+    fill="currentColor"
+  >
+    <path d="M24 88C10.7 88 0 98.7 0 112v88c0 13.3 10.7 24 24 24H552c13.3 0 24-10.7 24-24V112c0-13.3-10.7-24-24-24H24zM80 480c-17.7 0-32-14.3-32-32s14.3-32 32-32H496c17.7 0 32 14.3 32 32s-14.3 32-32 32H80zM552 256H24c-13.3 0-24 10.7-24 24V416c0 13.3 10.7 24 24 24H552c13.3 0 24-10.7 24-24V280c0-13.3-10.7-24-24-24z" />
+  </svg>
+);
+const IconLink = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 512 512"
+    fill="currentColor"
+  >
+    <path d="M192 208v160c0 44.2 35.8 80 80 80h16c44.2 0 80-35.8 80-80V208c0-44.2-35.8-80-80-80h-16c-4.4 0-8 3.6-8 8s3.6 8 8 8h16c35.3 0 64 28.7 64 64v160c0 35.3-28.7 64-64 64h-16c-35.3 0-64-28.7-64-64V208c0-4.4-3.6-8-8-8s-8 3.6-8 8zM128 128H48C21.5 128 0 149.5 0 176v160c0 26.5 21.5 48 48 48h80c4.4 0 8-3.6 8-8s-3.6-8-8-8H48c-17.7 0-32-14.3-32-32V176c0-17.7 14.3-32 32-32h80c4.4 0 8-3.6 8-8s-3.6-8-8-8z" />
+  </svg>
+);
+const IconUnlink = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 512 512"
+    fill="currentColor"
+  >
+    <path d="M485.3 43.1L399.7 128.7 448 176c26.5 0 48-21.5 48-48V48c0-26.5-21.5-48-48-48H368c-26.5 0-48 21.5-48 48v48l-94.8 94.8c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L399.7 192 485.3 277.7c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L430.6 142.1l63.5-63.5c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L448 48c-8.8 0-16 7.2-16 16v48l-80 80L160 384l-80-80V240c0-8.8-7.2-16-16-16H48c-26.5 0-48 21.5-48 48v80c0 26.5 21.5 48 48 48h80c26.5 0 48-21.5 48-48v-48l160-160L469.3 468.9c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L485.3 43.1z" />
+  </svg>
+);
+// -----------------------------------------------------------------
 
 const Invoice = ({ orderInfo, setShowInvoice }) => {
   const invoiceRef = useRef(null);
   const [bluetoothDevice, setBluetoothDevice] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [connectionError, setConnectionError] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   // Thermal printer ESC/POS commands
   const thermalCommands = {
@@ -29,204 +100,134 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     BOLD_ON: "\x1B\x45\x01", // Bold on
     BOLD_OFF: "\x1B\x45\x00", // Bold off
     CUT: "\x1D\x56\x41\x10", // Full cut
-    FEED_LINE: "\x0A", // Feed line
+    FEED_LINE: "\x0A", // Feed line (LF)
     TEXT_NORMAL: "\x1B\x21\x00", // Normal text
     TEXT_LARGE: "\x1B\x21\x10", // Double height
-    // Cash drawer commands
+    // Cash drawer commands (POS58D_UB specific)
     DRAWER_KICK_2: "\x1B\x70\x00\x19\xFA", // Kick drawer pin 2
     DRAWER_KICK_5: "\x1B\x70\x01\x19\xFA", // Kick drawer pin 5
   };
 
-  // Enhanced Bluetooth connection with passcode support
+  useEffect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => setErrorMessage(""), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMessage]);
+
+  const alertUser = (message) => {
+    setErrorMessage(message);
+  };
+
+  // Connect to Bluetooth printer
   const connectBluetooth = async () => {
+    if (!navigator.bluetooth) {
+      alertUser(
+        "Bluetooth is not supported in this browser. Please use Chrome/Edge on Desktop or Chrome/Samsung Internet on Android."
+      );
+      return;
+    }
+
     try {
-      if (!navigator.bluetooth) {
-        setConnectionError(
-          "Bluetooth not supported in this browser. Use Chrome Mobile or Samsung Internet."
-        );
-        alert(
-          "Bluetooth is not supported in this browser. Please use Chrome Mobile or Samsung Internet browser."
-        );
-        return;
-      }
-
       setIsConnecting(true);
-      setConnectionError("");
-      console.log("🔍 Searching for Bluetooth thermal printers...");
+      console.log("Searching for Bluetooth printer...");
 
-      // Enhanced device request for thermal printers
+      // Common UUIDs for thermal printers
+      const serviceUUID_PRINTER = "000018f0-0000-1000-8000-00805f9b34fb";
+      const serviceUUID_SPP = "00001101-0000-1000-8000-00805f9b34fb";
+      const serviceUUID_GENERIC_ACCESS = "00001800-0000-1000-8000-00805f9b34fb";
+
+      // IMPORTANT FIX: Use acceptAllDevices: true to ensure the device is discoverable
+      // Then use optionalServices to access characteristics once connected.
       const device = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: false,
-        filters: [
-          { namePrefix: "POS" },
-          { namePrefix: "BT" },
-          { namePrefix: "Printer" },
-          { namePrefix: "SPP" },
-          { namePrefix: "58" },
-          { namePrefix: "80" },
-        ],
+        acceptAllDevices: true,
         optionalServices: [
-          "000018f0-0000-1000-8000-00805f9b34fb", // Standard thermal printer service
-          "00001101-0000-1000-8000-00805f9b34fb", // Serial port profile
-          "00001108-0000-1000-8000-00805f9b34fb", // Print service
-          "00001000-0000-1000-8000-00805f9b34fb", // Generic access
+          serviceUUID_PRINTER,
+          serviceUUID_SPP,
+          serviceUUID_GENERIC_ACCESS,
         ],
       });
 
-      console.log("📱 Selected device:", device.name, device.id);
-
-      // Important: When browser prompts for passcode, enter 0000
-      alert(
-        `Please pair with the printer.\n\nIf asked for PIN/passcode, enter:\n\n🔑 0000\n\nThen click OK/Pair.`
-      );
-
-      console.log("🔗 Connecting to GATT server...");
+      console.log("Connecting to GATT server...");
       const server = await device.gatt.connect();
 
-      let service;
-      let characteristics;
+      let writeCharacteristic = null;
+      const servicesToTry = [serviceUUID_PRINTER, serviceUUID_SPP];
 
-      // Try different services in order of preference
-      const serviceUUIDs = [
-        "000018f0-0000-1000-8000-00805f9b34fb", // Thermal printer service
-        "00001101-0000-1000-8000-00805f9b34fb", // SPP
-        "00001108-0000-1000-8000-00805f9b34fb", // Print service
-      ];
-
-      for (const serviceUUID of serviceUUIDs) {
+      // Step 2: Search for the writable characteristic across common services
+      for (const serviceUuid of servicesToTry) {
         try {
-          service = await server.getPrimaryService(serviceUUID);
-          console.log(`✅ Found service: ${serviceUUID}`);
-          break;
+          console.log(`Trying service: ${serviceUuid}`);
+          const service = await server.getPrimaryService(serviceUuid);
+          const characteristics = await service.getCharacteristics();
+
+          writeCharacteristic = characteristics.find(
+            (char) =>
+              char.properties.write || char.properties.writeWithoutResponse
+          );
+
+          if (writeCharacteristic) {
+            console.log(
+              `Found writable characteristic in service ${serviceUuid}`
+            );
+            break;
+          }
         } catch (error) {
-          console.log(`❌ Service ${serviceUUID} not available`);
-          continue;
+          console.log(`Service ${serviceUuid} not found or accessible.`);
         }
       }
-
-      if (!service) {
-        // If no specific service found, get all available services
-        const services = await server.getPrimaryServices();
-        console.log("Available services:", services);
-        if (services.length > 0) {
-          service = services[0];
-          console.log("Using first available service:", service.uuid);
-        } else {
-          throw new Error("No Bluetooth services found on the device");
-        }
-      }
-
-      characteristics = await service.getCharacteristics();
-      console.log("Available characteristics:", characteristics);
-
-      // Find writable characteristic for printing
-      const writeCharacteristic = characteristics.find(
-        (char) => char.properties.write || char.properties.writeWithoutResponse
-      );
 
       if (!writeCharacteristic) {
         throw new Error(
-          "No writable characteristic found for printing. Cannot send print data."
+          "No writable characteristic found in common services. Printer uses a non-standard protocol."
         );
       }
 
-      console.log(
-        "✅ Found writable characteristic:",
-        writeCharacteristic.uuid
-      );
-
-      // Test connection by sending initialization command
-      try {
-        const encoder = new TextEncoder();
-        const initCommand = encoder.encode(thermalCommands.INIT);
-        await writeCharacteristic.writeValue(initCommand);
-        console.log("✅ Printer initialization command sent successfully");
-      } catch (testError) {
-        console.warn(
-          "⚠️ Initialization test failed, but continuing:",
-          testError
-        );
-      }
-
-      setBluetoothDevice({
-        device,
-        server,
-        writeCharacteristic,
-        service: service.uuid,
-      });
+      setBluetoothDevice({ device, server, writeCharacteristic });
       setIsConnected(true);
       setIsConnecting(false);
-      setConnectionError("");
-
-      alert(
-        `✅ Successfully connected to ${device.name}!\n\nYou can now print receipts.`
-      );
+      alertUser(`Successfully connected to Bluetooth printer: ${device.name}!`);
 
       // Handle device disconnection
       device.addEventListener("gattserverdisconnected", () => {
-        console.log("📵 Bluetooth device disconnected");
         setIsConnected(false);
         setBluetoothDevice(null);
-        setConnectionError("Printer disconnected");
-        alert(`Disconnected from ${device.name}`);
+        alertUser("Bluetooth device disconnected.");
+        console.log("Bluetooth device disconnected");
       });
     } catch (error) {
       setIsConnecting(false);
-      console.error("❌ Bluetooth connection failed:", error);
-
-      let errorMessage = "Connection failed. ";
+      console.error("Bluetooth connection failed:", error);
 
       if (error.name === "NotFoundError") {
-        errorMessage +=
-          "No Bluetooth printer found.\n\nPlease:\n• Turn on your thermal printer\n• Enable pairing mode (blinking light)\n• Ensure Bluetooth is enabled\n• Make printer discoverable";
+        alertUser(
+          "Connection cancelled or no device found. Ensure the printer is ON and unpaired from OS settings."
+        );
       } else if (error.name === "NetworkError") {
-        errorMessage +=
-          "Connection lost.\n\nPlease:\n• Keep printer within 3-5 meters\n• Disconnect other devices from printer\n• Restart printer and try again\n• Check if passcode 0000 was accepted";
+        alertUser(
+          "Connection failed (NetworkError). Check printer range and ensure no other app is connected."
+        );
       } else if (error.name === "SecurityError") {
-        errorMessage +=
-          "Permission denied.\n\nPlease:\n• Allow Bluetooth access in browser\n• Use HTTPS connection\n• Refresh the page";
-      } else if (error.name === "InvalidStateError") {
-        errorMessage +=
-          "Device already connected elsewhere.\n\nPlease:\n• Disconnect from other devices\n• Restart printer Bluetooth";
+        alertUser(
+          "Security error. Please ensure the page is served over HTTPS."
+        );
       } else {
-        errorMessage += `${error.message}\n\nIf asked for passcode, try: 0000`;
+        alertUser(`Connection failed: ${error.message}`);
       }
-
-      setConnectionError(errorMessage);
-      alert(errorMessage);
     }
   };
 
   // Disconnect from Bluetooth printer
-  const disconnectBluetooth = async () => {
+  const disconnectBluetooth = () => {
     if (bluetoothDevice) {
       try {
         bluetoothDevice.device.gatt.disconnect();
         setIsConnected(false);
         setBluetoothDevice(null);
-        setConnectionError("");
-        alert("Disconnected from Bluetooth printer");
+        alertUser("Disconnected from Bluetooth printer.");
       } catch (error) {
         console.error("Error disconnecting:", error);
       }
-    }
-  };
-
-  // Function to open cash drawer
-  const openCashDrawer = async () => {
-    try {
-      console.log("💰 Attempting to open cash drawer...");
-
-      if (bluetoothDevice && isConnected) {
-        await sendDrawerCommandViaBluetooth();
-      } else {
-        alert(
-          "Not connected to printer. Please connect to Bluetooth first or open drawer manually."
-        );
-      }
-    } catch (error) {
-      console.error("Failed to open cash drawer:", error);
-      alert("Please open the cash drawer manually.");
     }
   };
 
@@ -239,144 +240,70 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
       const encoder = new TextEncoder();
       const drawerCommand = encoder.encode(thermalCommands.DRAWER_KICK_2);
-
-      console.log("Sending cash drawer command...");
       await bluetoothDevice.writeCharacteristic.writeValue(drawerCommand);
-
-      console.log("✅ Cash drawer command sent successfully");
-      alert("💰 Cash drawer opened successfully!");
+      console.log("Cash drawer command sent successfully");
     } catch (error) {
-      console.error("❌ Bluetooth drawer command failed:", error);
-
-      // Try alternative drawer command
-      try {
-        const encoder = new TextEncoder();
-        const altDrawerCommand = encoder.encode(thermalCommands.DRAWER_KICK_5);
-        await bluetoothDevice.writeCharacteristic.writeValue(altDrawerCommand);
-        console.log("✅ Alternative cash drawer command worked");
-        alert("💰 Cash drawer opened successfully!");
-      } catch (altError) {
-        console.error("❌ Alternative drawer command also failed:", altError);
-        throw new Error("Cash drawer command failed. Please open manually.");
-      }
+      console.error("Bluetooth drawer command failed:", error);
+      throw error;
     }
   };
 
-  // Enhanced Bluetooth printing with retry logic
+  // Function to open cash drawer
+  const openCashDrawer = async () => {
+    try {
+      console.log("Attempting to open cash drawer...");
+
+      if (bluetoothDevice && isConnected) {
+        await sendDrawerCommandViaBluetooth();
+        alertUser("Cash drawer opened successfully!");
+      } else {
+        // If not connected, try to connect first
+        alertUser(
+          "Not connected to printer. Please connect to Bluetooth first or open drawer manually."
+        );
+      }
+    } catch (error) {
+      console.error("Failed to open cash drawer:", error);
+      alertUser(
+        "Failed to send drawer command. Please open the cash drawer manually."
+      );
+    }
+  };
+
+  /**
+   * ✅ FIX: This is the most reliable way to print and open the drawer
+   * for a thermal printer, as the kick command is part of the print job.
+   */
   const printViaBluetooth = async () => {
     try {
       if (!bluetoothDevice || !isConnected) {
-        alert("Please connect to Bluetooth printer first.");
+        alertUser("Please connect to Bluetooth printer first.");
         return;
       }
 
-      console.log("🖨️ Starting Bluetooth print job...");
-
-      // Generate receipt with drawer command
+      // Generate receipt *with* the drawer command included (true)
       const receiptText = generateThermalText(true);
+
       const encoder = new TextEncoder();
       const data = encoder.encode(receiptText);
 
-      console.log("📤 Sending data to printer...");
-
-      // Try different write methods with retry logic
-      let printSuccess = false;
-      let lastError = null;
-
-      for (let attempt = 1; attempt <= 2; attempt++) {
-        try {
-          console.log(`Print attempt ${attempt}...`);
-
-          if (bluetoothDevice.writeCharacteristic.properties.write) {
-            await bluetoothDevice.writeCharacteristic.writeValue(data);
-          } else if (
-            bluetoothDevice.writeCharacteristic.properties.writeWithoutResponse
-          ) {
-            await bluetoothDevice.writeCharacteristic.writeValueWithoutResponse(
-              data
-            );
-          } else {
-            throw new Error("No supported write method available");
-          }
-
-          printSuccess = true;
-          break;
-        } catch (writeError) {
-          lastError = writeError;
-          console.warn(`Print attempt ${attempt} failed:`, writeError);
-
-          if (attempt < 2) {
-            // Wait before retry
-            await new Promise((resolve) => setTimeout(resolve, 500));
-          }
-        }
+      console.log("Sending data to printer (including drawer kick)...");
+      // Split the data into chunks (e.g., 20 bytes) to prevent overflow on some printers
+      const chunkSize = 20;
+      for (let i = 0; i < data.length; i += chunkSize) {
+        const chunk = data.slice(i, i + chunkSize);
+        await bluetoothDevice.writeCharacteristic.writeValue(chunk);
       }
 
-      if (!printSuccess) {
-        throw lastError || new Error("Print failed after retries");
-      }
-
-      console.log("✅ Print job sent successfully!");
-
-      // Wait for printing to complete
-      setTimeout(() => {
-        alert(
-          "✅ Receipt printed successfully!\n\n💰 Cash drawer should open automatically."
-        );
-      }, 1500);
+      console.log("Print job sent successfully!");
+      alertUser("Receipt printed successfully! Cash drawer should open.");
     } catch (error) {
-      console.error("❌ Bluetooth printing failed:", error);
-
-      let errorMsg = "Printing failed. ";
-
-      if (error.name === "NetworkError") {
-        errorMsg += "Printer connection lost. Please reconnect.";
-        disconnectBluetooth();
-      } else if (error.message.includes("not connected")) {
-        errorMsg += "Printer disconnected. Please reconnect.";
-        setIsConnected(false);
-        setBluetoothDevice(null);
-      } else {
-        errorMsg += `Error: ${error.message}`;
-      }
-
-      errorMsg +=
-        "\n\nPlease check:\n• Printer paper\n• Printer power\n• Connection stability";
-
-      alert(errorMsg);
+      console.error("Bluetooth printing failed:", error);
+      alertUser(`Printing error: ${error.message}. Please try again.`);
     }
   };
 
-  // Test printer connection
-  const testPrinter = async () => {
-    if (!bluetoothDevice || !isConnected) {
-      alert("Please connect to printer first.");
-      return;
-    }
-
-    try {
-      const testText =
-        thermalCommands.INIT +
-        thermalCommands.ALIGN_CENTER +
-        thermalCommands.TEXT_LARGE +
-        "PRINTER TEST\n" +
-        thermalCommands.TEXT_NORMAL +
-        "Connection: OK\n" +
-        "Device: Working\n" +
-        thermalCommands.FEED_LINE +
-        thermalCommands.FEED_LINE +
-        thermalCommands.CUT;
-
-      const encoder = new TextEncoder();
-      const data = encoder.encode(testText);
-
-      await bluetoothDevice.writeCharacteristic.writeValue(data);
-      alert("✅ Printer test successful! Test page printed.");
-    } catch (error) {
-      alert(`❌ Printer test failed: ${error.message}`);
-    }
-  };
-
+  // Print via Web Print API (HTML)
   const handlePrint = () => {
     if (!invoiceRef.current) return;
 
@@ -394,7 +321,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 padding: 0 !important;
                 font-family: 'Courier New', monospace !important;
                 font-size: 10px !important;
-                width: 80mm !important;
+                width: 80mm !important; /* Standard thermal width */
                 background: white !important;
                 color: black !important;
                 -webkit-print-color-adjust: exact !important;
@@ -419,7 +346,6 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 color: green !important;
               }
             }
-            
             /* Common styles */
             .receipt-container { 
               width: 100%;
@@ -479,6 +405,8 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <tr><td><strong>Order ID:</strong></td><td>${
                   orderInfo.orderDate
                     ? Math.floor(new Date(orderInfo.orderDate).getTime())
+                        .toString()
+                        .slice(-6)
                     : "N/A"
                 }</td></tr>
                 <tr><td><strong>Name:</strong></td><td>${
@@ -562,7 +490,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
     const printWindow = window.open("", "_blank", "width=300,height=500");
     if (!printWindow) {
-      alert("Please allow popups for printing");
+      alertUser("Please allow popups for printing");
       return;
     }
 
@@ -573,6 +501,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       setTimeout(() => {
         printWindow.print();
         printWindow.onafterprint = () => {
+          // Attempt to open cash drawer after the browser print dialog closes
           openCashDrawer();
           setTimeout(() => printWindow.close(), 100);
         };
@@ -581,6 +510,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
   };
 
   const generateThermalText = (includeDrawerCommand = false) => {
+    const LINE_WIDTH = 32;
     const orderId = orderInfo.orderDate
       ? Math.floor(new Date(orderInfo.orderDate).getTime()).toString().slice(-6)
       : "N/A";
@@ -590,7 +520,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       orderInfo.orderDate || Date.now()
     ).toLocaleString();
 
-    let receiptText = thermalCommands.INIT; // Initialize printer
+    let receiptText = thermalCommands.INIT;
 
     // Header
     receiptText += thermalCommands.ALIGN_CENTER;
@@ -607,7 +537,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     receiptText += `Name: ${customerName}\n`;
     receiptText += `Date: ${orderDate}\n`;
     receiptText += thermalCommands.BOLD_OFF;
-    receiptText += "=".repeat(32) + "\n\n";
+    receiptText += "=".repeat(LINE_WIDTH) + "\n\n";
 
     // Items
     receiptText += thermalCommands.BOLD_ON;
@@ -615,23 +545,28 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     receiptText += thermalCommands.BOLD_OFF;
 
     (orderInfo.items || []).forEach((item) => {
-      const itemName =
-        item.name && item.name.length > 20
-          ? item.name.substring(0, 17) + "..."
-          : item.name || "Item";
-      const line = `${itemName}${item.isFree ? " (FREE)" : ""} x${
-        item.quantity || 1
-      }`;
-      const price = item.isFree
-        ? "FREE"
-        : `₱${((item.price || 0) * (item.quantity || 1)).toFixed(2)}`;
+      const itemQuantity = item.quantity || 1;
+      const itemPrice = item.price || 0;
+      const isFree = item.isFree;
 
-      receiptText += line;
-      receiptText += " ".repeat(Math.max(1, 32 - line.length - price.length));
-      receiptText += price + "\n";
+      const itemName =
+        item.name && item.name.length > 17
+          ? item.name.substring(0, 14) + "..."
+          : item.name || "Item";
+
+      const lineStart = `${itemName} x${itemQuantity}`;
+      const priceString = isFree
+        ? "FREE"
+        : `₱${(itemPrice * itemQuantity).toFixed(2)}`;
+
+      receiptText += lineStart;
+      receiptText += " ".repeat(
+        Math.max(1, LINE_WIDTH - lineStart.length - priceString.length)
+      );
+      receiptText += priceString + "\n";
     });
 
-    receiptText += "\n" + "=".repeat(32) + "\n";
+    receiptText += "\n" + "=".repeat(LINE_WIDTH) + "\n";
 
     // Bill Summary
     const subtotal = orderInfo.bills?.total || 0;
@@ -640,43 +575,42 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     const tax = orderInfo.bills?.tax || 0;
     const total = orderInfo.bills?.totalWithTax || 0;
 
-    receiptText += "Subtotal:";
-    receiptText += " ".repeat(
-      32 - "Subtotal:".length - subtotal.toFixed(2).length - 1
-    );
-    receiptText += `₱${subtotal.toFixed(2)}\n`;
+    const billItems = [
+      { label: "Subtotal:", value: subtotal, isDiscount: false },
+      { label: "PWD/SSS Discount:", value: pwdDiscount, isDiscount: true },
+      { label: "Employee Discount:", value: empDiscount, isDiscount: true },
+      { label: "VAT (12%):", value: tax, isDiscount: false },
+    ];
 
-    if (pwdDiscount > 0) {
-      receiptText += "PWD/SSS Discount:";
-      receiptText += " ".repeat(
-        32 - "PWD/SSS Discount:".length - pwdDiscount.toFixed(2).length - 1
-      );
-      receiptText += `-₱${pwdDiscount.toFixed(2)}\n`;
-    }
-
-    if (empDiscount > 0) {
-      receiptText += "Employee Discount:";
-      receiptText += " ".repeat(
-        32 - "Employee Discount:".length - empDiscount.toFixed(2).length - 1
-      );
-      receiptText += `-₱${empDiscount.toFixed(2)}\n`;
-    }
-
-    receiptText += "VAT (12%):";
-    receiptText += " ".repeat(
-      32 - "VAT (12%):".length - tax.toFixed(2).length - 1
-    );
-    receiptText += `₱${tax.toFixed(2)}\n`;
+    billItems.forEach(({ label, value, isDiscount }) => {
+      if (value > 0 || label === "Subtotal:" || label === "VAT (12%):") {
+        const displayValue = isDiscount
+          ? `-₱${value.toFixed(2)}`
+          : `₱${value.toFixed(2)}`;
+        const spacing = " ".repeat(
+          Math.max(1, LINE_WIDTH - label.length - displayValue.length)
+        );
+        if (isDiscount) {
+          receiptText += `${label.padEnd(
+            LINE_WIDTH - displayValue.length,
+            " "
+          )}${displayValue}\n`;
+        } else {
+          receiptText += `${label}${spacing}${displayValue}\n`;
+        }
+      }
+    });
 
     receiptText += thermalCommands.BOLD_ON;
-    receiptText += "TOTAL:";
-    receiptText += " ".repeat(
-      32 - "TOTAL:".length - total.toFixed(2).length - 1
+    const totalLabel = "TOTAL:";
+    const totalDisplayValue = `₱${total.toFixed(2)}`;
+    const totalSpacing = " ".repeat(
+      Math.max(1, LINE_WIDTH - totalLabel.length - totalDisplayValue.length)
     );
-    receiptText += `₱${total.toFixed(2)}\n`;
+    receiptText += `${totalLabel}${totalSpacing}${totalDisplayValue}\n`;
     receiptText += thermalCommands.BOLD_OFF;
 
-    receiptText += "=".repeat(32) + "\n\n";
+    receiptText += "=".repeat(LINE_WIDTH) + "\n\n";
 
     // Payment Info
     receiptText += thermalCommands.BOLD_ON;
@@ -706,9 +640,9 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
     // Remove ESC/POS commands for text display
     const cleanText = receiptText
-      .replace(/\x1B\[[0-9;]*[A-Za-z]/g, "")
-      .replace(/\x1B\x40/g, "")
-      .replace(/\x1D\x56\x41\x10/g, "")
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, (char) => {
+        return char === "\x0A" ? "\n" : "";
+      })
       .trim();
 
     const textBlob = new Blob([cleanText], { type: "text/plain" });
@@ -716,14 +650,24 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
     const textWindow = window.open(textUrl, "_blank");
     if (textWindow) {
-      setTimeout(() => {
-        textWindow.print();
-        openCashDrawer();
+      textWindow.document.write(
+        `<pre style="font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.1;">${cleanText}</pre>`
+      );
+      textWindow.document.close();
+
+      textWindow.onload = () => {
         setTimeout(() => {
-          textWindow.close();
-          URL.revokeObjectURL(textUrl);
-        }, 100);
-      }, 500);
+          textWindow.print();
+          // Open cash drawer after thermal print
+          openCashDrawer();
+          setTimeout(() => {
+            textWindow.close();
+            URL.revokeObjectURL(textUrl);
+          }, 100);
+        }, 500);
+      };
+    } else {
+      alertUser("Please allow popups to open the text print preview.");
     }
   };
 
@@ -762,47 +706,38 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             transition={{ duration: 0.2 }}
             className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-2"
           >
-            <FaCheck className="text-white text-base" />
+            <IconCheck className="text-white text-base" />
           </motion.div>
           <h2 className="text-xl font-bold text-gray-800">Order Confirmed!</h2>
           <p className="text-gray-600 text-xs mt-1">Thank you for your order</p>
 
           {/* Connection Status */}
-          <div className="mt-2 space-y-2">
-            <div
-              className={`px-3 py-2 rounded-full text-xs font-semibold ${
-                isConnected
-                  ? "bg-green-100 text-green-800"
-                  : isConnecting
-                  ? "bg-yellow-100 text-yellow-800"
-                  : "bg-red-100 text-red-800"
-              }`}
-            >
-              {isConnected
-                ? "✓ Bluetooth Connected"
+          <div
+            className={`mt-2 px-3 py-1 rounded-full text-xs font-semibold ${
+              isConnected
+                ? "bg-green-100 text-green-800"
                 : isConnecting
-                ? "🔄 Connecting..."
-                : "❌ Bluetooth Disconnected"}
-            </div>
-
-            {connectionError && (
-              <div className="bg-red-50 border border-red-200 rounded-lg p-2">
-                <div className="flex items-center gap-2 text-red-700 text-xs">
-                  <FaExclamationTriangle className="flex-shrink-0" />
-                  <span>{connectionError}</span>
-                </div>
-              </div>
-            )}
-
-            {isConnected && bluetoothDevice && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
-                <div className="text-blue-700 text-xs">
-                  <div className="font-semibold">Connected to:</div>
-                  <div className="truncate">{bluetoothDevice.device.name}</div>
-                </div>
-              </div>
-            )}
+                ? "bg-yellow-100 text-yellow-800"
+                : "bg-red-100 text-red-800"
+            }`}
+          >
+            {isConnected
+              ? "✓ Bluetooth Connected"
+              : isConnecting
+              ? "Connecting..."
+              : "Bluetooth Disconnected"}
           </div>
+
+          {/* Error Message Display */}
+          {errorMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-2 p-2 bg-red-50 text-red-700 text-[10px] rounded-lg border border-red-300 font-medium"
+            >
+              {errorMessage}
+            </motion.div>
+          )}
         </div>
 
         {/* Scrollable Content */}
@@ -951,9 +886,9 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         </div>
 
         {/* Action Buttons - Mobile Optimized */}
-        <div className="p-4 border-t bg-gray-50 space-y-3">
+        <div className="p-4 border-t bg-gray-50">
           {/* Connection Buttons */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-2 gap-2 mb-3">
             <button
               onClick={isConnected ? disconnectBluetooth : connectBluetooth}
               disabled={isConnecting}
@@ -966,11 +901,11 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               }`}
             >
               {isConnecting ? (
-                <FaSync className="text-xs animate-spin" />
+                <IconBluetooth className="text-xs w-4 h-4 animate-pulse" />
               ) : isConnected ? (
-                <FaUnlink className="text-xs" />
+                <IconUnlink className="text-xs w-4 h-4" />
               ) : (
-                <FaLink className="text-xs" />
+                <IconLink className="text-xs w-4 h-4" />
               )}
               {isConnecting
                 ? "Connecting..."
@@ -988,61 +923,50 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                   : "bg-gray-400 text-white cursor-not-allowed"
               }`}
             >
-              <FaCashRegister className="text-xs" />
+              <IconCashRegister className="text-xs w-4 h-4" />
               Open Drawer
             </button>
           </div>
 
           {/* Print Buttons */}
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <button
               onClick={handlePrint}
-              className="flex items-center justify-center gap-2 bg-blue-600 text-white px-3 py-3 rounded-lg hover:bg-blue-700 transition-colors text-xs font-semibold"
+              className="flex items-center justify-center gap-2 bg-blue-600 text-white px-2 py-3 rounded-lg hover:bg-blue-700 transition-colors text-xs font-semibold"
             >
-              <FaPrint className="text-xs" />
-              Print
+              <IconPrint className="text-xs w-4 h-4" />
+              Browser
             </button>
 
             <button
               onClick={printViaBluetooth}
               disabled={!isConnected}
-              className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg transition-colors text-xs font-semibold ${
+              className={`flex items-center justify-center gap-2 px-2 py-3 rounded-lg transition-colors text-xs font-semibold ${
                 isConnected
                   ? "bg-purple-600 text-white hover:bg-purple-700"
                   : "bg-gray-400 text-white cursor-not-allowed"
               }`}
             >
-              <FaBluetooth className="text-xs" />
-              Print via BT
+              <IconBluetooth className="text-xs w-4 h-4" />
+              BT Print
             </button>
 
             <button
               onClick={handleThermalPrint}
-              className="flex items-center justify-center gap-2 bg-green-600 text-white px-3 py-3 rounded-lg hover:bg-green-700 transition-colors text-xs font-semibold"
+              className="flex items-center justify-center gap-2 bg-green-600 text-white px-2 py-3 rounded-lg hover:bg-green-700 transition-colors text-xs font-semibold"
             >
-              <FaReceipt className="text-xs" />
-              Thermal
+              <IconReceipt className="text-xs w-4 h-4" />
+              Text Print
             </button>
 
-            {isConnected && (
-              <button
-                onClick={testPrinter}
-                className="flex items-center justify-center gap-2 bg-yellow-600 text-white px-3 py-3 rounded-lg hover:bg-yellow-700 transition-colors text-xs font-semibold"
-              >
-                <FaCheck className="text-xs" />
-                Test Print
-              </button>
-            )}
+            <button
+              onClick={() => setShowInvoice(false)}
+              className="col-span-3 flex items-center justify-center gap-2 bg-gray-600 text-white px-3 py-3 rounded-lg hover:bg-gray-700 transition-colors text-xs font-semibold mt-2"
+            >
+              <IconTimes className="text-xs w-4 h-4" />
+              Close Invoice
+            </button>
           </div>
-
-          {/* Close Button */}
-          <button
-            onClick={() => setShowInvoice(false)}
-            className="w-full flex items-center justify-center gap-2 bg-gray-600 text-white px-3 py-3 rounded-lg hover:bg-gray-700 transition-colors text-xs font-semibold"
-          >
-            <FaTimes className="text-xs" />
-            Close
-          </button>
         </div>
       </motion.div>
     </div>
