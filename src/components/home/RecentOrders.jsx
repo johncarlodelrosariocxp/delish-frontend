@@ -20,33 +20,43 @@ import {
 import { enqueueSnackbar } from "notistack";
 import { getOrders, updateOrderStatus } from "../../https/index";
 
-const RecentOrders = () => {
+const RecentOrders = ({ orders = [], onStatusChange }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingOrders, setUpdatingOrders] = useState(new Set());
   const [showAllOrders, setShowAllOrders] = useState(false);
   const queryClient = useQueryClient();
 
+  // Use provided orders prop or fetch if not provided
   const { data: resData, isError } = useQuery({
     queryKey: ["orders"],
     queryFn: async () => {
       return await getOrders();
     },
     placeholderData: keepPreviousData,
+    enabled: !orders || orders.length === 0, // Only fetch if orders prop is not provided
   });
 
   if (isError) {
     enqueueSnackbar("Something went wrong!", { variant: "error" });
   }
 
-  // Get all orders and sort by most recent first
+  // Get all orders - use prop if provided, otherwise use fetched data
   const allOrders = React.useMemo(() => {
-    const orders = resData?.data?.data || [];
-    return orders.sort((a, b) => {
+    if (orders && orders.length > 0) {
+      return orders.sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.orderDate || a.date || 0);
+        const dateB = new Date(b.createdAt || b.orderDate || b.date || 0);
+        return dateB - dateA; // Most recent first
+      });
+    }
+
+    const fetchedOrders = resData?.data?.data || [];
+    return fetchedOrders.sort((a, b) => {
       const dateA = new Date(a.createdAt || a.orderDate || a.date || 0);
       const dateB = new Date(b.createdAt || b.orderDate || b.date || 0);
       return dateB - dateA; // Most recent first
     });
-  }, [resData?.data?.data]);
+  }, [orders, resData?.data?.data]);
 
   // Filter orders based on search query
   const filteredOrders = React.useMemo(() => {
@@ -65,7 +75,7 @@ const RecentOrders = () => {
     ? filteredOrders
     : filteredOrders.slice(0, 5);
 
-  // Status configuration
+  // Status configuration - Matching the Home component style
   const getStatusConfig = (status) => {
     const statusLower = status?.toLowerCase();
     switch (statusLower) {
@@ -73,7 +83,7 @@ const RecentOrders = () => {
       case "delivered":
         return {
           icon: FaCheckCircle,
-          color: "text-green-500",
+          color: "text-green-600",
           bgColor: "bg-green-50",
           borderColor: "border-green-200",
           text: "Completed",
@@ -81,7 +91,7 @@ const RecentOrders = () => {
       case "pending":
         return {
           icon: FaClock,
-          color: "text-yellow-500",
+          color: "text-yellow-600",
           bgColor: "bg-yellow-50",
           borderColor: "border-yellow-200",
           text: "Pending",
@@ -90,7 +100,7 @@ const RecentOrders = () => {
       case "processing":
         return {
           icon: FaSpinner,
-          color: "text-blue-500",
+          color: "text-blue-600",
           bgColor: "bg-blue-50",
           borderColor: "border-blue-200",
           text: "In Progress",
@@ -99,7 +109,7 @@ const RecentOrders = () => {
       case "failed":
         return {
           icon: FaTimesCircle,
-          color: "text-red-500",
+          color: "text-red-600",
           bgColor: "bg-red-50",
           borderColor: "border-red-200",
           text: "Cancelled",
@@ -107,7 +117,7 @@ const RecentOrders = () => {
       default:
         return {
           icon: FaExclamationCircle,
-          color: "text-gray-500",
+          color: "text-gray-600",
           bgColor: "bg-gray-50",
           borderColor: "border-gray-200",
           text: status || "Unknown",
@@ -120,40 +130,46 @@ const RecentOrders = () => {
     setUpdatingOrders((prev) => new Set(prev).add(orderId));
 
     try {
-      // Update order status optimistically
-      const previousOrders = queryClient.getQueryData(["orders"]);
+      // If onStatusChange prop is provided, use it
+      if (onStatusChange) {
+        const order = allOrders.find((o) => o._id === orderId);
+        await onStatusChange(order, newStatus);
+      } else {
+        // Otherwise use the local update logic
+        const previousOrders = queryClient.getQueryData(["orders"]);
 
-      // Optimistic update
-      if (previousOrders) {
-        queryClient.setQueryData(["orders"], (old) => {
-          if (!old?.data?.data) return old;
+        // Optimistic update
+        if (previousOrders) {
+          queryClient.setQueryData(["orders"], (old) => {
+            if (!old?.data?.data) return old;
 
-          return {
-            ...old,
-            data: {
-              ...old.data,
-              data: old.data.data.map((order) =>
-                order._id === orderId
-                  ? { ...order, orderStatus: newStatus }
-                  : order
-              ),
-            },
-          };
+            return {
+              ...old,
+              data: {
+                ...old.data,
+                data: old.data.data.map((order) =>
+                  order._id === orderId
+                    ? { ...order, orderStatus: newStatus }
+                    : order
+                ),
+              },
+            };
+          });
+        }
+
+        // Call API to update order status
+        await updateOrderStatus({
+          orderId,
+          orderStatus: newStatus,
         });
+
+        enqueueSnackbar(`Order status updated to ${newStatus}`, {
+          variant: "success",
+        });
+
+        // Refetch to ensure data is in sync with server
+        await queryClient.invalidateQueries({ queryKey: ["orders"] });
       }
-
-      // Call API to update order status
-      await updateOrderStatus({
-        orderId,
-        orderStatus: newStatus,
-      });
-
-      enqueueSnackbar(`Order status updated to ${newStatus}`, {
-        variant: "success",
-      });
-
-      // Refetch to ensure data is in sync with server
-      await queryClient.invalidateQueries({ queryKey: ["orders"] });
     } catch (error) {
       console.error("Status update error:", error);
 
@@ -313,197 +329,189 @@ const RecentOrders = () => {
   };
 
   return (
-    <div className="px-1 sm:px-3 lg:px-6 mt-2 sm:mt-4">
-      <div className="bg-white text-black w-full h-auto max-h-[450px] sm:max-h-[550px] rounded-lg shadow-[0_0_8px_rgba(0,0,0,0.15)] sm:shadow-[0_0_15px_rgba(0,0,0,0.3)]">
-        {/* Header - Ultra compact for mobile */}
-        <div className="flex justify-between items-center px-2 sm:px-4 py-1.5 sm:py-3 border-b border-gray-200">
-          <h1 className="text-xs sm:text-base font-semibold tracking-wide">
-            {showAllOrders ? "All Orders" : "Recent Orders"}
-          </h1>
-          <button
-            onClick={toggleViewAll}
-            className="text-[#025cca] text-[10px] sm:text-xs font-semibold hover:underline flex items-center gap-1"
-          >
-            {showAllOrders ? (
-              <>
-                <FaEyeSlash className="text-[10px]" />
-                Show Less
-              </>
-            ) : (
-              <>
-                <FaEye className="text-[10px]" />
-                View All
-              </>
-            )}
-          </button>
-        </div>
-
-        {/* Search Bar - Ultra compact */}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-md px-2 sm:px-4 py-1.5 mx-2 sm:mx-4 mt-1.5 sm:mt-3">
-          <FaSearch className="text-gray-600 text-[10px] sm:text-sm" />
-          <input
-            type="text"
-            placeholder="Search by name, order ID, or status..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-gray-100 outline-none text-black w-full text-[10px] sm:text-sm placeholder-gray-500"
-          />
-        </div>
-
-        {/* Orders Count Info */}
-        <div className="px-2 sm:px-4 mt-1">
-          <p className="text-[10px] sm:text-xs text-gray-600">
-            Showing {displayOrders.length} of {filteredOrders.length} orders
-            {!showAllOrders && filteredOrders.length > 5 && " (most recent 5)"}
-          </p>
-        </div>
-
-        {/* Orders List - Card Layout */}
-        <div className="mt-1.5 sm:mt-3 px-2 sm:px-4 overflow-y-auto max-h-[320px] sm:max-h-[400px] h-auto scrollbar-hide">
-          {displayOrders.length > 0 ? (
-            <div className="space-y-2 sm:space-y-3 pb-2">
-              {displayOrders.map((order) => {
-                const statusConfig = getStatusConfig(order.orderStatus);
-                const StatusIcon = statusConfig.icon;
-                const totalAmount = calculateTotalAmount(order);
-                const itemsCount = getItemsCount(order);
-                const itemsPreview = getItemsPreview(order);
-                const isUpdating = updatingOrders.has(order._id);
-                const showActions = shouldShowActions(order);
-                const availableActions = getAvailableActions(order);
-
-                return (
-                  <div
-                    key={order._id}
-                    className={`border rounded-lg p-2 sm:p-3 ${statusConfig.bgColor} ${statusConfig.borderColor} hover:shadow-md transition-all duration-200`}
-                  >
-                    {/* Order Header */}
-                    <div className="flex justify-between items-start mb-2">
-                      <div className="flex items-center gap-2">
-                        <FaReceipt className="text-gray-600 text-xs sm:text-sm" />
-                        <span className="font-mono text-[10px] sm:text-xs text-gray-700">
-                          #{order._id?.slice(-8) || "N/A"}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1">
-                        {isUpdating ? (
-                          <FaSpinner className="text-blue-500 text-[10px] sm:text-xs animate-spin" />
-                        ) : (
-                          <StatusIcon
-                            className={`text-[10px] sm:text-xs ${
-                              statusConfig.color
-                            } ${
-                              order.orderStatus?.toLowerCase() ===
-                                "in progress" ||
-                              order.orderStatus?.toLowerCase() === "processing"
-                                ? "animate-spin"
-                                : ""
-                            }`}
-                          />
-                        )}
-                        <span
-                          className={`text-[10px] sm:text-xs font-medium capitalize ${statusConfig.color}`}
-                        >
-                          {isUpdating ? "Updating..." : statusConfig.text}
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Customer Info */}
-                    <div className="flex items-center gap-2 mb-2">
-                      <FaUser className="text-gray-500 text-[10px] sm:text-xs" />
-                      <span className="text-[10px] sm:text-xs font-medium text-gray-800">
-                        {order.customerDetails?.name || "Unknown Customer"}
-                      </span>
-                    </div>
-
-                    {/* Order Details */}
-                    <div className="grid grid-cols-2 gap-2 text-[10px] sm:text-xs mb-2">
-                      <div className="space-y-1">
-                        <div className="text-gray-600">Date</div>
-                        <div className="font-medium text-gray-800">
-                          {formatDate(order.createdAt || order.orderDate)}
-                        </div>
-                      </div>
-                      <div className="space-y-1 text-right">
-                        <div className="text-gray-600">Amount</div>
-                        <div className="font-semibold text-gray-800">
-                          {formatCurrency(totalAmount)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Items Preview */}
-                    {(order.items && order.items.length > 0) ||
-                    itemsCount > 0 ? (
-                      <div className="mt-2 pt-2 border-t border-gray-200 mb-2">
-                        <div className="text-[10px] sm:text-xs text-gray-600 mb-1">
-                          Items {itemsCount > 0 && `(${itemsCount})`}
-                        </div>
-                        <div className="text-[10px] sm:text-xs text-gray-800 line-clamp-1">
-                          {itemsPreview}
-                        </div>
-                      </div>
-                    ) : null}
-
-                    {/* Action Buttons */}
-                    {showActions && availableActions.length > 0 && (
-                      <div className="flex gap-2 pt-2 border-t border-gray-200">
-                        {availableActions.map((action) => {
-                          const ActionIcon = action.icon;
-                          return (
-                            <button
-                              key={action.status}
-                              onClick={() =>
-                                handleStatusUpdate(
-                                  order._id,
-                                  order.orderStatus,
-                                  action.status
-                                )
-                              }
-                              disabled={isUpdating}
-                              className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-colors ${
-                                action.variant === "primary"
-                                  ? "bg-blue-500 hover:bg-blue-600 text-white"
-                                  : "bg-green-500 hover:bg-green-600 text-white"
-                              } disabled:opacity-50 disabled:cursor-not-allowed`}
-                            >
-                              {isUpdating ? (
-                                <FaSpinner className="animate-spin text-[8px]" />
-                              ) : (
-                                <ActionIcon className="text-[8px]" />
-                              )}
-                              {action.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+    <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-4 shadow-lg hover:shadow-xl transition-all duration-300">
+      {/* Header */}
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-lg font-semibold text-gray-900">
+          {showAllOrders ? "All Orders" : "Recent Orders"}
+        </h1>
+        <button
+          onClick={toggleViewAll}
+          className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1"
+        >
+          {showAllOrders ? (
+            <>
+              <FaEyeSlash className="text-xs" />
+              Show Less
+            </>
           ) : (
-            <div className="flex justify-center items-center py-6 sm:py-8">
-              <div className="text-center">
-                <FaReceipt className="mx-auto text-gray-400 text-2xl mb-2" />
-                <p className="text-gray-500 text-[10px] sm:text-sm">
-                  {searchQuery
-                    ? "No orders found matching your search"
-                    : "No orders available"}
-                </p>
-                {searchQuery && (
-                  <button
-                    onClick={() => setSearchQuery("")}
-                    className="text-[#025cca] text-[10px] sm:text-xs mt-1 hover:underline"
-                  >
-                    Clear search
-                  </button>
+            <>
+              <FaEye className="text-xs" />
+              View All
+            </>
+          )}
+        </button>
+      </div>
+
+      {/* Search Bar */}
+      <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-4">
+        <FaSearch className="text-gray-500 text-sm" />
+        <input
+          type="text"
+          placeholder="Search by name, order ID, or status..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="bg-transparent outline-none text-gray-900 w-full text-sm placeholder-gray-500"
+        />
+      </div>
+
+      {/* Orders Count Info */}
+      <div className="mb-4">
+        <p className="text-xs text-gray-600">
+          Showing {displayOrders.length} of {filteredOrders.length} orders
+          {!showAllOrders && filteredOrders.length > 5 && " (most recent 5)"}
+        </p>
+      </div>
+
+      {/* Orders List */}
+      <div className="overflow-y-auto max-h-[400px] space-y-3">
+        {displayOrders.length > 0 ? (
+          displayOrders.map((order) => {
+            const statusConfig = getStatusConfig(order.orderStatus);
+            const StatusIcon = statusConfig.icon;
+            const totalAmount = calculateTotalAmount(order);
+            const itemsCount = getItemsCount(order);
+            const itemsPreview = getItemsPreview(order);
+            const isUpdating = updatingOrders.has(order._id);
+            const showActions = shouldShowActions(order);
+            const availableActions = getAvailableActions(order);
+
+            return (
+              <div
+                key={order._id}
+                className={`border rounded-xl p-4 ${statusConfig.bgColor} ${statusConfig.borderColor} hover:shadow-md transition-all duration-200`}
+              >
+                {/* Order Header */}
+                <div className="flex justify-between items-start mb-3">
+                  <div className="flex items-center gap-2">
+                    <FaReceipt className="text-gray-600 text-sm" />
+                    <span className="font-mono text-xs text-gray-700">
+                      #{order._id?.slice(-8) || "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {isUpdating ? (
+                      <FaSpinner className="text-blue-500 text-xs animate-spin" />
+                    ) : (
+                      <StatusIcon
+                        className={`text-xs ${statusConfig.color} ${
+                          order.orderStatus?.toLowerCase() === "in progress" ||
+                          order.orderStatus?.toLowerCase() === "processing"
+                            ? "animate-spin"
+                            : ""
+                        }`}
+                      />
+                    )}
+                    <span
+                      className={`text-xs font-medium capitalize ${statusConfig.color}`}
+                    >
+                      {isUpdating ? "Updating..." : statusConfig.text}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Customer Info */}
+                <div className="flex items-center gap-2 mb-2">
+                  <FaUser className="text-gray-500 text-xs" />
+                  <span className="text-xs font-medium text-gray-800">
+                    {order.customerDetails?.name || "Unknown Customer"}
+                  </span>
+                </div>
+
+                {/* Order Details */}
+                <div className="grid grid-cols-2 gap-3 text-xs mb-3">
+                  <div className="space-y-1">
+                    <div className="text-gray-600">Date</div>
+                    <div className="font-medium text-gray-800">
+                      {formatDate(order.createdAt || order.orderDate)}
+                    </div>
+                  </div>
+                  <div className="space-y-1 text-right">
+                    <div className="text-gray-600">Amount</div>
+                    <div className="font-semibold text-gray-800">
+                      {formatCurrency(totalAmount)}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Items Preview */}
+                {(order.items && order.items.length > 0) || itemsCount > 0 ? (
+                  <div className="mt-2 pt-2 border-t border-gray-200 mb-3">
+                    <div className="text-xs text-gray-600 mb-1">
+                      Items {itemsCount > 0 && `(${itemsCount})`}
+                    </div>
+                    <div className="text-xs text-gray-800 line-clamp-1">
+                      {itemsPreview}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Action Buttons */}
+                {showActions && availableActions.length > 0 && (
+                  <div className="flex gap-2 pt-2 border-t border-gray-200">
+                    {availableActions.map((action) => {
+                      const ActionIcon = action.icon;
+                      return (
+                        <button
+                          key={action.status}
+                          onClick={() =>
+                            handleStatusUpdate(
+                              order._id,
+                              order.orderStatus,
+                              action.status
+                            )
+                          }
+                          disabled={isUpdating}
+                          className={`flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                            action.variant === "primary"
+                              ? "bg-blue-500 hover:bg-blue-600 text-white"
+                              : "bg-green-500 hover:bg-green-600 text-white"
+                          } disabled:opacity-50 disabled:cursor-not-allowed`}
+                        >
+                          {isUpdating ? (
+                            <FaSpinner className="animate-spin" />
+                          ) : (
+                            <ActionIcon className="text-xs" />
+                          )}
+                          {action.label}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
               </div>
+            );
+          })
+        ) : (
+          <div className="flex justify-center items-center py-8">
+            <div className="text-center">
+              <FaReceipt className="mx-auto text-gray-400 text-2xl mb-2" />
+              <p className="text-gray-500 text-sm">
+                {searchQuery
+                  ? "No orders found matching your search"
+                  : "No orders available"}
+              </p>
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery("")}
+                  className="text-blue-600 text-xs mt-1 hover:underline"
+                >
+                  Clear search
+                </button>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </div>
   );

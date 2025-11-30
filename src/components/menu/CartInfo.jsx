@@ -2,12 +2,18 @@ import React, { useEffect, useRef } from "react";
 import { RiDeleteBin2Fill } from "react-icons/ri";
 import { FaNotesMedical } from "react-icons/fa6";
 import { useDispatch, useSelector } from "react-redux";
-import { removeItem } from "../../redux/slices/cartSlice";
+import { removeItemFromOrder } from "../../redux/slices/orderSlice";
 
-const CartInfo = () => {
-  const cartData = useSelector((state) => state.cart);
+const CartInfo = ({ orderId }) => {
+  const orders = useSelector((state) => state.order.orders);
+  const activeOrderId = useSelector((state) => state.order.activeOrderId);
   const scrollRef = useRef(null);
   const dispatch = useDispatch();
+
+  const currentOrder =
+    orders.find((order) => order.id === orderId) ||
+    orders.find((order) => order.id === activeOrderId);
+  const cartData = currentOrder?.items || [];
 
   useEffect(() => {
     scrollRef.current?.scrollTo({
@@ -18,7 +24,7 @@ const CartInfo = () => {
 
   const handleRemove = (itemId) => {
     if (window.confirm("Are you sure you want to remove this item?")) {
-      dispatch(removeItem(itemId));
+      dispatch(removeItemFromOrder({ orderId: currentOrder.id, itemId }));
     }
   };
 

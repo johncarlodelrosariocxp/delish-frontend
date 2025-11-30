@@ -1,12 +1,12 @@
 // src/components/auth/Login.jsx
 import { useState, useCallback, memo, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { login } from "../../https/index";
+import { login } from "../../https";
 import { enqueueSnackbar } from "notistack";
 import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/userSlice";
 import { useNavigate } from "react-router-dom";
-import { axiosWrapper } from "../../https/axiosWrapper"; // Fixed import
+import { axiosWrapper } from "../../https/axiosWrapper";
 
 const Login = () => {
   const navigate = useNavigate();
@@ -20,10 +20,8 @@ const Login = () => {
 
   // Detect environment and device type
   useEffect(() => {
-    // Check if production
     setIsProduction(import.meta.env.PROD);
 
-    // Check if mobile device
     const checkMobile = () => {
       return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
         navigator.userAgent
@@ -32,7 +30,6 @@ const Login = () => {
 
     setIsMobile(checkMobile());
 
-    // Log connection info for debugging
     console.log("🔧 Login Environment Info:");
     console.log("   Mode:", import.meta.env.MODE);
     console.log("   Production:", import.meta.env.PROD);
@@ -40,9 +37,6 @@ const Login = () => {
     console.log("   VITE_API_URL:", import.meta.env.VITE_API_URL);
   }, []);
 
-  // =============================
-  // 📌 Handlers
-  // =============================
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -71,16 +65,38 @@ const Login = () => {
   );
 
   // =============================
-  // 📌 Login Mutation
+  // 📌 Login Mutation - FIXED VERSION
   // =============================
   const loginMutation = useMutation({
     mutationFn: (reqData) => login(reqData),
     onSuccess: (res) => {
+      console.log("🔐 Full login response:", res);
+
       if (res?.data?.success) {
         const { _id, name, email, phone, role } = res.data.data;
+        const token = res.data.token; // EXTRACT THE TOKEN
 
-        // Save user in Redux
-        dispatch(setUser({ _id, name, email, phone, role }));
+        console.log("✅ Token received:", token);
+
+        // Save user in Redux WITH TOKEN
+        dispatch(
+          setUser({
+            _id,
+            name,
+            email,
+            phone,
+            role,
+            token: token, // THIS WAS MISSING!
+          })
+        );
+
+        // Save token to localStorage
+        if (token) {
+          localStorage.setItem("token", token);
+          console.log("✅ Token saved to localStorage");
+        } else {
+          console.warn("⚠️ No token received from backend");
+        }
 
         // Navigate immediately without preloading
         navigate("/", { replace: true });
@@ -124,7 +140,6 @@ const Login = () => {
         autoHideDuration: 6000,
       });
 
-      // Show additional help for mobile users in development
       if (helpMessage && isMobile && !isProduction) {
         setTimeout(() => {
           enqueueSnackbar(helpMessage, {
@@ -136,9 +151,6 @@ const Login = () => {
     },
   });
 
-  // =============================
-  // 📌 Forgot Password Mutation
-  // =============================
   const forgotPasswordMutation = useMutation({
     mutationFn: (email) =>
       axiosWrapper.post("/api/user/forgot-password", { email }),
@@ -174,9 +186,6 @@ const Login = () => {
     },
   });
 
-  // =============================
-  // 📌 Render
-  // =============================
   return (
     <div className="w-full max-w-md mx-auto p-6">
       {/* Environment Indicator */}
@@ -194,7 +203,6 @@ const Login = () => {
       </div>
 
       {!showForgotPassword ? (
-        // Login Form
         <form onSubmit={handleSubmit}>
           <div>
             <label
@@ -244,7 +252,6 @@ const Login = () => {
             </div>
           </div>
 
-          {/* Forgot Password Link */}
           <div className="text-right mt-3">
             <button
               type="button"
@@ -290,7 +297,6 @@ const Login = () => {
             )}
           </button>
 
-          {/* Environment-specific Help Text */}
           <div className="mt-4 p-3 bg-gray-800 rounded-lg">
             <p className="text-gray-400 text-xs text-center">
               {isProduction ? (
@@ -311,7 +317,6 @@ const Login = () => {
           </div>
         </form>
       ) : (
-        // Forgot Password Form
         <div className="text-center">
           <div className="mb-6">
             <h2 className="text-2xl font-bold text-white mb-2">

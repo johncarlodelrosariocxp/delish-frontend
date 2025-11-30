@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useSelector } from "react-redux";
 import {
   keepPreviousData,
   useMutation,
@@ -6,12 +7,17 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { getOrders, updateOrderStatus } from "../../https/index";
+import {
+  getOrders,
+  getAdminOrders,
+  updateOrderStatus,
+} from "../../https/index";
 import { formatDateAndTime } from "../../utils";
 
 const RecentOrders = () => {
   const queryClient = useQueryClient();
   const [timeFilter, setTimeFilter] = useState("all"); // all, today, week, month, year
+  const user = useSelector((state) => state.user);
 
   const orderStatusUpdateMutation = useMutation({
     mutationFn: ({ orderId, orderStatus }) =>
@@ -32,8 +38,17 @@ const RecentOrders = () => {
     isError,
     isLoading,
   } = useQuery({
-    queryKey: ["orders"],
-    queryFn: getOrders,
+    queryKey: ["orders", user.role],
+    queryFn: async () => {
+      // ✅ FIXED: Call different endpoints based on user role
+      if (user.role?.toLowerCase() === "admin") {
+        console.log("📋 Fetching all orders (admin)...");
+        return await getAdminOrders();
+      } else {
+        console.log("📋 Fetching user orders...");
+        return await getOrders();
+      }
+    },
     placeholderData: keepPreviousData,
   });
 

@@ -1,22 +1,39 @@
-// Header.jsx
+// Header.jsx - Complete working version
 import { useState, useEffect } from "react";
-import { FaUserCircle, FaBars, FaTimes, FaBox } from "react-icons/fa";
+import {
+  FaUserCircle,
+  FaBars,
+  FaTimes,
+  FaBox,
+  FaTachometerAlt,
+} from "react-icons/fa";
 import logo from "../../assets/images/delish.jpg";
 import { useDispatch, useSelector } from "react-redux";
 import { IoLogOut } from "react-icons/io5";
 import { useMutation } from "@tanstack/react-query";
 import { logout } from "../../https";
 import { removeUser } from "../../redux/slices/userSlice";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { MdDashboard } from "react-icons/md";
 
 const Header = () => {
   const userData = useSelector((state) => state.user);
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  // Debug user data
+  useEffect(() => {
+    console.log("🔍 HEADER - User Data:", userData);
+    console.log("🔍 HEADER - User Role:", userData?.role);
+    console.log(
+      "🔍 HEADER - Can Access Dashboard:",
+      ["Admin", "Manager", "Supervisor"].includes(userData?.role)
+    );
+  }, [userData]);
 
   const logoutMutation = useMutation({
     mutationFn: () => logout(),
@@ -27,22 +44,16 @@ const Header = () => {
     onError: (error) => {
       console.error("Logout API error:", error);
       console.log("Clearing local state despite API error");
-      // Even if API call fails, clear local state and redirect
       handleSuccessfulLogout();
     },
   });
 
   const handleSuccessfulLogout = () => {
-    // Clear Redux state
     dispatch(removeUser());
-
-    // Clear any localStorage/sessionStorage if used
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     sessionStorage.removeItem("token");
     sessionStorage.removeItem("user");
-
-    // Redirect to auth page
     navigate("/auth", { replace: true });
   };
 
@@ -60,21 +71,14 @@ const Header = () => {
     setShowLogoutConfirm(false);
   };
 
-  // Navigation items for mobile menu
-  const mobileMenuItems = [
-    {
-      name: "Dashboard",
-      path: "/dashboard",
-      icon: <MdDashboard className="text-white text-xl" />,
-      show: userData.role === "Admin",
-    },
-    {
-      name: "Inventory",
-      path: "/inventory",
-      icon: <FaBox className="text-white text-xl" />,
-      show: true,
-    },
-  ];
+  useEffect(() => {
+    setIsMobileMenuOpen(false);
+  }, [location.pathname]);
+
+  // Check if user can access dashboard (Admin or specific roles)
+  const canAccessDashboard = ["Admin", "Manager", "Supervisor"].includes(
+    userData?.role
+  );
 
   return (
     <>
@@ -106,13 +110,17 @@ const Header = () => {
 
         {/* Desktop Navigation - Hidden on mobile */}
         <div className="hidden sm:flex items-center gap-4">
-          {/* Dashboard Button for Desktop - Admin Only */}
-          {userData.role === "Admin" && (
+          {/* Dashboard Button for Desktop - Conditionally shown */}
+          {canAccessDashboard && (
             <button
               onClick={() => navigate("/dashboard")}
-              className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+                location.pathname === "/dashboard"
+                  ? "bg-gray-700 text-white shadow-lg"
+                  : "bg-gray-600 text-white hover:bg-gray-700 hover:shadow-md"
+              }`}
             >
-              <MdDashboard className="text-white text-lg" />
+              <FaTachometerAlt className="text-white text-lg" />
               <span className="text-sm font-medium">Dashboard</span>
             </button>
           )}
@@ -120,7 +128,11 @@ const Header = () => {
           {/* Inventory Button for Desktop */}
           <button
             onClick={() => navigate("/inventory")}
-            className="flex items-center gap-2 px-4 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors"
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-colors ${
+              location.pathname === "/inventory"
+                ? "bg-gray-700 text-white shadow-lg"
+                : "bg-gray-600 text-white hover:bg-gray-700 hover:shadow-md"
+            }`}
           >
             <FaBox className="text-white text-lg" />
             <span className="text-sm font-medium">Inventory</span>
@@ -132,16 +144,17 @@ const Header = () => {
               <FaUserCircle className="text-white text-2xl" />
               <div className="flex flex-col items-start">
                 <h1 className="text-sm text-white font-semibold tracking-wide">
-                  {userData.name || "TEST USER"}
+                  {userData?.name || "TEST USER"}
                 </h1>
                 <p className="text-xs text-gray-300 font-medium">
-                  {userData.role || "Role"}
+                  {userData?.role || "Role"}
                 </p>
               </div>
               <button
                 onClick={handleLogoutClick}
                 disabled={logoutMutation.isLoading}
                 className="text-white ml-1 hover:text-gray-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Logout"
               >
                 <IoLogOut size={24} />
               </button>
@@ -159,26 +172,30 @@ const Header = () => {
               <FaUserCircle className="text-white text-3xl" />
               <div className="flex flex-col items-start">
                 <h1 className="text-lg text-white font-semibold tracking-wide">
-                  {userData.name || "TEST USER"}
+                  {userData?.name || "TEST USER"}
                 </h1>
                 <p className="text-sm text-gray-300 font-medium">
-                  {userData.role || "Role"}
+                  {userData?.role || "Role"}
                 </p>
               </div>
             </div>
 
             {/* Menu Items */}
             <div className="space-y-4">
-              {/* Dashboard Button for Mobile - Admin Only */}
-              {userData.role === "Admin" && (
+              {/* Dashboard Button for Mobile - Conditionally shown */}
+              {canAccessDashboard && (
                 <div
                   onClick={() => {
                     navigate("/dashboard");
                     setIsMobileMenuOpen(false);
                   }}
-                  className="flex items-center gap-3 p-3 bg-gray-600 rounded-lg cursor-pointer hover:bg-gray-700 transition-colors"
+                  className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                    location.pathname === "/dashboard"
+                      ? "bg-gray-700 border-2 border-white"
+                      : "bg-gray-600 hover:bg-gray-700"
+                  }`}
                 >
-                  <MdDashboard className="text-white text-xl" />
+                  <FaTachometerAlt className="text-white text-xl" />
                   <span className="text-white font-medium">Dashboard</span>
                 </div>
               )}
@@ -189,30 +206,15 @@ const Header = () => {
                   navigate("/inventory");
                   setIsMobileMenuOpen(false);
                 }}
-                className="flex items-center gap-3 p-3 bg-gray-600 rounded-lg cursor-pointer hover:bg-gray-700 transition-colors"
+                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
+                  location.pathname === "/inventory"
+                    ? "bg-gray-700 border-2 border-white"
+                    : "bg-gray-600 hover:bg-gray-700"
+                }`}
               >
                 <FaBox className="text-white text-xl" />
                 <span className="text-white font-medium">Inventory</span>
               </div>
-
-              {/* Other Menu Items */}
-              {mobileMenuItems.map((item) =>
-                item.show ? (
-                  <div
-                    key={item.name}
-                    onClick={() => {
-                      if (item.path !== "#") {
-                        navigate(item.path);
-                        setIsMobileMenuOpen(false);
-                      }
-                    }}
-                    className="flex items-center gap-3 p-3 bg-gray-600 rounded-lg cursor-pointer hover:bg-gray-700 transition-colors"
-                  >
-                    {item.icon}
-                    <span className="text-white font-medium">{item.name}</span>
-                  </div>
-                ) : null
-              )}
 
               {/* Logout Button */}
               <button

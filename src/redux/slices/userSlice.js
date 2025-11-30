@@ -6,7 +6,7 @@ const initialState = {
   email: "",
   phone: "",
   role: "",
-  token: "", // Add this missing field
+  token: "",
   isAuth: false,
 };
 
@@ -21,7 +21,7 @@ const userSlice = createSlice({
       state.phone = phone;
       state.email = email;
       state.role = role;
-      state.token = token; // Set the token
+      state.token = token;
       state.isAuth = true;
     },
 
@@ -31,7 +31,7 @@ const userSlice = createSlice({
       state.name = "";
       state.phone = "";
       state.role = "";
-      state.token = ""; // Clear the token
+      state.token = "";
       state.isAuth = false;
     },
   },

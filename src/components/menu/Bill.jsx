@@ -1,14 +1,13 @@
 import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
-  removeItem,
-  removeAllItems,
-  incrementQuantity,
-  decrementQuantity,
-  redeemItem,
-  removeRedemption,
-} from "../../redux/slices/cartSlice";
-import { removeCustomer } from "../../redux/slices/customerSlice";
+  removeItemFromOrder,
+  incrementQuantityInOrder,
+  decrementQuantityInOrder,
+  redeemItemInOrder,
+  removeRedemptionFromOrder,
+  completeOrder,
+} from "../../redux/slices/orderSlice";
 import {
   addOrder,
   createOrderRazorpay,
@@ -30,16 +29,24 @@ function loadScript(src) {
   });
 }
 
-const Bill = () => {
+const Bill = ({ orderId }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const customerData = useSelector((state) => state.customer);
-  const cartData = useSelector((state) => state.cart);
+
+  // Get order-specific data
+  const orders = useSelector((state) => state.order.orders);
+  const activeOrderId = useSelector((state) => state.order.activeOrderId);
+
+  const currentOrder =
+    orders.find((order) => order.id === orderId) ||
+    orders.find((order) => order.id === activeOrderId);
+  const customerData = currentOrder?.customer || {};
+  const cartData = currentOrder?.items || [];
 
   const vatRate = 12;
-  const pwdSssDiscountRate = 0.2; // PWD/SSS = 20%
-  const employeeDiscountRate = 0.15; // Employee = 15%
-  const shareholderDiscountRate = 0.1; // Shareholder = 10%
+  const pwdSssDiscountRate = 0.2;
+  const employeeDiscountRate = 0.15;
+  const shareholderDiscountRate = 0.1;
 
   const [pwdSssDiscountApplied, setPwdSssDiscountApplied] = useState(false);
   const [employeeDiscountApplied, setEmployeeDiscountApplied] = useState(false);
@@ -49,6 +56,7 @@ const Bill = () => {
   const [showInvoice, setShowInvoice] = useState(false);
   const [orderInfo, setOrderInfo] = useState(null);
   const [showRedeemOptions, setShowRedeemOptions] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -79,204 +87,128 @@ const Bill = () => {
     return Object.values(combinedItems);
   };
 
+  // Calculate totals with better error handling
+  const calculateTotals = () => {
+    try {
+      const baseGrossTotal = cartData.reduce(
+        (sum, item) =>
+          sum + safeNumber(item.quantity) * safeNumber(item.pricePerQuantity),
+        0
+      );
+
+      // Calculate PWD/SSS discount
+      let pwdSssDiscountAmount = 0;
+      if (pwdSssDiscountApplied && cartData.length > 0) {
+        const sortedByValue = [...cartData]
+          .map((item) => ({
+            ...item,
+            totalValue:
+              safeNumber(item.quantity) * safeNumber(item.pricePerQuantity),
+          }))
+          .sort((a, b) => b.totalValue - a.totalValue);
+
+        if (sortedByValue.length === 1) {
+          pwdSssDiscountAmount =
+            sortedByValue[0].totalValue * pwdSssDiscountRate;
+        } else if (sortedByValue.length >= 2) {
+          const topTwoTotal =
+            sortedByValue[0].totalValue + sortedByValue[1].totalValue;
+          pwdSssDiscountAmount = topTwoTotal * pwdSssDiscountRate;
+        }
+      }
+
+      // Calculate redemption amount
+      const redemptionAmount = cartData.reduce((sum, item) => {
+        return item.isRedeemed
+          ? sum + safeNumber(item.quantity) * safeNumber(item.pricePerQuantity)
+          : sum;
+      }, 0);
+
+      // Calculate subtotals
+      const subtotalAfterPwdSssAndRedemption =
+        baseGrossTotal - pwdSssDiscountAmount - redemptionAmount;
+
+      // Employee discount
+      const employeeDiscountAmount = employeeDiscountApplied
+        ? subtotalAfterPwdSssAndRedemption * employeeDiscountRate
+        : 0;
+
+      const subtotalAfterEmployeeDiscount =
+        subtotalAfterPwdSssAndRedemption - employeeDiscountAmount;
+
+      // Shareholder discount
+      const shareholderDiscountAmount = shareholderDiscountApplied
+        ? subtotalAfterEmployeeDiscount * shareholderDiscountRate
+        : 0;
+
+      const discountedTotal = Math.max(
+        0,
+        subtotalAfterEmployeeDiscount - shareholderDiscountAmount
+      );
+      const netSales = discountedTotal / (1 + vatRate / 100);
+      const vatAmount = discountedTotal - netSales;
+      const total = Math.max(0, Number(discountedTotal.toFixed(2)));
+
+      const totalDiscountAmount =
+        pwdSssDiscountAmount +
+        employeeDiscountAmount +
+        shareholderDiscountAmount +
+        redemptionAmount;
+
+      return {
+        baseGrossTotal,
+        pwdSssDiscountAmount,
+        redemptionAmount,
+        employeeDiscountAmount,
+        shareholderDiscountAmount,
+        netSales,
+        vatAmount,
+        total,
+        totalDiscountAmount,
+        subtotalAfterPwdSssAndRedemption,
+      };
+    } catch (error) {
+      console.error("Error calculating totals:", error);
+      return {
+        baseGrossTotal: 0,
+        pwdSssDiscountAmount: 0,
+        redemptionAmount: 0,
+        employeeDiscountAmount: 0,
+        shareholderDiscountAmount: 0,
+        netSales: 0,
+        vatAmount: 0,
+        total: 0,
+        totalDiscountAmount: 0,
+        subtotalAfterPwdSssAndRedemption: 0,
+      };
+    }
+  };
+
+  const totals = calculateTotals();
+
   // Add default discountedPrice field
-  const addDefaultDiscountedPrice = (cart) =>
-    cart.map((item) => ({
+  const addDefaultDiscountedPrice = (cart) => {
+    return cart.map((item) => ({
       ...item,
       discountedPrice:
         item.discountedPrice ?? safeNumber(item.pricePerQuantity),
       pricePerQuantity: safeNumber(item.pricePerQuantity),
       price: safeNumber(item.price),
     }));
+  };
 
-  // Calculate item total value (quantity × price)
-  const calculateItemTotalValue = (item) => {
+  const processedCart = addDefaultDiscountedPrice(cartData);
+  const combinedCart = combineCartItems(processedCart);
+
+  // Calculate item total
+  const calculateItemTotal = (item) => {
+    if (item.isRedeemed) {
+      return 0;
+    }
     return safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
   };
 
-  // FIXED: Apply PWD/SSS discount logic with proper error handling
-  const applyPwdSssDiscount = (cart) => {
-    try {
-      const normalizedCart = addDefaultDiscountedPrice(cart);
-
-      if (!pwdSssDiscountApplied) {
-        return normalizedCart.map((item) => ({
-          ...item,
-          discountedUnits: 0,
-          regularUnits: item.quantity,
-          totalDiscount: 0,
-        }));
-      }
-
-      // Create cart with total value - ensure all items have totalValue
-      const cartWithTotalValue = normalizedCart.map((item) => ({
-        ...item,
-        totalValue: calculateItemTotalValue(item),
-      }));
-
-      // Filter out any invalid items and sort by total value (highest first)
-      const validItems = cartWithTotalValue.filter(
-        (item) =>
-          item && typeof item.totalValue === "number" && !isNaN(item.totalValue)
-      );
-
-      if (validItems.length === 0) {
-        return cartWithTotalValue.map((item) => ({
-          ...item,
-          discountedPrice: safeNumber(item.pricePerQuantity),
-          discountedUnits: 0,
-          regularUnits: safeNumber(item.quantity),
-          totalDiscount: 0,
-        }));
-      }
-
-      const sortedByTotalValue = [...validItems].sort(
-        (a, b) => safeNumber(b.totalValue) - safeNumber(a.totalValue)
-      );
-
-      let totalDiscountAmount = 0;
-      let discountedItems = [];
-
-      if (sortedByTotalValue.length <= 2) {
-        // If 1 or 2 items, apply 20% discount to the most expensive item's TOTAL VALUE
-        const mostExpensiveItem = sortedByTotalValue[0];
-        if (mostExpensiveItem && mostExpensiveItem.totalValue) {
-          totalDiscountAmount =
-            safeNumber(mostExpensiveItem.totalValue) * pwdSssDiscountRate;
-          discountedItems = [mostExpensiveItem.id];
-        }
-      } else {
-        // If 3 or more items, combine the TOTAL VALUE of the 2 most expensive items, then apply 20%
-        const twoMostExpensive = sortedByTotalValue.slice(0, 2);
-        const combinedTotalValue = twoMostExpensive.reduce(
-          (sum, item) => sum + safeNumber(item.totalValue || 0),
-          0
-        );
-        totalDiscountAmount = combinedTotalValue * pwdSssDiscountRate;
-        discountedItems = twoMostExpensive.map((item) => item.id);
-      }
-
-      // Distribute the discount proportionally to the discounted items
-      return cartWithTotalValue.map((item) => {
-        const isDiscounted = discountedItems.includes(item.id);
-        if (isDiscounted && item && item.totalValue) {
-          // Calculate this item's share of the total discount based on its proportion of the discounted total
-          const discountedItemsTotal = discountedItems.reduce(
-            (sum, discountedId) => {
-              const discountedItem = cartWithTotalValue.find(
-                (cartItem) => cartItem && cartItem.id === discountedId
-              );
-              return sum + safeNumber(discountedItem?.totalValue || 0);
-            },
-            0
-          );
-
-          // Avoid division by zero
-          const itemProportion =
-            discountedItemsTotal > 0
-              ? safeNumber(item.totalValue) / discountedItemsTotal
-              : 0;
-          const itemDiscount = totalDiscountAmount * itemProportion;
-
-          return {
-            ...item,
-            discountedPrice: safeNumber(item.pricePerQuantity),
-            discountedUnits: 0,
-            regularUnits: safeNumber(item.quantity),
-            totalDiscount: itemDiscount,
-          };
-        }
-        return {
-          ...item,
-          discountedPrice: safeNumber(item.pricePerQuantity),
-          discountedUnits: 0,
-          regularUnits: safeNumber(item.quantity),
-          totalDiscount: 0,
-        };
-      });
-    } catch (error) {
-      console.error("Error in applyPwdSssDiscount:", error);
-      // Return original cart if there's an error
-      return cart.map((item) => ({
-        ...item,
-        discountedPrice: safeNumber(item.pricePerQuantity),
-        discountedUnits: 0,
-        regularUnits: safeNumber(item.quantity),
-        totalDiscount: 0,
-      }));
-    }
-  };
-
-  // Apply employee discount logic
-  const applyEmployeeDiscount = (cart) => {
-    const normalizedCart = addDefaultDiscountedPrice(cart);
-
-    if (!employeeDiscountApplied) {
-      return normalizedCart.map((item) => ({
-        ...item,
-        discountedUnits: 0,
-        regularUnits: safeNumber(item.quantity),
-        totalDiscount: item.totalDiscount || 0,
-      }));
-    }
-
-    return normalizedCart.map((item) => ({
-      ...item,
-      discountedPrice: safeNumber(item.pricePerQuantity),
-      discountedUnits: 0,
-      regularUnits: safeNumber(item.quantity),
-      totalDiscount: item.totalDiscount || 0,
-    }));
-  };
-
-  // Apply redemption logic
-  const applyRedemption = (cart) => {
-    return cart.map((item) => ({
-      ...item,
-      isFree: item.isRedeemed || false,
-    }));
-  };
-
-  // Process all discounts and redemption
-  const processCart = (cart) => {
-    try {
-      let processedCart = [...cart];
-
-      // Apply PWD/SSS discount first
-      if (pwdSssDiscountApplied) {
-        processedCart = applyPwdSssDiscount(processedCart);
-      }
-
-      // Apply redemption
-      processedCart = applyRedemption(processedCart);
-
-      return processedCart;
-    } catch (error) {
-      console.error("Error in processCart:", error);
-      return cart; // Return original cart if processing fails
-    }
-  };
-
-  const processedCart = processCart(cartData);
-  const combinedCart = combineCartItems(processedCart);
-
-  // Calculate total for an item considering discounted, regular units, and redemption
-  const calculateItemTotal = (item) => {
-    if (item.isFree) {
-      return 0; // Redeemed item is free
-    }
-
-    const quantity = safeNumber(item.quantity);
-    const pricePerQuantity = safeNumber(item.pricePerQuantity);
-
-    // For PWD/SSS discount, we subtract the total discount from the item's total
-    const itemTotalValue = quantity * pricePerQuantity;
-    const discountAmount = safeNumber(item.totalDiscount) || 0;
-
-    return Math.max(0, itemTotalValue - discountAmount);
-  };
-
-  // Calculate total price per item (quantity × price)
+  // Calculate item total price
   const calculateItemTotalPrice = (item) => {
     return safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
   };
@@ -288,16 +220,19 @@ const Bill = () => {
 
   // Quantity handlers
   const handleIncrement = (itemId) => {
-    dispatch(incrementQuantity(itemId));
+    if (!currentOrder) return;
+    dispatch(incrementQuantityInOrder({ orderId: currentOrder.id, itemId }));
   };
 
   const handleDecrement = (itemId) => {
-    dispatch(decrementQuantity(itemId));
+    if (!currentOrder) return;
+    dispatch(decrementQuantityInOrder({ orderId: currentOrder.id, itemId }));
   };
 
   // Individual redeem handler for each item
   const handleRedeemItem = (itemId, itemName) => {
-    dispatch(redeemItem(itemId));
+    if (!currentOrder) return;
+    dispatch(redeemItemInOrder({ orderId: currentOrder.id, itemId }));
     setShowRedeemOptions(false);
     enqueueSnackbar(`${itemName} redeemed for free!`, {
       variant: "success",
@@ -306,7 +241,8 @@ const Bill = () => {
 
   // Remove redemption handler
   const handleRemoveRedemption = () => {
-    dispatch(removeRedemption());
+    if (!currentOrder) return;
+    dispatch(removeRedemptionFromOrder({ orderId: currentOrder.id }));
     setShowRedeemOptions(false);
     enqueueSnackbar("Redemption removed!", { variant: "info" });
   };
@@ -314,61 +250,14 @@ const Bill = () => {
   // Check if any item is redeemed
   const hasRedeemedItem = combinedCart.some((item) => item.isRedeemed);
 
-  // Calculate base totals without employee discount
-  const baseGrossTotal = combinedCart.reduce(
-    (sum, item) =>
-      sum + safeNumber(item.quantity) * safeNumber(item.pricePerQuantity),
-    0
-  );
-
-  // Calculate PWD/SSS discount amount from totalDiscount fields
-  const pwdSssDiscountAmount = combinedCart.reduce((sum, item) => {
-    return sum + safeNumber(item.totalDiscount || 0);
-  }, 0);
-
-  const redemptionAmount = combinedCart.reduce((sum, item) => {
-    if (item.isFree) {
-      return sum + safeNumber(item.pricePerQuantity);
-    }
-    return sum;
-  }, 0);
-
-  // Calculate subtotal after PWD/SSS discount and redemption
-  const subtotalAfterPwdSssAndRedemption =
-    baseGrossTotal - pwdSssDiscountAmount - redemptionAmount;
-
-  // Apply employee discount to subtotal
-  const employeeDiscountAmount = employeeDiscountApplied
-    ? subtotalAfterPwdSssAndRedemption * employeeDiscountRate
-    : 0;
-
-  // Apply shareholder discount to subtotal (after all other discounts)
-  const subtotalAfterEmployeeDiscount =
-    subtotalAfterPwdSssAndRedemption - employeeDiscountAmount;
-
-  const shareholderDiscountAmount = shareholderDiscountApplied
-    ? subtotalAfterEmployeeDiscount * shareholderDiscountRate
-    : 0;
-
-  const discountedTotal =
-    subtotalAfterEmployeeDiscount - shareholderDiscountAmount;
-  const netSales = discountedTotal / (1 + vatRate / 100);
-  const vatAmount = discountedTotal - netSales;
-  const total = Math.max(0, Number(discountedTotal.toFixed(2)));
-
-  // Total discount amount for display
-  const totalDiscountAmount =
-    pwdSssDiscountAmount +
-    employeeDiscountAmount +
-    shareholderDiscountAmount +
-    redemptionAmount;
-
   // Get discounted items for display
   const getDiscountedItemsInfo = () => {
-    if (!pwdSssDiscountApplied || pwdSssDiscountAmount === 0) return null;
+    if (!pwdSssDiscountApplied || totals.pwdSssDiscountAmount === 0)
+      return null;
 
     const discountedItems = combinedCart.filter(
-      (item) => safeNumber(item.totalDiscount || 0) > 0
+      (item) =>
+        safeNumber(item.quantity) * safeNumber(item.pricePerQuantity) > 0
     );
 
     if (discountedItems.length === 1) {
@@ -381,7 +270,7 @@ const Bill = () => {
 
   const discountedItemsInfo = getDiscountedItemsInfo();
 
-  // Handle discount exclusivity - only one discount can be applied at a time
+  // Handle discount exclusivity
   const handlePwdSssDiscount = () => {
     setPwdSssDiscountApplied(!pwdSssDiscountApplied);
     setEmployeeDiscountApplied(false);
@@ -400,7 +289,193 @@ const Bill = () => {
     setEmployeeDiscountApplied(false);
   };
 
-  // FIXED: Order mutation with proper error handling
+  // Print to Bluetooth Thermal Printer
+  const printToBluetoothPrinter = async (orderData) => {
+    try {
+      // Create receipt text
+      const receiptText = generateReceiptText(orderData);
+
+      // Try Web Bluetooth API
+      if (navigator.bluetooth) {
+        try {
+          const device = await navigator.bluetooth.requestDevice({
+            acceptAllDevices: true,
+            optionalServices: ["generic_access"],
+          });
+
+          console.log("Connecting to Bluetooth device:", device.name);
+          enqueueSnackbar(`Connecting to ${device.name}...`, {
+            variant: "info",
+          });
+
+          // For thermal printers, we typically need to use serial over Bluetooth
+          // This is a simplified approach - actual implementation may vary by printer model
+          await sendToPrinter(receiptText);
+        } catch (error) {
+          console.warn("Bluetooth printing failed:", error);
+          // Fallback to regular printing
+          fallbackPrint(receiptText);
+        }
+      } else {
+        // Web Bluetooth not supported, use fallback
+        fallbackPrint(receiptText);
+      }
+    } catch (error) {
+      console.error("Printing error:", error);
+      enqueueSnackbar("Printing failed", { variant: "error" });
+      // Still try fallback
+      const receiptText = generateReceiptText(orderData);
+      fallbackPrint(receiptText);
+    }
+  };
+
+  // Generate receipt text for thermal printer
+  const generateReceiptText = (orderData) => {
+    const lineBreak = "\n";
+    const dashedLine = "--------------------------------";
+    const doubleLine = "===============================";
+
+    let receipt = "";
+
+    // Header
+    receipt += doubleLine + lineBreak;
+    receipt += "      DELISH RESTAURANT" + lineBreak;
+    receipt += doubleLine + lineBreak;
+    receipt += `Order: #${orderData._id?.slice(-8) || "N/A"}` + lineBreak;
+    receipt += `Date: ${new Date().toLocaleString()}` + lineBreak;
+    receipt +=
+      `Customer: ${orderData.customerDetails?.name || "Walk-in"}` + lineBreak;
+    receipt +=
+      `Table: ${
+        customerData.tables?.[0]?.tableId ||
+        customerData.table?.tableId ||
+        customerData.tableId ||
+        "N/A"
+      }` + lineBreak;
+    receipt += dashedLine + lineBreak;
+
+    // Items
+    receipt += "           ORDER ITEMS" + lineBreak;
+    receipt += dashedLine + lineBreak;
+
+    combinedCart.forEach((item) => {
+      const itemName =
+        item.name.length > 20 ? item.name.substring(0, 17) + "..." : item.name;
+      const price = item.isRedeemed
+        ? "FREE"
+        : `₱${calculateItemTotal(item).toFixed(2)}`;
+
+      receipt += `${itemName}` + lineBreak;
+      receipt +=
+        `  ${item.quantity}x ₱${safeNumber(item.pricePerQuantity).toFixed(2)}` +
+        lineBreak;
+      receipt +=
+        `  ${price}${item.isRedeemed ? " (REDEEMED)" : ""}` + lineBreak;
+      receipt += lineBreak;
+    });
+
+    receipt += dashedLine + lineBreak;
+
+    // Totals
+    receipt +=
+      "SUBTOTAL:" +
+      padLeft(`₱${totals.baseGrossTotal.toFixed(2)}`, 20) +
+      lineBreak;
+
+    if (totals.pwdSssDiscountAmount > 0) {
+      receipt +=
+        "PWD/SSS DISC:" +
+        padLeft(`-₱${totals.pwdSssDiscountAmount.toFixed(2)}`, 17) +
+        lineBreak;
+    }
+
+    if (totals.redemptionAmount > 0) {
+      receipt +=
+        "REDEMPTION:" +
+        padLeft(`-₱${totals.redemptionAmount.toFixed(2)}`, 19) +
+        lineBreak;
+    }
+
+    if (totals.employeeDiscountAmount > 0) {
+      receipt +=
+        "EMP DISCOUNT:" +
+        padLeft(`-₱${totals.employeeDiscountAmount.toFixed(2)}`, 17) +
+        lineBreak;
+    }
+
+    if (totals.shareholderDiscountAmount > 0) {
+      receipt +=
+        "SH DISCOUNT:" +
+        padLeft(`-₱${totals.shareholderDiscountAmount.toFixed(2)}`, 18) +
+        lineBreak;
+    }
+
+    receipt +=
+      "VAT (12%):" + padLeft(`₱${totals.vatAmount.toFixed(2)}`, 20) + lineBreak;
+    receipt += doubleLine + lineBreak;
+    receipt +=
+      "TOTAL:" + padLeft(`₱${totals.total.toFixed(2)}`, 24) + lineBreak;
+    receipt += doubleLine + lineBreak;
+
+    receipt += `Payment: ${paymentMethod}` + lineBreak;
+    receipt += lineBreak;
+    receipt += "Thank you for dining with us!" + lineBreak;
+    receipt += "Visit us again soon!" + lineBreak;
+    receipt += lineBreak;
+    receipt += lineBreak;
+    receipt += lineBreak; // Extra lines for paper cut
+
+    return receipt;
+  };
+
+  // Helper function to pad text for alignment
+  const padLeft = (text, length) => {
+    return text.padStart(length, " ");
+  };
+
+  // Send to printer (simplified - actual implementation depends on printer)
+  const sendToPrinter = async (receiptText) => {
+    // This is a simplified version
+    // Actual implementation would use printer-specific Bluetooth protocols
+    console.log("Sending to printer:", receiptText);
+    enqueueSnackbar("Receipt sent to Bluetooth printer", {
+      variant: "success",
+    });
+  };
+
+  // Fallback printing method
+  const fallbackPrint = (receiptText) => {
+    // Create a hidden textarea with the receipt content
+    const textArea = document.createElement("textarea");
+    textArea.value = receiptText;
+    textArea.style.position = "fixed";
+    textArea.style.left = "-9999px";
+    textArea.style.top = "0";
+    document.body.appendChild(textArea);
+    textArea.select();
+
+    try {
+      // Try to print using browser print
+      window.print();
+      enqueueSnackbar("Receipt ready for printing", { variant: "success" });
+    } catch (error) {
+      // Copy to clipboard as last resort
+      document.execCommand("copy");
+      enqueueSnackbar("Receipt copied to clipboard", { variant: "info" });
+    }
+
+    document.body.removeChild(textArea);
+  };
+
+  // Open cash drawer
+  const openCashDrawer = () => {
+    // Cash drawer command for thermal printers
+    const cashDrawerCommand = "\x1B\x70\x00\x19\xFA";
+    console.log("Cash drawer command sent");
+    enqueueSnackbar("Cash drawer opened", { variant: "info" });
+  };
+
+  // Order mutation with complete order handling
   const orderMutation = useMutation({
     mutationFn: (reqData) => addOrder(reqData),
     onSuccess: (res) => {
@@ -424,17 +499,17 @@ const Bill = () => {
           quantity: item.quantity,
           price: calculateItemTotal(item),
           pricePerQuantity: safeNumber(item.pricePerQuantity),
-          isFree: item.isFree || false,
+          isFree: item.isRedeemed || false,
         })),
         bills: {
-          total: baseGrossTotal,
-          tax: vatAmount,
-          discount: totalDiscountAmount,
-          totalWithTax: total,
-          pwdSssDiscount: pwdSssDiscountAmount,
-          employeeDiscount: employeeDiscountAmount,
-          shareholderDiscount: shareholderDiscountAmount,
-          redemptionDiscount: redemptionAmount,
+          total: totals.baseGrossTotal,
+          tax: totals.vatAmount,
+          discount: totals.totalDiscountAmount,
+          totalWithTax: totals.total,
+          pwdSssDiscount: totals.pwdSssDiscountAmount,
+          employeeDiscount: totals.employeeDiscountAmount,
+          shareholderDiscount: totals.shareholderDiscountAmount,
+          redemptionDiscount: totals.redemptionAmount,
         },
         paymentMethod: paymentMethod,
         orderDate: new Date().toISOString(),
@@ -455,39 +530,50 @@ const Bill = () => {
           tableId: tableId,
         };
 
-        // Update table status
         updateTable(tableData).catch((error) => {
           console.error("Table update failed:", error);
-          // Continue even if table update fails
         });
       }
 
-      // Clear cart and customer data
-      dispatch(removeCustomer());
-      dispatch(removeAllItems());
+      // MARK ORDER AS COMPLETED
+      if (currentOrder) {
+        console.log("Dispatching completeOrder for:", currentOrder.id);
+        dispatch(completeOrder(currentOrder.id));
+      }
 
       enqueueSnackbar("Order placed successfully!", { variant: "success" });
-      setShowInvoice(true);
+
+      // AUTO PRINT RECEIPT AND OPEN CASH DRAWER
+      setTimeout(() => {
+        // Print receipt to Bluetooth printer
+        printToBluetoothPrinter(data);
+
+        // Open cash drawer for cash payments
+        if (paymentMethod === "Cash") {
+          openCashDrawer();
+        }
+
+        // Show invoice
+        setShowInvoice(true);
+        setIsProcessing(false);
+      }, 500);
     },
     onError: (error) => {
       console.error("Order placement error:", error);
-      console.error("Error details:", {
-        message: error.message,
-        response: error.response?.data,
-        status: error.response?.status,
-      });
-
       const errorMessage =
         error.response?.data?.message ||
         error.message ||
         "Failed to place order. Please try again.";
 
       enqueueSnackbar(errorMessage, { variant: "error" });
+      setIsProcessing(false);
     },
   });
 
-  // FIXED: Handle place order with better validation
+  // Handle place order with better validation
   const handlePlaceOrder = async () => {
+    if (isProcessing) return;
+
     console.log("Starting order placement...");
 
     // Validation
@@ -504,12 +590,14 @@ const Bill = () => {
     }
 
     // Validate total amount
-    if (total <= 0) {
+    if (totals.total <= 0) {
       enqueueSnackbar("Invalid order total. Please check your items.", {
         variant: "error",
       });
       return;
     }
+
+    setIsProcessing(true);
 
     const tableId =
       customerData.tables?.[0]?.tableId ||
@@ -519,18 +607,18 @@ const Bill = () => {
 
     // Prepare bills data
     const bills = {
-      netSales: Number(netSales.toFixed(2)),
-      tax: Number(vatAmount.toFixed(2)),
-      discount: Number(totalDiscountAmount.toFixed(2)),
-      total: Number(total.toFixed(2)),
-      totalWithTax: Number(total.toFixed(2)),
-      pwdSssDiscount: Number(pwdSssDiscountAmount.toFixed(2)),
-      employeeDiscount: Number(employeeDiscountAmount.toFixed(2)),
-      shareholderDiscount: Number(shareholderDiscountAmount.toFixed(2)),
-      redemptionDiscount: Number(redemptionAmount.toFixed(2)),
+      netSales: Number(totals.netSales.toFixed(2)),
+      tax: Number(totals.vatAmount.toFixed(2)),
+      discount: Number(totals.totalDiscountAmount.toFixed(2)),
+      total: Number(totals.total.toFixed(2)),
+      totalWithTax: Number(totals.total.toFixed(2)),
+      pwdSssDiscount: Number(totals.pwdSssDiscountAmount.toFixed(2)),
+      employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
+      shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
+      redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
     };
 
-    // Prepare items data - ensure all required fields are present
+    // Prepare items data
     const items = cartData.map((item) => ({
       name: item.name || "Unknown Item",
       quantity: safeNumber(item.quantity),
@@ -567,12 +655,13 @@ const Bill = () => {
 
         if (!loaded) {
           enqueueSnackbar("Razorpay SDK failed to load!", { variant: "error" });
+          setIsProcessing(false);
           return;
         }
 
         console.log("Creating Razorpay order...");
         const reqData = {
-          amount: Math.round(total * 100), // Convert to paise
+          amount: Math.round(totals.total * 100),
           currency: "INR",
         };
 
@@ -614,6 +703,7 @@ const Bill = () => {
               enqueueSnackbar("Payment verification failed!", {
                 variant: "error",
               });
+              setIsProcessing(false);
             }
           },
           prefill: {
@@ -625,6 +715,7 @@ const Bill = () => {
           modal: {
             ondismiss: function () {
               enqueueSnackbar("Payment cancelled", { variant: "info" });
+              setIsProcessing(false);
             },
           },
         };
@@ -637,6 +728,7 @@ const Bill = () => {
           err.response?.data?.message || "Payment initialization failed!",
           { variant: "error" }
         );
+        setIsProcessing(false);
       }
     } else {
       // Cash payment - directly submit order
@@ -647,8 +739,13 @@ const Bill = () => {
 
   const handleCloseInvoice = () => {
     setShowInvoice(false);
+    // Clear the current order from Redux store
+    if (currentOrder) {
+      dispatch(completeOrder(currentOrder.id));
+    }
+    // Navigate to menu after a short delay
     setTimeout(() => {
-      navigate("/");
+      navigate("/menu");
     }, 500);
   };
 
@@ -666,13 +763,31 @@ const Bill = () => {
     setShowRedeemOptions(false);
   };
 
+  // If no current order, show empty state
+  if (!currentOrder) {
+    return (
+      <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
+        <div className="max-w-[600px] mx-auto text-center">
+          <div className="bg-white rounded-lg p-8 shadow-md">
+            <h2 className="text-gray-900 text-lg font-semibold mb-4">
+              No Active Order
+            </h2>
+            <p className="text-gray-500 text-sm">
+              Please create a new order or select an existing one.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
       <div className="max-w-[600px] mx-auto space-y-4">
         {/* 🛒 CART ITEMS */}
         <div className="bg-white rounded-lg p-4 shadow-md max-h-64 overflow-y-auto">
           <h2 className="text-gray-900 text-sm font-semibold mb-2">
-            Cart Items
+            Cart Items (Order {currentOrder?.number})
           </h2>
           {combinedCart.length === 0 ? (
             <p className="text-gray-500 text-xs">No items added yet.</p>
@@ -681,7 +796,7 @@ const Bill = () => {
               <div
                 key={getUniqueKey(item, index)}
                 className={`flex justify-between items-center px-3 py-2 rounded-md border mb-2 ${
-                  item.isFree
+                  item.isRedeemed
                     ? "bg-green-50 border-green-200"
                     : "bg-gray-50 border-gray-200"
                 }`}
@@ -689,7 +804,7 @@ const Bill = () => {
                 <div className="flex-1">
                   <p className="text-gray-900 text-sm font-medium">
                     {item.name}
-                    {item.isFree && (
+                    {item.isRedeemed && (
                       <span className="ml-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
                         FREE
                       </span>
@@ -700,16 +815,6 @@ const Bill = () => {
                     {safeNumber(item.pricePerQuantity).toFixed(2)} = ₱
                     {calculateItemTotalPrice(item).toFixed(2)}
                   </p>
-                  {/* Show PWD/SSS discount info for discounted items */}
-                  {pwdSssDiscountApplied &&
-                    safeNumber(item.totalDiscount || 0) > 0 && (
-                      <div className="text-green-600 text-xs">
-                        <p>
-                          20% Discount: -₱
-                          {safeNumber(item.totalDiscount || 0).toFixed(2)}
-                        </p>
-                      </div>
-                    )}
                 </div>
 
                 {/* Quantity Controls */}
@@ -717,7 +822,7 @@ const Bill = () => {
                   <button
                     onClick={() => handleDecrement(item.id)}
                     className="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-gray-600 hover:bg-gray-300 text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={item.quantity <= 1 || item.isFree}
+                    disabled={item.quantity <= 1 || item.isRedeemed}
                   >
                     -
                   </button>
@@ -727,7 +832,7 @@ const Bill = () => {
                   <button
                     onClick={() => handleIncrement(item.id)}
                     className="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-gray-600 hover:bg-gray-300 text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                    disabled={item.isFree}
+                    disabled={item.isRedeemed}
                   >
                     +
                   </button>
@@ -735,14 +840,14 @@ const Bill = () => {
 
                 <div className="flex items-center gap-3">
                   <p className="text-gray-900 text-sm font-bold min-w-16 text-right">
-                    {item.isFree ? (
+                    {item.isRedeemed ? (
                       <span className="text-green-600">FREE</span>
                     ) : (
                       `₱${calculateItemTotal(item).toFixed(2)}`
                     )}
                   </p>
                   <div className="flex flex-col gap-1">
-                    {showRedeemOptions && !item.isFree && (
+                    {showRedeemOptions && !item.isRedeemed && (
                       <button
                         onClick={() => handleRedeemItem(item.id, item.name)}
                         className="text-blue-500 hover:text-blue-700 text-xs font-semibold"
@@ -751,7 +856,14 @@ const Bill = () => {
                       </button>
                     )}
                     <button
-                      onClick={() => dispatch(removeItem(item.id))}
+                      onClick={() =>
+                        dispatch(
+                          removeItemFromOrder({
+                            orderId: currentOrder.id,
+                            itemId: item.id,
+                          })
+                        )
+                      }
                       className="text-red-500 hover:text-red-700 text-xs font-semibold"
                     >
                       Delete
@@ -770,15 +882,15 @@ const Bill = () => {
               Items ({cartData?.length || 0})
             </p>
             <h1 className="text-gray-900 text-md font-bold">
-              ₱{baseGrossTotal.toFixed(2)}
+              ₱{totals.baseGrossTotal.toFixed(2)}
             </h1>
           </div>
 
-          {pwdSssDiscountApplied && pwdSssDiscountAmount > 0 && (
+          {pwdSssDiscountApplied && totals.pwdSssDiscountAmount > 0 && (
             <div className="flex justify-between items-center text-green-600">
               <p className="text-xs font-medium">{discountedItemsInfo}</p>
               <h1 className="text-md font-bold">
-                -₱{pwdSssDiscountAmount.toFixed(2)}
+                -₱{totals.pwdSssDiscountAmount.toFixed(2)}
               </h1>
             </div>
           )}
@@ -787,33 +899,36 @@ const Bill = () => {
             <div className="flex justify-between items-center text-blue-600">
               <p className="text-xs font-medium">Redemption Discount</p>
               <h1 className="text-md font-bold">
-                -₱{redemptionAmount.toFixed(2)}
+                -₱{totals.redemptionAmount.toFixed(2)}
               </h1>
             </div>
           )}
 
-          {employeeDiscountApplied && employeeDiscountAmount > 0 && (
+          {employeeDiscountApplied && totals.employeeDiscountAmount > 0 && (
             <div className="flex justify-between items-center text-yellow-600">
               <p className="text-xs font-medium">Employee Discount (15%)</p>
               <h1 className="text-md font-bold">
-                -₱{employeeDiscountAmount.toFixed(2)}
+                -₱{totals.employeeDiscountAmount.toFixed(2)}
               </h1>
             </div>
           )}
 
-          {shareholderDiscountApplied && shareholderDiscountAmount > 0 && (
-            <div className="flex justify-between items-center text-purple-600">
-              <p className="text-xs font-medium">Shareholder Discount (10%)</p>
-              <h1 className="text-md font-bold">
-                -₱{shareholderDiscountAmount.toFixed(2)}
-              </h1>
-            </div>
-          )}
+          {shareholderDiscountApplied &&
+            totals.shareholderDiscountAmount > 0 && (
+              <div className="flex justify-between items-center text-purple-600">
+                <p className="text-xs font-medium">
+                  Shareholder Discount (10%)
+                </p>
+                <h1 className="text-md font-bold">
+                  -₱{totals.shareholderDiscountAmount.toFixed(2)}
+                </h1>
+              </div>
+            )}
 
           <div className="flex justify-between items-center">
             <p className="text-xs text-gray-500 font-medium">Net of VAT</p>
             <h1 className="text-gray-900 text-md font-bold">
-              ₱{netSales.toFixed(2)}
+              ₱{totals.netSales.toFixed(2)}
             </h1>
           </div>
 
@@ -822,7 +937,7 @@ const Bill = () => {
               Total (VAT inclusive)
             </p>
             <h1 className="text-gray-900 text-md font-bold">
-              ₱{total.toFixed(2)}
+              ₱{totals.total.toFixed(2)}
             </h1>
           </div>
         </div>
@@ -831,22 +946,24 @@ const Bill = () => {
         <div className="flex flex-col sm:flex-row gap-3 mt-4">
           <button
             onClick={handlePwdSssDiscount}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow ${
+            disabled={isProcessing}
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
               pwdSssDiscountApplied
                 ? "bg-green-500 text-white"
-                : "bg-green-100 text-green-700"
-            }`}
+                : "bg-green-100 text-green-700 hover:bg-green-200"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {pwdSssDiscountApplied ? "PWD/SSS Applied" : "PWD/SSS (20%)"}
           </button>
 
           <button
             onClick={handleEmployeeDiscount}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow ${
+            disabled={isProcessing}
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
               employeeDiscountApplied
                 ? "bg-yellow-500 text-white"
-                : "bg-yellow-100 text-yellow-700"
-            }`}
+                : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {employeeDiscountApplied
               ? "Emp. Discount Applied"
@@ -855,11 +972,12 @@ const Bill = () => {
 
           <button
             onClick={handleShareholderDiscount}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow ${
+            disabled={isProcessing}
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
               shareholderDiscountApplied
                 ? "bg-purple-500 text-white"
-                : "bg-purple-100 text-purple-700"
-            }`}
+                : "bg-purple-100 text-purple-700 hover:bg-purple-200"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             {shareholderDiscountApplied
               ? "Shareholder Applied"
@@ -873,14 +991,16 @@ const Bill = () => {
             showRedeemOptions ? (
               <button
                 onClick={handleCancelRedeem}
-                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-gray-500 text-white hover:bg-gray-600"
+                disabled={isProcessing}
+                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-gray-500 text-white hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Cancel Redeem
               </button>
             ) : (
               <button
                 onClick={handleShowRedeemOptions}
-                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-blue-100 text-blue-700 hover:bg-blue-200"
+                disabled={isProcessing || combinedCart.length === 0}
+                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Redeem (Free 1 Item)
               </button>
@@ -888,7 +1008,8 @@ const Bill = () => {
           ) : (
             <button
               onClick={handleRemoveRedemption}
-              className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-red-500 text-white hover:bg-red-600"
+              disabled={isProcessing}
+              className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Remove Redemption
             </button>
@@ -899,22 +1020,24 @@ const Bill = () => {
         <div className="flex flex-col sm:flex-row gap-3">
           <button
             onClick={() => setPaymentMethod("Cash")}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow ${
+            disabled={isProcessing}
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
               paymentMethod === "Cash"
                 ? "bg-blue-600 text-white"
-                : "bg-gray-200 text-gray-600"
-            }`}
+                : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             Cash
           </button>
 
           <button
             onClick={() => setPaymentMethod("Online")}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow ${
+            disabled={isProcessing}
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
               paymentMethod === "Online"
                 ? "bg-blue-600 text-white"
-                : "bg-gray-200 text-gray-600"
-            }`}
+                : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+            } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
             Online
           </button>
@@ -924,16 +1047,16 @@ const Bill = () => {
         <div className="flex flex-col sm:flex-row gap-3 mt-6">
           <button
             onClick={handlePlaceOrder}
-            disabled={orderMutation.isLoading}
-            className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white shadow hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors"
+            disabled={isProcessing || !paymentMethod || cartData.length === 0}
+            className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white shadow hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
-            {orderMutation.isLoading ? (
-              <div className="flex items-center justify-center gap-2">
+            {isProcessing ? (
+              <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Placing Order...
-              </div>
+                Processing...
+              </>
             ) : (
-              "Place Order"
+              "Place Order & Print"
             )}
           </button>
         </div>

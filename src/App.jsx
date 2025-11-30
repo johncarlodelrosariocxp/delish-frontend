@@ -20,17 +20,36 @@ import useLoadData from "./hooks/useLoadData";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
 import PropTypes from "prop-types";
 
+// Debug component - remove after testing
+function DebugAuth() {
+  const user = useSelector((state) => state.user);
+  const token = localStorage.getItem("token");
+  console.log("🔍 AUTH DEBUG:", {
+    reduxIsAuth: user.isAuth,
+    reduxToken: user.token,
+    localStorageToken: token,
+    userData: user,
+  });
+  return null;
+}
+
 function Layout() {
   const isLoading = useLoadData();
   const location = useLocation();
   const hideHeaderRoutes = ["/auth"];
-  const { isAuth } = useSelector((state) => state.user);
+  const user = useSelector((state) => state.user);
+
+  // ✅ FIXED: Check both Redux state AND localStorage as fallback
+  const isAuthenticated = user.isAuth || localStorage.getItem("token");
 
   if (isLoading) return <FullScreenLoader />;
 
   return (
     <>
-      {!hideHeaderRoutes.includes(location.pathname) && isAuth && <Header />}
+      <DebugAuth /> {/* Remove this line after debugging */}
+      {!hideHeaderRoutes.includes(location.pathname) && isAuthenticated && (
+        <Header />
+      )}
       <Routes>
         <Route
           path="/"
@@ -42,7 +61,7 @@ function Layout() {
         />
         <Route
           path="/auth"
-          element={isAuth ? <Navigate to="/" replace /> : <Auth />}
+          element={isAuthenticated ? <Navigate to="/" replace /> : <Auth />}
         />
         <Route
           path="/orders"
@@ -76,7 +95,6 @@ function Layout() {
             </ProtectedRoutes>
           }
         />
-        {/* Add Inventory Route */}
         <Route
           path="/inventory"
           element={
@@ -92,16 +110,18 @@ function Layout() {
 }
 
 function ProtectedRoutes({ children }) {
-  const { isAuth } = useSelector((state) => state.user);
+  const user = useSelector((state) => state.user);
 
-  if (!isAuth) {
+  // ✅ FIXED: Check both Redux state AND localStorage as fallback
+  const isAuthenticated = user.isAuth || localStorage.getItem("token");
+
+  if (!isAuthenticated) {
     return <Navigate to="/auth" replace />;
   }
 
   return children;
 }
 
-// Add PropTypes for ProtectedRoutes component
 ProtectedRoutes.propTypes = {
   children: PropTypes.node.isRequired,
 };

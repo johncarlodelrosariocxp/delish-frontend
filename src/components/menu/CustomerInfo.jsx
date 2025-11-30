@@ -2,9 +2,15 @@ import React, { useState } from "react";
 import { useSelector } from "react-redux";
 import { formatDate, getAvatarName } from "../../utils";
 
-const CustomerInfo = () => {
+const CustomerInfo = ({ orderId }) => {
   const [dateTime, setDateTime] = useState(new Date());
-  const customerData = useSelector((state) => state.customer);
+  const orders = useSelector((state) => state.order.orders);
+  const activeOrderId = useSelector((state) => state.order.activeOrderId);
+
+  const currentOrder =
+    orders.find((order) => order.id === orderId) ||
+    orders.find((order) => order.id === activeOrderId);
+  const customerData = currentOrder?.customer || {};
 
   return (
     <div className="flex items-center justify-between px-4 py-3">

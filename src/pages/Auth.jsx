@@ -35,8 +35,9 @@ const Auth = () => {
 
   // Ultra-fast authentication check
   const checkAuthentication = useCallback(() => {
-    // Immediate check without waiting for React state updates
-    if (userData?._id) {
+    // Check both Redux state and localStorage
+    const token = localStorage.getItem("token");
+    if (userData?._id && token) {
       navigate("/", { replace: true });
       return true;
     }

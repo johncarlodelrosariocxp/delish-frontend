@@ -42,7 +42,8 @@ const Register = ({ setIsRegister }) => {
   // Check if backend is running
   const checkBackendConnection = async () => {
     try {
-      const response = await fetch("http://localhost:8000/health", {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const response = await fetch(`${apiUrl}/health`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -90,6 +91,31 @@ const Register = ({ setIsRegister }) => {
         return;
       }
 
+      // Email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        enqueueSnackbar("Please enter a valid email address", {
+          variant: "error",
+        });
+        return;
+      }
+
+      // Phone validation (basic)
+      if (formData.phone.length < 10) {
+        enqueueSnackbar("Please enter a valid phone number", {
+          variant: "error",
+        });
+        return;
+      }
+
+      // Password validation
+      if (formData.password.length < 6) {
+        enqueueSnackbar("Password must be at least 6 characters long", {
+          variant: "error",
+        });
+        return;
+      }
+
       // Check backend before submitting
       if (backendStatus !== "connected") {
         enqueueSnackbar(
@@ -114,9 +140,14 @@ const Register = ({ setIsRegister }) => {
     mutationFn: (reqData) => register(reqData),
     onSuccess: (res) => {
       if (res?.data?.success) {
-        enqueueSnackbar(res.data.message || "Account created successfully!", {
-          variant: "success",
-        });
+        enqueueSnackbar(
+          res.data.message ||
+            "Account created successfully! You can now login.",
+          {
+            variant: "success",
+            autoHideDuration: 5000,
+          }
+        );
 
         // Reset form
         setFormData({
@@ -130,7 +161,7 @@ const Register = ({ setIsRegister }) => {
         // Switch to login after delay
         setTimeout(() => {
           setIsRegister(false);
-        }, 1500);
+        }, 2000);
       } else {
         enqueueSnackbar(res?.data?.message || "Registration failed", {
           variant: "error",
@@ -164,6 +195,18 @@ const Register = ({ setIsRegister }) => {
         }, 1000);
       } else if (error?.response?.data?.message) {
         errorMessage = error.response.data.message;
+        enqueueSnackbar(errorMessage, {
+          variant: "error",
+          autoHideDuration: 5000,
+        });
+      } else if (error?.response?.status === 400) {
+        errorMessage = "Invalid data. Please check your inputs.";
+        enqueueSnackbar(errorMessage, {
+          variant: "error",
+          autoHideDuration: 5000,
+        });
+      } else if (error?.response?.status === 409) {
+        errorMessage = "User with this email already exists.";
         enqueueSnackbar(errorMessage, {
           variant: "error",
           autoHideDuration: 5000,
@@ -254,9 +297,10 @@ const Register = ({ setIsRegister }) => {
               name="name"
               value={formData.name}
               onChange={handleChange}
-              placeholder="Enter employee name"
+              placeholder="Enter employee full name"
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
+              minLength={2}
               disabled={
                 registerMutation.isLoading || backendStatus !== "connected"
               }
@@ -296,9 +340,10 @@ const Register = ({ setIsRegister }) => {
               name="phone"
               value={formData.phone}
               onChange={handleChange}
-              placeholder="Enter employee phone"
+              placeholder="Enter employee phone number"
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
+              minLength={10}
               disabled={
                 registerMutation.isLoading || backendStatus !== "connected"
               }
@@ -317,9 +362,10 @@ const Register = ({ setIsRegister }) => {
               name="password"
               value={formData.password}
               onChange={handleChange}
-              placeholder="Enter password"
+              placeholder="Enter password (min. 6 characters)"
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
+              minLength={6}
               disabled={
                 registerMutation.isLoading || backendStatus !== "connected"
               }
@@ -351,6 +397,13 @@ const Register = ({ setIsRegister }) => {
               </button>
             ))}
           </div>
+          {formData.role && (
+            <p className="text-yellow-400 text-xs mt-2 text-center">
+              Selected: <strong>{formData.role}</strong>
+              {formData.role === "Admin" && " (Full system access)"}
+              {formData.role === "Cashier" && " (Limited access)"}
+            </p>
+          )}
         </div>
 
         {/* Submit Button */}

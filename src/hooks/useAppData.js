@@ -1,5 +1,5 @@
-// src/hooks/useAppData.js
 import { useEffect, useState } from "react";
+import { useSelector } from "react-redux";
 import { fetchMenus, fetchOrders, fetchTables } from "../https";
 import {
   menus as fallbackMenus,
@@ -16,6 +16,8 @@ export const useAppData = () => {
     error: null,
   });
 
+  const user = useSelector((state) => state.user);
+
   useEffect(() => {
     const loadData = async () => {
       try {
@@ -25,9 +27,21 @@ export const useAppData = () => {
           fetchTables(),
         ]);
 
+        let orders = orderRes || fallbackOrders;
+
+        // Filter orders for regular users (non-admins) - CASE INSENSITIVE FIX
+        if (user.role?.toLowerCase() !== "admin" && Array.isArray(orders)) {
+          orders = orders.filter(
+            (order) =>
+              order.userId === user._id ||
+              order.createdBy === user._id ||
+              order.customerDetails?.email === user.email
+          );
+        }
+
         setData({
           menus: menuRes || fallbackMenus,
-          orders: orderRes || fallbackOrders,
+          orders: orders,
           tables: tableRes || fallbackTables,
           loading: false,
           error: null,
@@ -45,7 +59,7 @@ export const useAppData = () => {
     };
 
     loadData();
-  }, []);
+  }, [user._id, user.role, user.email]);
 
   return data;
 };

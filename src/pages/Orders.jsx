@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { useSelector } from "react-redux";
 import {
   FaSearch,
   FaUser,
@@ -12,7 +13,9 @@ import {
   FaArrowUp,
   FaPrint,
   FaCalendar,
+  FaTachometerAlt,
 } from "react-icons/fa";
+import { useNavigate } from "react-router-dom";
 import {
   keepPreviousData,
   useQuery,
@@ -20,7 +23,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { getOrders, updateOrderStatus } from "../https/index";
+import { getOrders, getAdminOrders, updateOrderStatus } from "../https/index";
 import BottomNav from "../components/shared/BottomNav";
 import BackButton from "../components/shared/BackButton";
 import Invoice from "../components/invoice/Invoice";
@@ -38,6 +41,19 @@ const Orders = () => {
   const scrollRef = useRef(null);
 
   const queryClient = useQueryClient();
+  const user = useSelector((state) => state.user);
+  const navigate = useNavigate();
+
+  // Debug function to check API response
+  const debugAPI = (data, context) => {
+    console.log(`🔍 ${context}:`, data);
+    if (data?.response?.data) {
+      console.log(`🔍 ${context} Response Data:`, data.response.data);
+    }
+    if (data?.message) {
+      console.log(`🔍 ${context} Message:`, data.message);
+    }
+  };
 
   useEffect(() => {
     document.title = "POS | Orders";
@@ -48,9 +64,74 @@ const Orders = () => {
     isError,
     isLoading,
   } = useQuery({
-    queryKey: ["orders"],
-    queryFn: getOrders,
+    queryKey: ["orders", user.role],
+    queryFn: async () => {
+      try {
+        if (user.role?.toLowerCase() === "admin") {
+          console.log("📋 Orders Page: Fetching all orders (admin)...");
+          const response = await getAdminOrders();
+          debugAPI(response, "Admin Orders API");
+          return response;
+        } else {
+          console.log("📋 Orders Page: Fetching user orders...");
+          const response = await getOrders();
+          debugAPI(response, "User Orders API");
+          return response;
+        }
+      } catch (error) {
+        console.error("❌ Orders fetch error:", error);
+        debugAPI(error, "Orders Fetch Error");
+        throw error;
+      }
+    },
     placeholderData: keepPreviousData,
+  });
+
+  // Status update mutation - FIXED VERSION
+  const statusUpdateMutation = useMutation({
+    mutationFn: async ({ orderId, orderStatus }) => {
+      console.log("🔄 Updating order status:", { orderId, orderStatus });
+
+      try {
+        const response = await updateOrderStatus({
+          orderId,
+          orderStatus,
+        });
+
+        console.log("✅ Status update response:", response);
+        debugAPI(response, "Status Update Success");
+        return response;
+      } catch (error) {
+        console.error("❌ Status update error:", error);
+        debugAPI(error, "Status Update Error");
+        throw error;
+      }
+    },
+    onSuccess: (data, variables) => {
+      console.log("🎉 Status update successful:", variables);
+      enqueueSnackbar(`Order status updated to ${variables.orderStatus}`, {
+        variant: "success",
+      });
+
+      // Invalidate and refetch orders
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
+    onError: (error, variables) => {
+      console.error("💥 Status update failed:", error, variables);
+
+      let errorMessage = "Failed to update order status!";
+
+      if (error?.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+
+      enqueueSnackbar(errorMessage, { variant: "error" });
+
+      // Revert optimistic update by refetching
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+    },
   });
 
   // Status configuration
@@ -95,42 +176,53 @@ const Orders = () => {
     }
   };
 
-  // Handle status update
+  // ✅ FIXED: No filtering needed - backend handles it
+  const orders = React.useMemo(() => {
+    const ordersData = resData?.data?.data || [];
+    console.log("📦 Orders data:", ordersData);
+    return ordersData;
+  }, [resData]);
+
+  // FIXED: Handle status update with proper mutation
   const handleStatusUpdate = async (order, newStatus) => {
+    if (!order?._id) {
+      console.error("❌ No order ID provided");
+      enqueueSnackbar("Invalid order data", { variant: "error" });
+      return;
+    }
+
+    console.log("🔄 Starting status update:", {
+      orderId: order._id,
+      currentStatus: order.orderStatus,
+      newStatus,
+    });
+
     setUpdatingOrders((prev) => new Set(prev).add(order._id));
 
     try {
-      const previousOrders = queryClient.getQueryData(["orders"]);
+      // Optimistically update the UI
+      queryClient.setQueryData(["orders", user.role], (old) => {
+        if (!old?.data?.data) return old;
 
-      if (previousOrders) {
-        queryClient.setQueryData(["orders"], (old) => {
-          if (!old?.data?.data) return old;
+        return {
+          ...old,
+          data: {
+            ...old.data,
+            data: old.data.data.map((o) =>
+              o._id === order._id ? { ...o, orderStatus: newStatus } : o
+            ),
+          },
+        };
+      });
 
-          return {
-            ...old,
-            data: {
-              ...old.data,
-              data: old.data.data.map((o) =>
-                o._id === order._id ? { ...o, orderStatus: newStatus } : o
-              ),
-            },
-          };
-        });
-      }
-
-      await updateOrderStatus({
+      // Use the mutation to update the status
+      await statusUpdateMutation.mutateAsync({
         orderId: order._id,
         orderStatus: newStatus,
       });
-
-      enqueueSnackbar(`Order status updated to ${newStatus}`, {
-        variant: "success",
-      });
-
-      await queryClient.invalidateQueries({ queryKey: ["orders"] });
     } catch (error) {
-      await queryClient.invalidateQueries({ queryKey: ["orders"] });
-      enqueueSnackbar("Failed to update order status", { variant: "error" });
+      console.error("Status update failed:", error);
+      // Error handling is done in the mutation onError
     } finally {
       setUpdatingOrders((prev) => {
         const newSet = new Set(prev);
@@ -148,15 +240,15 @@ const Orders = () => {
     }
   }, [isError]);
 
-  const orders = resData?.data?.data || [];
-
   // Sort orders by latest first (newest to oldest)
   const sortedOrders = React.useMemo(() => {
-    return [...orders].sort((a, b) => {
+    const sorted = [...orders].sort((a, b) => {
       const dateA = new Date(a.createdAt || a.orderDate || a.date || 0);
       const dateB = new Date(b.createdAt || b.orderDate || b.date || 0);
       return dateB - dateA;
     });
+    console.log("📊 Sorted orders:", sorted.length);
+    return sorted;
   }, [orders]);
 
   // Filter orders by date range
@@ -235,7 +327,7 @@ const Orders = () => {
 
   // Filter orders based on status, search query, and date filter
   const filteredOrders = React.useMemo(() => {
-    return sortedOrders.filter((order) => {
+    const filtered = sortedOrders.filter((order) => {
       const dateMatch = filterByDateRange(order, dateFilter);
 
       const statusMatch =
@@ -256,6 +348,9 @@ const Orders = () => {
 
       return dateMatch && statusMatch && searchMatch;
     });
+
+    console.log("🔍 Filtered orders:", filtered.length);
+    return filtered;
   }, [sortedOrders, status, searchQuery, dateFilter]);
 
   // Calculate and format total amount
@@ -384,6 +479,11 @@ const Orders = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
     }
+  };
+
+  // Navigate to dashboard
+  const navigateToDashboard = () => {
+    navigate("/dashboard");
   };
 
   // Order Card Component
@@ -538,8 +638,33 @@ const Orders = () => {
             <h1 className="text-[#333333] text-xl sm:text-2xl font-bold tracking-wider">
               Orders
             </h1>
+            {user.role?.toLowerCase() !== "admin" && (
+              <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-medium">
+                Your Orders
+              </span>
+            )}
+            <span
+              className={`px-2 py-1 rounded-full text-xs font-medium ${
+                user.role?.toLowerCase() === "admin"
+                  ? "bg-green-100 text-green-800"
+                  : "bg-blue-100 text-blue-800"
+              }`}
+            >
+              {user.role?.toLowerCase() === "admin"
+                ? "Admin View"
+                : "User View"}
+            </span>
           </div>
           <div className="flex flex-wrap gap-2 md:gap-4 items-center">
+            {/* Dashboard Button */}
+            <button
+              onClick={navigateToDashboard}
+              className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
+            >
+              <FaTachometerAlt className="text-sm" />
+              Dashboard
+            </button>
+
             {/* Status filters */}
             {["all", "progress", "completed"].map((type) => (
               <button
@@ -629,7 +754,9 @@ const Orders = () => {
                 <p className="text-gray-500 text-sm">
                   {searchQuery || status !== "all" || dateFilter !== "today"
                     ? "No orders found matching your criteria"
-                    : "No orders available"}
+                    : user.role?.toLowerCase() === "admin"
+                    ? "No orders available"
+                    : "You haven't placed any orders yet"}
                 </p>
                 {(searchQuery ||
                   status !== "all" ||

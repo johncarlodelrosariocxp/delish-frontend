@@ -45,6 +45,16 @@ const Greetings = () => {
         <p className="text-xs sm:text-sm">
           Give your best services for customers 😀
         </p>
+        <div className="mt-2">
+          <h2 className="text-sm sm:text-base font-medium">
+            Welcome, {userData.name}!
+            <span className="text-xs text-gray-500 ml-2">
+              {userData.role === "admin"
+                ? "Viewing all store sales performance and orders"
+                : "Viewing your personal sales performance and order history"}
+            </span>
+          </h2>
+        </div>
       </div>
       <div className="self-end sm:self-auto">
         <h1 className="text-xl sm:text-2xl lg:text-3xl font-bold tracking-wide w-[110px] sm:w-[120px] lg:w-[130px]">

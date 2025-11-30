@@ -2,9 +2,9 @@ import React, { useState } from "react";
 import { menus } from "../../constants";
 import { GrRadialSelected } from "react-icons/gr";
 import { useDispatch } from "react-redux";
-import { addItems } from "../../redux/slices/cartSlice";
+import { addItemsToOrder } from "../../redux/slices/orderSlice";
 
-const MenuContainer = () => {
+const MenuContainer = ({ orderId }) => {
   const [selected, setSelected] = useState(menus[0]);
   const [selectedSlice, setSelectedSlice] = useState(null);
   const [showKetoFlavors, setShowKetoFlavors] = useState(false);
@@ -18,7 +18,7 @@ const MenuContainer = () => {
       quantity: 1,
       price: variant.price,
     };
-    dispatch(addItems(newObj));
+    dispatch(addItemsToOrder({ orderId, payload: newObj }));
   };
 
   const handleSelectSlice = (item, variant) => {
@@ -41,7 +41,7 @@ const MenuContainer = () => {
       quantity: 1,
       price: variant.price,
     };
-    dispatch(addItems(newObj));
+    dispatch(addItemsToOrder({ orderId, payload: newObj }));
     setShowKetoFlavors(false);
   };
 
