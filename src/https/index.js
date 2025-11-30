@@ -17,6 +17,8 @@ export const addTable = (data) => axiosWrapper.post("/api/table", data);
 export const getTables = () => axiosWrapper.get("/api/table");
 export const updateTable = ({ tableId, ...tableData }) =>
   axiosWrapper.put(`/api/table/${tableId}`, tableData);
+export const deleteTable = (tableId) =>
+  axiosWrapper.delete(`/api/table/${tableId}`);
 
 // =============================
 // ✅ PAYMENT ENDPOINTS
@@ -52,23 +54,14 @@ export const getAdminDashboardStats = () =>
   axiosWrapper.get("/api/user/admin/dashboard/stats");
 
 // =============================
-// ✅ SALES ENDPOINTS - USE ONLY EXISTING ONES
+// ✅ SALES ENDPOINTS
 // =============================
 export const getSales = () => axiosWrapper.get("/api/sales");
 export const getTodaySales = () => axiosWrapper.get("/api/sales/today");
 export const getSalesStats = () => axiosWrapper.get("/api/sales/stats");
-
-// =============================
-// ✅ MENU ENDPOINTS
-// =============================
-export const addMenuItem = (data) => axiosWrapper.post("/api/menu", data);
-export const getMenuItems = () => axiosWrapper.get("/api/menu");
-export const updateMenuItem = ({ itemId, ...itemData }) =>
-  axiosWrapper.put(`/api/menu/${itemId}`, itemData);
-export const deleteMenuItem = (itemId) =>
-  axiosWrapper.delete(`/api/menu/${itemId}`);
-export const applyMenuDiscount = (itemId) =>
-  axiosWrapper.put(`/api/menu/${itemId}/discount`);
+export const getSalesByRange = (startDate, endDate) =>
+  axiosWrapper.get(`/api/sales/range?start=${startDate}&end=${endDate}`);
+export const getSalesReports = () => axiosWrapper.get("/api/sales/reports");
 
 // =============================
 // ✅ INVENTORY ENDPOINTS
@@ -84,3 +77,65 @@ export const deleteInventoryItem = (itemId) =>
   axiosWrapper.delete(`/api/inventory/${itemId}`);
 export const getLowStockItems = () =>
   axiosWrapper.get("/api/inventory/low-stock");
+
+// =============================
+// ✅ EMERGENCY ENDPOINTS (Development only)
+// =============================
+export const forceCreateUser = (data) =>
+  axiosWrapper.post("/api/force-create-user", data);
+export const nukeUsers = () => axiosWrapper.delete("/api/nuke-users");
+export const debugUsers = () => axiosWrapper.get("/api/debug-users");
+
+export default {
+  // Auth
+  login,
+  register,
+  getUserData,
+  logout,
+  getUserDashboardStats,
+
+  // Tables
+  addTable,
+  getTables,
+  updateTable,
+  deleteTable,
+
+  // Payments
+  createOrderRazorpay,
+  verifyPaymentRazorpay,
+  getPayments,
+  getPaymentStats,
+
+  // Orders
+  addOrder,
+  getOrders,
+  getOrderById,
+  updateOrderStatus,
+  deleteOrder,
+  getOrderStats,
+
+  // Admin
+  getAdminOrders,
+  getAdminStats,
+  getAdminDashboardStats,
+
+  // Sales
+  getSales,
+  getTodaySales,
+  getSalesStats,
+  getSalesByRange,
+  getSalesReports,
+
+  // Inventory
+  getInventory,
+  addInventoryItem,
+  updateInventoryItem,
+  transferStock,
+  deleteInventoryItem,
+  getLowStockItems,
+
+  // Emergency
+  forceCreateUser,
+  nukeUsers,
+  debugUsers,
+};

@@ -36,7 +36,7 @@ const Home = () => {
     completed: 0,
   });
 
-  const [filterRange, setFilterRange] = useState("all"); // Changed default to "all"
+  const [filterRange, setFilterRange] = useState("day"); // Changed default to "day" for real-time data
   const [activeTab, setActiveTab] = useState("overview");
 
   const user = useSelector((state) => state.user);
@@ -48,7 +48,9 @@ const Home = () => {
   }, []);
 
   useEffect(() => {
-    applyFilter(orders, filterRange);
+    if (orders.length > 0) {
+      applyFilter(orders, filterRange);
+    }
   }, [filterRange, orders]);
 
   const fetchData = async () => {
@@ -93,13 +95,13 @@ const Home = () => {
     }
   };
 
-  // FIXED: Enhanced filter function that includes "all" option
+  // FIXED: Enhanced filter function with proper date handling
   const filterByRange = (data, range, referenceDate = new Date()) => {
     if (!Array.isArray(data)) return [];
 
     try {
       const ref = new Date(referenceDate);
-      ref.setHours(0, 0, 0, 0); // Normalize reference date to start of day
+      ref.setHours(0, 0, 0, 0);
 
       // If "all" is selected, return all data without filtering
       if (range === "all") {
@@ -154,30 +156,46 @@ const Home = () => {
 
           case "month": {
             // This month
-            return (
-              orderDate.getMonth() === ref.getMonth() &&
-              orderDate.getFullYear() === ref.getFullYear()
+            const startOfMonth = new Date(ref.getFullYear(), ref.getMonth(), 1);
+            const endOfMonth = new Date(
+              ref.getFullYear(),
+              ref.getMonth() + 1,
+              0
             );
+            endOfMonth.setHours(23, 59, 59, 999);
+            return orderDate >= startOfMonth && orderDate <= endOfMonth;
           }
 
           case "lastMonth": {
             // Last month
-            const lastMonth = new Date(ref);
-            lastMonth.setMonth(ref.getMonth() - 1);
-            return (
-              orderDate.getMonth() === lastMonth.getMonth() &&
-              orderDate.getFullYear() === lastMonth.getFullYear()
+            const startOfLastMonth = new Date(
+              ref.getFullYear(),
+              ref.getMonth() - 1,
+              1
             );
+            const endOfLastMonth = new Date(
+              ref.getFullYear(),
+              ref.getMonth(),
+              0
+            );
+            endOfLastMonth.setHours(23, 59, 59, 999);
+            return orderDate >= startOfLastMonth && orderDate <= endOfLastMonth;
           }
 
           case "year": {
             // This year
-            return orderDate.getFullYear() === ref.getFullYear();
+            const startOfYear = new Date(ref.getFullYear(), 0, 1);
+            const endOfYear = new Date(ref.getFullYear(), 11, 31);
+            endOfYear.setHours(23, 59, 59, 999);
+            return orderDate >= startOfYear && orderDate <= endOfYear;
           }
 
           case "lastYear": {
             // Last year
-            return orderDate.getFullYear() === ref.getFullYear() - 1;
+            const startOfLastYear = new Date(ref.getFullYear() - 1, 0, 1);
+            const endOfLastYear = new Date(ref.getFullYear() - 1, 11, 31);
+            endOfLastYear.setHours(23, 59, 59, 999);
+            return orderDate >= startOfLastYear && orderDate <= endOfLastYear;
           }
 
           default:
@@ -190,44 +208,30 @@ const Home = () => {
     }
   };
 
-  const getPreviousPeriodStart = (now, range) => {
-    const prev = new Date(now);
-    try {
-      switch (range) {
-        case "all":
-          // For "all", compare with empty previous period
-          return new Date(0); // Very old date
-        case "day":
-          prev.setDate(now.getDate() - 1);
-          break;
-        case "yesterday":
-          prev.setDate(now.getDate() - 2);
-          break;
-        case "week":
-          prev.setDate(now.getDate() - 7);
-          break;
-        case "lastWeek":
-          prev.setDate(now.getDate() - 14);
-          break;
-        case "month":
-          prev.setMonth(now.getMonth() - 1);
-          break;
-        case "lastMonth":
-          prev.setMonth(now.getMonth() - 2);
-          break;
-        case "year":
-          prev.setFullYear(now.getFullYear() - 1);
-          break;
-        case "lastYear":
-          prev.setFullYear(now.getFullYear() - 2);
-          break;
-        default:
-          break;
-      }
-    } catch (error) {
-      console.error("Error in getPreviousPeriodStart:", error);
+  // FIXED: Proper previous period calculation
+  const getPreviousPeriodRange = (range) => {
+    switch (range) {
+      case "all":
+        return "all"; // For "all", compare with same period (shows real growth)
+      case "day":
+        return "yesterday";
+      case "yesterday":
+        return "day"; // Compare yesterday with day before
+      case "week":
+        return "lastWeek";
+      case "lastWeek":
+        return "week"; // Compare last week with week before
+      case "month":
+        return "lastMonth";
+      case "lastMonth":
+        return "month"; // Compare last month with month before
+      case "year":
+        return "lastYear";
+      case "lastYear":
+        return "year"; // Compare last year with year before
+      default:
+        return range;
     }
-    return prev;
   };
 
   const getComparisonLabel = (range) => {
@@ -237,7 +241,7 @@ const Home = () => {
       case "day":
         return "yesterday";
       case "yesterday":
-        return "day before yesterday";
+        return "day before";
       case "week":
         return "last week";
       case "lastWeek":
@@ -255,33 +259,10 @@ const Home = () => {
     }
   };
 
-  const getPreviousPeriodRange = (range) => {
-    switch (range) {
-      case "all":
-        return "all"; // For "all", use same range for comparison
-      case "day":
-        return "yesterday";
-      case "yesterday":
-        return "day";
-      case "week":
-        return "lastWeek";
-      case "lastWeek":
-        return "week";
-      case "month":
-        return "lastMonth";
-      case "lastMonth":
-        return "month";
-      case "year":
-        return "lastYear";
-      case "lastYear":
-        return "year";
-      default:
-        return range;
-    }
-  };
-
+  // FIXED: Enhanced applyFilter with proper comparison handling
   const applyFilter = (data, range) => {
-    if (!Array.isArray(data)) {
+    if (!Array.isArray(data) || data.length === 0) {
+      console.log("No data to filter");
       setFilteredOrders([]);
       setPreviousFilteredOrders([]);
       computeMetrics([], [], range);
@@ -291,12 +272,13 @@ const Home = () => {
     try {
       const now = new Date();
       const filtered = filterByRange(data, range, now);
-      const previousRange = getPreviousPeriodRange(range);
-      const previousPeriodStart = getPreviousPeriodStart(now, range);
-      const previous = filterByRange(data, previousRange, previousPeriodStart);
 
-      console.log(`📊 Filtered orders for ${range}:`, filtered.length);
-      console.log(`📊 Previous period orders:`, previous.length);
+      // Get previous period data for comparison
+      const previousRange = getPreviousPeriodRange(range);
+      const previous = filterByRange(data, previousRange, now);
+
+      console.log(`📊 Current ${range} orders:`, filtered.length);
+      console.log(`📊 Previous ${previousRange} orders:`, previous.length);
       console.log(`📊 Current date:`, now.toISOString());
       console.log(`📊 Filter range:`, range);
 
@@ -332,8 +314,10 @@ const Home = () => {
     }
   };
 
+  // FIXED: Enhanced computeMetrics with better error handling
   const computeMetrics = (current, previous, range) => {
     if (!Array.isArray(current) || !Array.isArray(previous)) {
+      console.log("Invalid data in computeMetrics");
       setTotalOrders(0);
       setTotalEarnings(0);
       setInProgressCount(0);
@@ -403,6 +387,7 @@ const Home = () => {
         prevEarnings,
         prevInProgress,
         prevCompleted,
+        range,
       });
 
       setTotalOrders(total);
@@ -440,7 +425,7 @@ const Home = () => {
       );
 
       setOrders(updatedOrders);
-      applyFilter(updatedOrders, filterRange); // Re-apply filter to update metrics
+      applyFilter(updatedOrders, filterRange);
     } catch (err) {
       console.error("❌ Failed to update order status:", err);
     }
@@ -936,7 +921,6 @@ const Home = () => {
                 onChange={(e) => setFilterRange(e.target.value)}
                 className="w-full max-w-xs px-4 py-3 rounded-xl border border-gray-300 bg-white/80 backdrop-blur-xl text-sm font-medium text-gray-900 shadow-lg hover:shadow-blue-200 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-gradient-to-r from-blue-50 to-indigo-100"
               >
-                <option value="all">📊 All Time</option>
                 <option value="day">📅 Today</option>
                 <option value="yesterday">📅 Yesterday</option>
                 <option value="week">📆 This Week</option>
@@ -945,6 +929,7 @@ const Home = () => {
                 <option value="lastMonth">📊 Last Month</option>
                 <option value="year">📈 This Year</option>
                 <option value="lastYear">📈 Last Year</option>
+                <option value="all">📊 All Time</option>
               </select>
             </div>
           )}
