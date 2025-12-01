@@ -1,30 +1,18 @@
 import axios from "axios";
 
-// Smart API URL detection
+// Smart API URL detection for both development and production
 const getApiBaseUrl = () => {
-  // Priority 1: Environment variable
+  // Priority 1: Vite environment variable (set in .env)
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
 
-  // Priority 2: Vercel production environment
+  // Priority 2: Vercel production environment - use Render backend
   if (import.meta.env.PROD) {
     return "https://delish-backend-1.onrender.com";
   }
 
-  // Priority 3: Local development with mobile detection
-  const currentHostname = window.location.hostname;
-
-  // If accessing via IP address (mobile), use same IP for backend
-  if (
-    currentHostname !== "localhost" &&
-    currentHostname !== "127.0.0.1" &&
-    currentHostname.match(/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)
-  ) {
-    return `http://${currentHostname}:8000`;
-  }
-
-  // Default local development
+  // Priority 3: Local development
   return "http://localhost:8000";
 };
 
@@ -33,7 +21,6 @@ const API_BASE_URL = getApiBaseUrl();
 console.log("🚀 Environment:", import.meta.env.MODE);
 console.log("🌐 Frontend URL:", window.location.origin);
 console.log("🔗 Backend API:", API_BASE_URL);
-console.log("📱 Mobile Device:", /Mobi|Android/i.test(navigator.userAgent));
 
 // Create Axios instance with enhanced configuration
 const axiosWrapper = axios.create({
@@ -89,12 +76,7 @@ axiosWrapper.interceptors.response.use(
         "Cannot connect to server. Please check:\n" +
         "• Backend server is running\n" +
         "• Network connectivity\n" +
-        "• CORS configuration";
-
-      console.error("🌐 Network Connection Details:");
-      console.error("   Frontend:", window.location.origin);
-      console.error("   Backend:", API_BASE_URL);
-      console.error("   Mobile:", /Mobi|Android/i.test(navigator.userAgent));
+        `• Backend URL: ${API_BASE_URL}`;
     } else if (status === 404) {
       error.userMessage = "Requested resource not found on server.";
     } else if (status === 500) {
@@ -129,37 +111,14 @@ const testConnection = async () => {
   } catch (error) {
     console.error("❌ Backend connection failed:", error.message);
 
-    const troubleshooting = {
-      development: [
-        "1. Check if backend server is running: cd delish-backend && npm start",
-        "2. Verify backend is on port 8000",
-        "3. For mobile access: Use computer's IP address in backend (0.0.0.0)",
-        "4. Check CORS configuration in backend",
-      ],
-      production: [
-        "1. Check if backend is deployed to Render/Railway",
-        "2. Verify environment variables are set correctly",
-        "3. Check backend logs for deployment errors",
-        "4. Verify CORS allows your frontend domain",
-      ],
-    };
-
-    console.log("🔧 Troubleshooting Steps:");
-    const steps = import.meta.env.DEV
-      ? troubleshooting.development
-      : troubleshooting.production;
-    steps.forEach((step) => console.log("   " + step));
-
     return {
       success: false,
       error: error.message,
       userMessage: error.userMessage,
-      code: error.code,
       backendUrl: API_BASE_URL,
       frontendUrl: window.location.origin,
     };
   }
 };
 
-// Export all required variables
 export { axiosWrapper as default, axiosWrapper, API_BASE_URL, testConnection };
