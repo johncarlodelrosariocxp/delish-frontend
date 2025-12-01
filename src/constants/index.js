@@ -88,7 +88,7 @@ export const pastaItems = [
   },
 ];
 
-// 🍰 Regular Cheesecakes (Updated from REG. CAKES section)
+// 🍰 Regular Cheesecakes (Updated with Keto flavors moved here)
 export const regularCheesecakes = [
   {
     id: 1,
@@ -102,7 +102,20 @@ export const regularCheesecakes = [
     name: "Regular Cheesecake - Slice",
     image: cheesecake2,
     category: "Cheesecake",
-    variants: [{ label: "Slice", price: 230 }],
+    variants: [
+      { label: "Slice", price: 230 },
+      { label: "Mangoes & Cream", price: 190 },
+      { label: "Ube Macapuno", price: 190 },
+      { label: "Strawberry", price: 190 },
+      { label: "Blueberry", price: 190 },
+      { label: "Queso de Bola", price: 180 },
+      { label: "New York", price: 180 },
+      { label: "Baileys", price: 180 },
+      { label: "Coffee Caramel", price: 180 },
+      { label: "Dark Chocolate", price: 175 },
+      { label: "Oreo", price: 175 },
+      { label: "Matcha Zebra", price: 175 },
+    ],
   },
   {
     id: 3,
@@ -120,7 +133,7 @@ export const regularCheesecakes = [
   },
 ];
 
-// 🍰 Keto Cheesecakes (Updated from W. KETO section)
+// 🍰 Keto Cheesecakes (Updated - removed slice flavors)
 export const ketoCheesecakes = [
   {
     id: 1,
@@ -134,19 +147,7 @@ export const ketoCheesecakes = [
     name: "Keto Cheesecake - Slice",
     image: cheesecake6,
     category: "Keto Cheesecake",
-    variants: [
-      { label: "Mangoes & Cream", price: 190 },
-      { label: "Ube Macapuno", price: 190 },
-      { label: "Strawberry", price: 190 },
-      { label: "Blueberry", price: 190 },
-      { label: "Queso de Bola", price: 180 },
-      { label: "New York", price: 180 },
-      { label: "Baileys", price: 180 },
-      { label: "Coffee Caramel", price: 180 },
-      { label: "Dark Chocolate", price: 175 },
-      { label: "Oreo", price: 175 },
-      { label: "Matcha Zebra", price: 175 },
-    ],
+    variants: [{ label: "Slice", price: 180 }], // Only generic slice now
   },
   {
     id: 3,

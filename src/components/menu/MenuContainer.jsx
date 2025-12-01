@@ -10,6 +10,7 @@ const MenuContainer = ({ orderId }) => {
   const [showKetoFlavors, setShowKetoFlavors] = useState(false);
   const dispatch = useDispatch();
 
+  // FIXED: Changed payload to item
   const handleAddToCart = (item, variant) => {
     const newObj = {
       id: `${item.id}-${variant.label}`,
@@ -18,7 +19,11 @@ const MenuContainer = ({ orderId }) => {
       quantity: 1,
       price: variant.price,
     };
-    dispatch(addItemsToOrder({ orderId, payload: newObj }));
+
+    console.log("Adding to cart:", { orderId, item: newObj }); // Debug log
+
+    // FIXED: Changed from payload: newObj to item: newObj
+    dispatch(addItemsToOrder({ orderId, item: newObj }));
   };
 
   const handleSelectSlice = (item, variant) => {
@@ -41,7 +46,11 @@ const MenuContainer = ({ orderId }) => {
       quantity: 1,
       price: variant.price,
     };
-    dispatch(addItemsToOrder({ orderId, payload: newObj }));
+
+    console.log("Adding keto flavor:", { orderId, item: newObj }); // Debug log
+
+    // FIXED: Changed from payload: newObj to item: newObj
+    dispatch(addItemsToOrder({ orderId, item: newObj }));
     setShowKetoFlavors(false);
   };
 

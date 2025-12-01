@@ -18,7 +18,7 @@ const initialState = {
     },
   ],
   activeOrderId: "order-1",
-  completedOrders: [], // ADDED: Store completed orders
+  completedOrders: [],
 };
 
 const orderSlice = createSlice({
@@ -26,7 +26,8 @@ const orderSlice = createSlice({
   initialState,
   reducers: {
     createNewOrder: (state) => {
-      const newOrderNumber = state.orders.length + 1;
+      const newOrderNumber =
+        state.orders.length + state.completedOrders.length + 1;
       const newOrder = {
         id: `order-${newOrderNumber}`,
         number: newOrderNumber,
@@ -46,26 +47,49 @@ const orderSlice = createSlice({
     },
 
     switchOrder: (state, action) => {
-      state.activeOrderId = action.payload;
+      const orderId = action.payload;
+      const order = state.orders.find((order) => order.id === orderId);
+      if (order && order.status === "active") {
+        state.activeOrderId = orderId;
+      }
     },
 
     closeOrder: (state, action) => {
       const orderId = action.payload;
-      if (state.orders.length > 1) {
-        state.orders = state.orders.filter((order) => order.id !== orderId);
+      const orderIndex = state.orders.findIndex(
+        (order) => order.id === orderId && order.status === "active"
+      );
 
-        // If we closed the active order, switch to the first remaining order
+      if (orderIndex !== -1 && state.orders.length > 1) {
+        state.orders.splice(orderIndex, 1);
+
         if (state.activeOrderId === orderId) {
-          state.activeOrderId = state.orders[0]?.id || "";
+          const nextActiveOrder = state.orders.find(
+            (order) => order.status === "active"
+          );
+          state.activeOrderId = nextActiveOrder?.id || "";
         }
       }
     },
 
-    // ADDED: Complete order - moves from active to completed
+    // Mark order as "completing" instead of immediately removing it
     completeOrder: (state, action) => {
       const orderId = action.payload;
       const orderIndex = state.orders.findIndex(
-        (order) => order.id === orderId
+        (order) => order.id === orderId && order.status === "active"
+      );
+
+      if (orderIndex !== -1) {
+        // Only mark as completing, don't remove yet
+        state.orders[orderIndex].status = "completing";
+      }
+    },
+
+    // Actually remove the order after successful placement
+    removeCompletedOrder: (state, action) => {
+      const orderId = action.payload;
+      const orderIndex = state.orders.findIndex(
+        (order) => order.id === orderId && order.status === "completing"
       );
 
       if (orderIndex !== -1) {
@@ -83,56 +107,92 @@ const orderSlice = createSlice({
 
         // Set new active order if available
         if (state.orders.length > 0) {
-          // Try to keep the same position, or fall back to first order
-          const newIndex = Math.min(orderIndex, state.orders.length - 1);
-          state.activeOrderId = state.orders[newIndex].id;
+          const nextActiveOrder = state.orders.find(
+            (order) => order.status === "active"
+          );
+          if (nextActiveOrder) {
+            state.activeOrderId = nextActiveOrder.id;
+          } else if (state.orders.length > 0) {
+            // If no active orders, use the first one
+            state.activeOrderId = state.orders[0].id;
+          } else {
+            state.activeOrderId = null;
+          }
         } else {
           state.activeOrderId = null;
         }
       }
     },
 
-    // Cart actions for specific orders
+    // FIXED: addItemsToOrder - handle both price and pricePerQuantity
     addItemsToOrder: (state, action) => {
-      const { orderId, payload } = action.payload;
+      const { orderId, item } = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
 
-      if (order && payload) {
-        const existingItemIndex = order.items.findIndex(
-          (item) =>
-            item.id === payload.id &&
-            item.pricePerQuantity === payload.pricePerQuantity
-        );
+      if (order && item) {
+        // Use either price or pricePerQuantity for comparison
+        const itemPrice = item.price || item.pricePerQuantity || 0;
+
+        const existingItemIndex = order.items.findIndex((existingItem) => {
+          const existingItemPrice =
+            existingItem.price || existingItem.pricePerQuantity || 0;
+          return existingItem.id === item.id && existingItemPrice === itemPrice;
+        });
 
         if (existingItemIndex !== -1) {
           // If item exists, increment quantity
-          order.items[existingItemIndex].quantity += payload.quantity || 1;
+          order.items[existingItemIndex].quantity += item.quantity || 1;
         } else {
-          // Ensure ID is serializable
-          let safeId;
-
-          if (payload.id === null || payload.id === undefined) {
-            safeId = Date.now().toString();
-          } else if (
-            typeof payload.id === "object" &&
-            payload.id instanceof Date
-          ) {
-            safeId = payload.id.getTime().toString();
-          } else if (typeof payload.id === "number") {
-            safeId = payload.id.toString();
-          } else {
-            safeId = payload.id;
-          }
-
+          // Create new item with proper structure
           const newItem = {
-            ...payload,
-            id: safeId,
-            quantity: payload.quantity || 1,
+            id: item.id || `item-${Date.now()}-${Math.random()}`,
+            name: item.name || "Unknown Item",
+            price: item.price || item.pricePerQuantity || 0, // Handle both
+            pricePerQuantity: item.pricePerQuantity || item.price || 0, // Handle both
+            quantity: item.quantity || 1,
             isRedeemed: false,
+            category: item.category || "general",
+            ...item,
           };
-
           order.items.push(newItem);
         }
+      }
+    },
+
+    // FIXED: addMultipleItemsToOrder - handle both price and pricePerQuantity
+    addMultipleItemsToOrder: (state, action) => {
+      const { orderId, items } = action.payload;
+      const order = state.orders.find((order) => order.id === orderId);
+
+      if (order && Array.isArray(items)) {
+        items.forEach((item) => {
+          // Use either price or pricePerQuantity for comparison
+          const itemPrice = item.price || item.pricePerQuantity || 0;
+
+          const existingItemIndex = order.items.findIndex((existingItem) => {
+            const existingItemPrice =
+              existingItem.price || existingItem.pricePerQuantity || 0;
+            return (
+              existingItem.id === item.id && existingItemPrice === itemPrice
+            );
+          });
+
+          if (existingItemIndex !== -1) {
+            order.items[existingItemIndex].quantity += item.quantity || 1;
+          } else {
+            const newItem = {
+              id: item.id || `item-${Date.now()}-${Math.random()}`,
+              name: item.name || "Unknown Item",
+              price: item.price || item.pricePerQuantity || 0,
+              pricePerQuantity: item.pricePerQuantity || item.price || 0,
+              quantity: item.quantity || 1,
+              isRedeemed: false,
+              category: item.category || "general",
+              ...item,
+            };
+            order.items.push(newItem);
+          }
+        });
       }
     },
 
@@ -155,7 +215,7 @@ const orderSlice = createSlice({
     incrementQuantityInOrder: (state, action) => {
       const { orderId, itemId } = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
-      if (order && itemId) {
+      if (order) {
         const item = order.items.find((item) => item.id === itemId);
         if (item) {
           item.quantity += 1;
@@ -166,7 +226,7 @@ const orderSlice = createSlice({
     decrementQuantityInOrder: (state, action) => {
       const { orderId, itemId } = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
-      if (order && itemId) {
+      if (order) {
         const itemIndex = order.items.findIndex((item) => item.id === itemId);
 
         if (itemIndex !== -1) {
@@ -174,7 +234,6 @@ const orderSlice = createSlice({
           if (item.quantity > 1) {
             item.quantity -= 1;
           } else {
-            // Remove item if quantity becomes 0
             order.items.splice(itemIndex, 1);
           }
         }
@@ -182,17 +241,16 @@ const orderSlice = createSlice({
     },
 
     updateQuantityInOrder: (state, action) => {
-      const { orderId, id, quantity } = action.payload;
+      const { orderId, itemId, quantity } = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
 
-      if (order && id && quantity !== undefined) {
-        const itemIndex = order.items.findIndex((item) => item.id === id);
+      if (order) {
+        const itemIndex = order.items.findIndex((item) => item.id === itemId);
 
         if (itemIndex !== -1) {
           if (quantity > 0) {
             order.items[itemIndex].quantity = quantity;
           } else {
-            // Remove item if quantity is 0
             order.items.splice(itemIndex, 1);
           }
         }
@@ -203,13 +261,11 @@ const orderSlice = createSlice({
       const { orderId, itemId } = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
 
-      if (order && itemId) {
-        // First, clear all redemptions in this order
+      if (order) {
         order.items.forEach((item) => {
           item.isRedeemed = false;
         });
 
-        // Then redeem the specific item
         const item = order.items.find((item) => item.id === itemId);
         if (item) {
           item.isRedeemed = true;
@@ -227,7 +283,6 @@ const orderSlice = createSlice({
       }
     },
 
-    // Customer actions for specific orders
     setOrderCustomer: (state, action) => {
       const { orderId, customer } = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
@@ -258,9 +313,37 @@ const orderSlice = createSlice({
       }
     },
 
-    // ADDED: Clear completed orders
     clearCompletedOrders: (state) => {
       state.completedOrders = [];
+    },
+
+    // Reset order status if placement fails
+    resetOrderStatus: (state, action) => {
+      const orderId = action.payload;
+      const order = state.orders.find((order) => order.id === orderId);
+      if (order && order.status === "completing") {
+        order.status = "active";
+      }
+    },
+
+    // NEW: Directly add item without checking for duplicates (for debugging)
+    addItemDirectly: (state, action) => {
+      const { orderId, item } = action.payload;
+      const order = state.orders.find((order) => order.id === orderId);
+
+      if (order && item) {
+        const newItem = {
+          id: item.id || `item-${Date.now()}-${Math.random()}`,
+          name: item.name || "Unknown Item",
+          price: item.price || item.pricePerQuantity || 0,
+          pricePerQuantity: item.pricePerQuantity || item.price || 0,
+          quantity: item.quantity || 1,
+          isRedeemed: false,
+          category: item.category || "general",
+          ...item,
+        };
+        order.items.push(newItem);
+      }
     },
   },
 });
@@ -269,8 +352,11 @@ export const {
   createNewOrder,
   switchOrder,
   closeOrder,
-  completeOrder, // ADDED: Export completeOrder
+  completeOrder,
+  removeCompletedOrder,
   addItemsToOrder,
+  addMultipleItemsToOrder,
+  addItemDirectly, // NEW export
   removeItemFromOrder,
   removeAllItemsFromOrder,
   incrementQuantityInOrder,
@@ -281,7 +367,8 @@ export const {
   setOrderCustomer,
   removeOrderCustomer,
   updateOrderTable,
-  clearCompletedOrders, // ADDED: Export clearCompletedOrders
+  clearCompletedOrders,
+  resetOrderStatus,
 } = orderSlice.actions;
 
 export default orderSlice.reducer;

@@ -26,7 +26,13 @@ const Menu = () => {
   const { orders, activeOrderId, completedOrders } = useSelector(
     (state) => state.order
   );
-  const [activeTab, setActiveTab] = useState("active"); // 'active' or 'completed'
+  const [activeTab, setActiveTab] = useState("active");
+
+  // Filter only active orders (status === "active") for display
+  const activeOrders = orders.filter((order) => order.status === "active");
+  const completingOrders = orders.filter(
+    (order) => order.status === "completing"
+  );
 
   const handleAddNewOrder = () => {
     dispatch(createNewOrder());
@@ -34,19 +40,21 @@ const Menu = () => {
   };
 
   const handleSwitchOrder = (orderId) => {
-    dispatch(switchOrder(orderId));
-    setActiveTab("active");
+    // Only allow switching to active orders, not completing ones
+    const order = orders.find((order) => order.id === orderId);
+    if (order && order.status === "active") {
+      dispatch(switchOrder(orderId));
+      setActiveTab("active");
+    }
   };
 
   const handleCloseOrder = (orderId, event) => {
     event.stopPropagation();
-    if (orders.length > 1) {
+    // Only close if there's more than one active order
+    if (activeOrders.length > 1) {
       dispatch(closeOrder(orderId));
     }
   };
-
-  // Get the currently active order
-  const activeOrder = orders.find((order) => order.id === activeOrderId);
 
   return (
     <section className="bg-white min-h-screen flex flex-col">
@@ -60,7 +68,7 @@ const Menu = () => {
               : "bg-gray-300 text-gray-600 hover:bg-gray-250"
           }`}
         >
-          Active Orders ({orders.length})
+          Active Orders ({activeOrders.length})
         </button>
 
         <button
@@ -75,10 +83,22 @@ const Menu = () => {
         </button>
       </div>
 
+      {/* Warning for completing orders */}
+      {completingOrders.length > 0 && (
+        <div className="bg-yellow-50 border-b border-yellow-200 px-3 py-2">
+          <div className="max-w-7xl mx-auto">
+            <p className="text-yellow-700 text-sm font-medium text-center">
+              ⏳ {completingOrders.length} order
+              {completingOrders.length > 1 ? "s" : ""} being processed...
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Order Tabs - Only show for active orders */}
       {activeTab === "active" && (
         <div className="bg-gray-200 px-3 pb-1 flex items-center gap-2 overflow-x-auto">
-          {orders.map((order) => (
+          {activeOrders.map((order) => (
             <div
               key={order.id}
               className={`flex items-center gap-2 px-3 py-2 rounded-t-lg cursor-pointer transition-colors min-w-0 flex-shrink-0 ${
@@ -101,7 +121,7 @@ const Menu = () => {
                   )}
                 </span>
               )}
-              {orders.length > 1 && (
+              {activeOrders.length > 1 && (
                 <button
                   onClick={(e) => handleCloseOrder(order.id, e)}
                   className="text-gray-500 hover:text-red-500 transition-colors flex-shrink-0"
@@ -110,6 +130,29 @@ const Menu = () => {
                   <MdClose size={16} />
                 </button>
               )}
+            </div>
+          ))}
+
+          {/* Show completing orders with different styling */}
+          {completingOrders.map((order) => (
+            <div
+              key={order.id}
+              className="flex items-center gap-2 px-3 py-2 rounded-t-lg min-w-0 flex-shrink-0 bg-yellow-100 border-t border-l border-r border-yellow-200 opacity-75 cursor-not-allowed"
+            >
+              <span className="text-sm font-medium whitespace-nowrap text-yellow-700">
+                Order {order.number}
+              </span>
+              {order.items.length > 0 && (
+                <span className="bg-yellow-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
+                  {order.items.reduce(
+                    (total, item) => total + item.quantity,
+                    0
+                  )}
+                </span>
+              )}
+              <span className="text-yellow-600 text-xs italic">
+                Processing...
+              </span>
             </div>
           ))}
 
@@ -127,7 +170,7 @@ const Menu = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col md:flex-col lg:flex-row gap-3 p-3 pb-20 lg:pb-3">
         {activeTab === "active" ? (
-          orders.length === 0 ? (
+          activeOrders.length === 0 && completingOrders.length === 0 ? (
             // No active orders state
             <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 rounded-lg p-8">
               <div className="text-center">
@@ -146,8 +189,48 @@ const Menu = () => {
                 </button>
               </div>
             </div>
+          ) : activeOrders.length === 0 && completingOrders.length > 0 ? (
+            // Only completing orders, no active ones
+            <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 rounded-lg p-8">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mx-auto mb-4"></div>
+                <h3 className="text-xl font-semibold text-gray-600 mb-2">
+                  Orders Being Processed
+                </h3>
+                <p className="text-gray-500 mb-4">
+                  Your orders are being completed. Please wait...
+                </p>
+                <div className="space-y-2 max-w-md mx-auto">
+                  {completingOrders.map((order) => (
+                    <div
+                      key={order.id}
+                      className="bg-yellow-50 border border-yellow-200 rounded-lg p-3"
+                    >
+                      <div className="flex justify-between items-center">
+                        <span className="font-medium">
+                          Order {order.number}
+                        </span>
+                        <span className="text-sm text-yellow-600">
+                          {order.items.length} items
+                        </span>
+                      </div>
+                      {order.customer?.customerName && (
+                        <p className="text-sm text-gray-600 mt-1">
+                          Customer: {order.customer.customerName}
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                <button
+                  onClick={handleAddNewOrder}
+                  className="mt-6 bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors font-semibold"
+                >
+                  Create New Order
+                </button>
+              </div>
+            </div>
           ) : (
-            // Active orders content
             <>
               {/* Left Div - Menu Section */}
               <div className="flex-1 lg:flex-[3] flex flex-col min-h-0 order-1">
