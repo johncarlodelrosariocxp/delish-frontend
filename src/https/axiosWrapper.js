@@ -136,7 +136,7 @@ const testConnection = async () => {
 };
 
 // 🚨 TEST FUNCTION - Run this in browser console to verify
-export const debugBackendConnection = async () => {
+const debugBackendConnection = async () => {
   console.log("=== 🚨 BACKEND CONNECTION DEBUG ===");
   console.log("Frontend URL:", window.location.origin);
   console.log("Backend URL:", API_BASE_URL);
@@ -154,6 +154,7 @@ export const debugBackendConnection = async () => {
   console.log("=== 🚨 DEBUG COMPLETE ===");
 };
 
+// ✅ FIXED: No duplicate exports - only export once at the end
 export {
   axiosWrapper as default,
   axiosWrapper,
