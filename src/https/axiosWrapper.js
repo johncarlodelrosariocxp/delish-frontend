@@ -1,32 +1,36 @@
 import axios from "axios";
 
-// 🚨 FORCE RENDER BACKEND - FIXED VERSION
+// 🌐 Smart API URL detection for both development and production
 const getApiBaseUrl = () => {
-  // Priority 1: ALWAYS use Render backend in production
-  if (import.meta.env.PROD) {
-    return "https://delish-backend-1.onrender.com";
-  }
-
-  // Priority 2: Vite environment variable
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
 
-  // Priority 3: Only use localhost in development
-  return "http://localhost:8000";
+  if (import.meta.env.DEV) {
+    const currentHostname = window.location.hostname;
+    if (
+      currentHostname !== "localhost" &&
+      currentHostname !== "127.0.0.1" &&
+      currentHostname.match(/^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/)
+    ) {
+      return `http://${currentHostname}:8000`;
+    }
+    return "http://localhost:8000";
+  }
+
+  return "https://delish-backend-1.onrender.com";
 };
 
 const API_BASE_URL = getApiBaseUrl();
 
 console.log("🚀 Environment:", import.meta.env.MODE);
-console.log("🌐 Frontend URL:", window.location.origin);
+console.log("🌐 Frontend:", window.location.origin);
 console.log("🔗 Backend API:", API_BASE_URL);
-console.log("📱 Production Mode:", import.meta.env.PROD);
 
-// Create Axios instance with enhanced configuration
+// 🛠️ Create Axios instance
 const axiosWrapper = axios.create({
   baseURL: API_BASE_URL,
-  withCredentials: true,
+  withCredentials: false, // ⚠️ CHANGE TO FALSE for production
   timeout: 30000,
   headers: {
     "Content-Type": "application/json",
@@ -34,21 +38,30 @@ const axiosWrapper = axios.create({
   },
 });
 
-// Request interceptor
+// 🔐 AUTH INTERCEPTOR - ADD THIS CRITICAL PART
 axiosWrapper.interceptors.request.use(
   (config) => {
-    console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
-    console.log(`🔗 Base URL: ${API_BASE_URL}`);
+    // Get token from localStorage
+    const token =
+      localStorage.getItem("authToken") ||
+      localStorage.getItem("token") ||
+      sessionStorage.getItem("authToken");
 
-    // Add auth token if available
-    const token = localStorage.getItem("authToken");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
-      console.log("🔑 Token attached to request");
+      console.log(
+        `🔐 Adding auth token to ${config.method?.toUpperCase()} ${config.url}`
+      );
     } else {
-      console.log("⚠️ No auth token found");
+      console.warn(
+        `⚠️ No auth token found for ${config.method?.toUpperCase()} ${
+          config.url
+        }`
+      );
+      // Don't redirect here, let the component handle it
     }
 
+    console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
     return config;
   },
   (error) => {
@@ -57,108 +70,82 @@ axiosWrapper.interceptors.request.use(
   }
 );
 
-// Response interceptor with enhanced error handling
+// 🚨 Enhanced Response interceptor
 axiosWrapper.interceptors.response.use(
   (response) => {
-    console.log(`✅ ${response.status} ${response.config.url}`);
     return response;
   },
   (error) => {
     const status = error.response?.status;
     const url = error.config?.url;
-    const method = error.config?.method;
 
-    console.error(`❌ API Error [${status}]:`, {
-      method: method?.toUpperCase(),
-      url: url,
-      message: error.message,
-      response: error.response?.data,
-      backendUrl: API_BASE_URL,
-    });
+    console.error(`❌ API Error [${status}]:`, error.message);
 
-    // Enhanced error messages
-    if (error.code === "NETWORK_ERROR" || error.code === "ECONNREFUSED") {
-      error.userMessage =
-        "Cannot connect to server. Please check:\n" +
-        "• Backend server is running\n" +
-        "• Network connectivity\n" +
-        `• Backend URL: ${API_BASE_URL}`;
-    } else if (status === 404) {
-      error.userMessage = "Requested resource not found on server.";
-    } else if (status === 500) {
-      error.userMessage = "Server error. Please try again later.";
-    } else if (status === 401) {
-      error.userMessage = "Authentication failed. Please login again.";
+    // Handle 401 Unauthorized specifically
+    if (status === 401) {
+      console.error("🔐 Authentication failed - clearing token");
+
+      // Clear invalid token
       localStorage.removeItem("authToken");
+      localStorage.removeItem("token");
+      sessionStorage.removeItem("authToken");
 
-      // 🚨 AUTO-REDIRECT TO LOGIN ON 401
+      // Only redirect if not already on login page
       if (!window.location.pathname.includes("/login")) {
-        console.log("🔐 Redirecting to login due to 401...");
         setTimeout(() => {
-          window.location.href = "/login?session=expired";
-        }, 1000);
+          window.location.href = "/login";
+        }, 2000);
       }
-    } else if (status === 403) {
-      error.userMessage = "Access denied. Insufficient permissions.";
+
+      error.userMessage = "Your session has expired. Please login again.";
+    }
+
+    // Handle network errors
+    if (error.code === "NETWORK_ERROR" || error.code === "ECONNREFUSED") {
+      console.error("🌐 Network Error - Possible CORS issue");
+      error.userMessage =
+        "Cannot connect to server. Please check backend is running.";
     }
 
     return Promise.reject(error);
   }
 );
 
-// Enhanced connection test
+// Connection test
 const testConnection = async () => {
   try {
     console.log("🔍 Testing connection to:", API_BASE_URL);
-    const response = await axiosWrapper.get("/health", {
-      timeout: 15000,
-      headers: { "Cache-Control": "no-cache" },
-    });
-
-    console.log("✅ Backend connection successful:", response.data);
-    return {
-      success: true,
-      data: response.data,
-      backend: API_BASE_URL,
-      environment: import.meta.env.MODE,
-    };
+    const response = await axiosWrapper.get("/health", { timeout: 10000 });
+    console.log("✅ Backend connection successful");
+    return { success: true, data: response.data };
   } catch (error) {
     console.error("❌ Backend connection failed:", error.message);
-
     return {
       success: false,
       error: error.message,
       userMessage: error.userMessage,
-      backendUrl: API_BASE_URL,
-      frontendUrl: window.location.origin,
+      code: error.code,
     };
   }
 };
 
-// 🚨 TEST FUNCTION - Run this in browser console to verify
-const debugBackendConnection = async () => {
-  console.log("=== 🚨 BACKEND CONNECTION DEBUG ===");
-  console.log("Frontend URL:", window.location.origin);
-  console.log("Backend URL:", API_BASE_URL);
-  console.log("Production Mode:", import.meta.env.PROD);
-  console.log("VITE_API_URL:", import.meta.env.VITE_API_URL);
-  console.log("Environment:", import.meta.env.MODE);
-
-  const token = localStorage.getItem("authToken");
-  console.log("Token exists:", !!token);
-  if (token) {
-    console.log("Token length:", token.length);
-  }
-
-  await testConnection();
-  console.log("=== 🚨 DEBUG COMPLETE ===");
+// ✅ Auth helper functions
+export const isAuthenticated = () => {
+  const token =
+    localStorage.getItem("authToken") || localStorage.getItem("token");
+  return !!token;
 };
 
-// ✅ FIXED: No duplicate exports - only export once at the end
-export {
-  axiosWrapper as default,
-  axiosWrapper,
-  API_BASE_URL,
-  testConnection,
-  debugBackendConnection,
+export const setAuthToken = (token) => {
+  localStorage.setItem("authToken", token);
+  console.log("🔐 Auth token saved");
 };
+
+export const removeAuthToken = () => {
+  localStorage.removeItem("authToken");
+  localStorage.removeItem("token");
+  sessionStorage.removeItem("authToken");
+  console.log("🔐 Auth tokens cleared");
+};
+
+export { axiosWrapper as default, axiosWrapper, API_BASE_URL, testConnection };
