@@ -1,18 +1,18 @@
 import axios from "axios";
 
-// Smart API URL detection for both development and production
+// 🚨 FORCE RENDER BACKEND - FIXED VERSION
 const getApiBaseUrl = () => {
-  // Priority 1: Vite environment variable (set in .env)
-  if (import.meta.env.VITE_API_URL) {
-    return import.meta.env.VITE_API_URL;
-  }
-
-  // Priority 2: Vercel production environment - use Render backend
+  // Priority 1: ALWAYS use Render backend in production
   if (import.meta.env.PROD) {
     return "https://delish-backend-1.onrender.com";
   }
 
-  // Priority 3: Local development
+  // Priority 2: Vite environment variable
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+
+  // Priority 3: Only use localhost in development
   return "http://localhost:8000";
 };
 
@@ -21,6 +21,7 @@ const API_BASE_URL = getApiBaseUrl();
 console.log("🚀 Environment:", import.meta.env.MODE);
 console.log("🌐 Frontend URL:", window.location.origin);
 console.log("🔗 Backend API:", API_BASE_URL);
+console.log("📱 Production Mode:", import.meta.env.PROD);
 
 // Create Axios instance with enhanced configuration
 const axiosWrapper = axios.create({
@@ -37,11 +38,15 @@ const axiosWrapper = axios.create({
 axiosWrapper.interceptors.request.use(
   (config) => {
     console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
+    console.log(`🔗 Base URL: ${API_BASE_URL}`);
 
     // Add auth token if available
     const token = localStorage.getItem("authToken");
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
+      console.log("🔑 Token attached to request");
+    } else {
+      console.log("⚠️ No auth token found");
     }
 
     return config;
@@ -68,6 +73,7 @@ axiosWrapper.interceptors.response.use(
       url: url,
       message: error.message,
       response: error.response?.data,
+      backendUrl: API_BASE_URL,
     });
 
     // Enhanced error messages
@@ -84,6 +90,14 @@ axiosWrapper.interceptors.response.use(
     } else if (status === 401) {
       error.userMessage = "Authentication failed. Please login again.";
       localStorage.removeItem("authToken");
+
+      // 🚨 AUTO-REDIRECT TO LOGIN ON 401
+      if (!window.location.pathname.includes("/login")) {
+        console.log("🔐 Redirecting to login due to 401...");
+        setTimeout(() => {
+          window.location.href = "/login?session=expired";
+        }, 1000);
+      }
     } else if (status === 403) {
       error.userMessage = "Access denied. Insufficient permissions.";
     }
@@ -121,4 +135,29 @@ const testConnection = async () => {
   }
 };
 
-export { axiosWrapper as default, axiosWrapper, API_BASE_URL, testConnection };
+// 🚨 TEST FUNCTION - Run this in browser console to verify
+export const debugBackendConnection = async () => {
+  console.log("=== 🚨 BACKEND CONNECTION DEBUG ===");
+  console.log("Frontend URL:", window.location.origin);
+  console.log("Backend URL:", API_BASE_URL);
+  console.log("Production Mode:", import.meta.env.PROD);
+  console.log("VITE_API_URL:", import.meta.env.VITE_API_URL);
+  console.log("Environment:", import.meta.env.MODE);
+
+  const token = localStorage.getItem("authToken");
+  console.log("Token exists:", !!token);
+  if (token) {
+    console.log("Token length:", token.length);
+  }
+
+  await testConnection();
+  console.log("=== 🚨 DEBUG COMPLETE ===");
+};
+
+export {
+  axiosWrapper as default,
+  axiosWrapper,
+  API_BASE_URL,
+  testConnection,
+  debugBackendConnection,
+};
