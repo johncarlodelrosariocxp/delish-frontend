@@ -78,57 +78,7 @@ const Bill = ({ orderId }) => {
   const [cashAmount, setCashAmount] = useState(0);
   const [showCashModal, setShowCashModal] = useState(false);
   const [showOnlineOptions, setShowOnlineOptions] = useState(false);
-
-  // Bluetooth printer state
-  const [bluetoothPrinter, setBluetoothPrinter] = useState(null);
-  const [isPrinterConnected, setIsPrinterConnected] = useState(false);
-
-  // Bluetooth printer setup
-  useEffect(() => {
-    if (navigator.bluetooth) {
-      checkPrinterConnection();
-    }
-  }, []);
-
-  const checkPrinterConnection = async () => {
-    try {
-      const devices = await navigator.bluetooth.getDevices();
-      if (devices.length > 0) {
-        setIsPrinterConnected(true);
-      }
-    } catch (error) {
-      console.log("No existing printer connection");
-    }
-  };
-
-  const connectToPrinter = async () => {
-    if (!navigator.bluetooth) {
-      enqueueSnackbar("Bluetooth not supported on this device", {
-        variant: "error",
-      });
-      return;
-    }
-
-    try {
-      const device = await navigator.bluetooth.requestDevice({
-        acceptAllDevices: true,
-        optionalServices: ["battery_service", "device_information"],
-      });
-
-      const server = await device.gatt.connect();
-      setBluetoothPrinter(device);
-      setIsPrinterConnected(true);
-
-      enqueueSnackbar("Printer connected successfully!", {
-        variant: "success",
-      });
-
-      localStorage.setItem("bluetoothPrinterId", device.id);
-    } catch (error) {
-      console.error("Bluetooth connection error:", error);
-      enqueueSnackbar("Failed to connect to printer", { variant: "error" });
-    }
-  };
+  const [showPrintOptions, setShowPrintOptions] = useState(false);
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -680,191 +630,273 @@ const Bill = ({ orderId }) => {
     setCashAmount((prev) => safeNumber(prev) + amount);
   };
 
-  // Thermal printer ESC/POS commands
-  const ESC = "\x1B";
-  const GS = "\x1D";
-  const LF = "\x0A";
+  // Generate HTML receipt for printing
+  const generatePrintableReceipt = (orderData) => {
+    const receiptDate = new Date().toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
 
-  const printerCommands = {
-    INIT: ESC + "@",
-    BOLD_ON: ESC + "E" + "\x01",
-    BOLD_OFF: ESC + "E" + "\x00",
-    ALIGN_LEFT: ESC + "a" + "\x00",
-    ALIGN_CENTER: ESC + "a" + "\x01",
-    ALIGN_RIGHT: ESC + "a" + "\x02",
-    UNDERLINE_ON: ESC + "-" + "\x01",
-    UNDERLINE_OFF: ESC + "-" + "\x00",
-    CUT_PAPER: GS + "V" + "\x41" + "\x00",
-    LINE_SPACING: ESC + "3" + "\x20",
-    FEED_LINES: (lines) => ESC + "d" + String.fromCharCode(lines),
-    SET_CHAR_SIZE: (width, height) =>
-      GS + "!" + String.fromCharCode((height - 1) * 16 + (width - 1)),
-    DRAWER_OPEN: ESC + "p" + "\x00" + "\x19" + "\xFA",
-  };
-
-  // Send data to Bluetooth printer
-  const sendToPrinter = async (data) => {
-    if (!bluetoothPrinter || !isPrinterConnected) {
-      // Try to auto-connect
-      await connectToPrinter();
-      if (!isPrinterConnected) {
-        throw new Error("Printer not connected");
-      }
-    }
-
-    try {
-      const encoder = new TextEncoder();
-      const dataArray = encoder.encode(data);
-
-      const server = await bluetoothPrinter.gatt.connect();
-      const service = await server.getPrimaryService(
-        "000018f0-0000-1000-8000-00805f9b34fb"
-      );
-      const characteristic = await service.getCharacteristic(
-        "00002af1-0000-1000-8000-00805f9b34fb"
-      );
-
-      await characteristic.writeValue(dataArray);
-      return true;
-    } catch (error) {
-      console.error("Print error:", error);
-      throw error;
-    }
-  };
-
-  // Generate receipt with proper ESC/POS commands
-  const generateReceipt = (orderData) => {
-    let receipt = "";
-
-    // Initialize printer
-    receipt += printerCommands.INIT;
-    receipt += printerCommands.ALIGN_CENTER;
-    receipt += printerCommands.BOLD_ON;
-    receipt += printerCommands.SET_CHAR_SIZE(2, 2);
-    receipt += "DELISH RESTAURANT" + LF;
-    receipt += printerCommands.BOLD_OFF;
-    receipt += printerCommands.SET_CHAR_SIZE(1, 1);
-    receipt += "123 Main Street, City" + LF;
-    receipt += "Phone: (123) 456-7890" + LF;
-    receipt +=
-      "Customer: " + (customerType === "walk-in" ? "Walk-in" : "Take-out") + LF;
-    receipt += LF;
-
-    // Order info
-    receipt += printerCommands.ALIGN_LEFT;
-    receipt += printerCommands.UNDERLINE_ON;
-    receipt += "ORDER RECEIPT" + LF;
-    receipt += printerCommands.UNDERLINE_OFF;
-    receipt += LF;
-
-    receipt += "Order #: " + (orderData._id?.slice(-8) || "N/A") + LF;
-    receipt += "Date: " + new Date().toLocaleDateString() + LF;
-    receipt += "Time: " + new Date().toLocaleTimeString() + LF;
-    receipt +=
-      "Status: Customer " +
-      (customerType === "walk-in" ? "Dine-in" : "Take-out") +
-      LF;
-    receipt += LF;
-
-    receipt += printerCommands.UNDERLINE_ON;
-    receipt += "ITEMS" + LF;
-    receipt += printerCommands.UNDERLINE_OFF;
-    receipt += LF;
-
-    // Items
+    let itemsHTML = "";
     combinedCart.forEach((item) => {
-      const name =
-        item.name.length > 24 ? item.name.substring(0, 21) + "..." : item.name;
       const price = safeNumber(item.pricePerQuantity);
       const quantity = item.quantity;
       const total = calculateItemTotal(item);
 
-      receipt += name + LF;
-      receipt += "  " + quantity + " x ₱" + price.toFixed(2) + LF;
-      receipt += "  " + "₱" + total.toFixed(2) + LF;
-      if (item.isRedeemed) {
-        receipt += "  [REDEEMED - FREE]" + LF;
-      }
-      receipt += LF;
+      itemsHTML += `
+        <div style="margin-bottom: 8px; border-bottom: 1px dashed #ddd; padding-bottom: 8px;">
+          <div style="font-weight: bold;">${item.name}</div>
+          <div style="display: flex; justify-content: space-between; font-size: 12px;">
+            <span>${quantity} × ₱${price.toFixed(2)}</span>
+            <span>₱${total.toFixed(2)}</span>
+          </div>
+          ${
+            item.isRedeemed
+              ? '<div style="color: green; font-size: 11px;">[REDEEMED - FREE]</div>'
+              : ""
+          }
+        </div>
+      `;
     });
 
-    // Divider
-    receipt += "--------------------------------" + LF;
-
-    // Totals
-    receipt += printerCommands.ALIGN_RIGHT;
-    receipt += "Subtotal:    ₱" + totals.baseGrossTotal.toFixed(2) + LF;
-
-    if (totals.pwdSeniorDiscountAmount > 0) {
-      receipt +=
-        "PWD/Senior:   -₱" + totals.pwdSeniorDiscountAmount.toFixed(2) + LF;
-    }
-
-    if (totals.redemptionAmount > 0) {
-      receipt += "Redemption:  -₱" + totals.redemptionAmount.toFixed(2) + LF;
-    }
-
-    if (totals.employeeDiscountAmount > 0) {
-      receipt +=
-        "Emp Disc:    -₱" + totals.employeeDiscountAmount.toFixed(2) + LF;
-    }
-
-    if (totals.shareholderDiscountAmount > 0) {
-      receipt +=
-        "Shareholder: -₱" + totals.shareholderDiscountAmount.toFixed(2) + LF;
-    }
-
-    receipt += "VAT (12%):   ₱" + totals.vatAmount.toFixed(2) + LF;
-    receipt += "Total:       ₱" + totals.total.toFixed(2) + LF;
-
-    if (paymentMethod === "Cash") {
-      receipt += "Cash:        ₱" + totals.cashAmount.toFixed(2) + LF;
-      receipt += "Change:      ₱" + totals.change.toFixed(2) + LF;
-    }
-
-    receipt += LF;
-    receipt += printerCommands.ALIGN_CENTER;
-    receipt += "Payment: " + paymentMethod + LF;
-    receipt += "Cashier: " + (user?.name || "Admin") + LF;
-    receipt += LF;
-    receipt += "Thank you for dining with us!" + LF;
-    receipt += "Please visit again!" + LF;
-    receipt += LF;
-    receipt += LF;
-
-    // Cut paper
-    receipt += printerCommands.CUT_PAPER;
-
-    return receipt;
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt - Order ${orderData._id?.slice(-8) || "N/A"}</title>
+        <style>
+          @media print {
+            body { margin: 0; padding: 0; }
+            .no-print { display: none !important; }
+            .print-only { display: block !important; }
+          }
+          body {
+            font-family: 'Courier New', monospace;
+            max-width: 80mm;
+            margin: 0 auto;
+            padding: 10px;
+            font-size: 12px;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 15px;
+          }
+          .restaurant-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-bottom: 5px;
+          }
+          .divider {
+            border-top: 1px dashed #000;
+            margin: 10px 0;
+          }
+          .total-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+          }
+          .total-row-bold {
+            font-weight: bold;
+            font-size: 14px;
+            border-top: 2px solid #000;
+            padding-top: 5px;
+            margin-top: 10px;
+          }
+          .thank-you {
+            text-align: center;
+            margin-top: 15px;
+            font-style: italic;
+          }
+          .controls {
+            text-align: center;
+            margin-top: 20px;
+            padding: 10px;
+            background: #f5f5f5;
+            border-radius: 5px;
+          }
+          button {
+            margin: 5px;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+          }
+          .print-btn {
+            background: #2196F3;
+            color: white;
+          }
+          .close-btn {
+            background: #f44336;
+            color: white;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="restaurant-name">DELISH RESTAURANT</div>
+          <div>123 Main Street, City</div>
+          <div>Phone: (123) 456-7890</div>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div>
+          <div><strong>Order #:</strong> ${
+            orderData._id?.slice(-8) || "N/A"
+          }</div>
+          <div><strong>Date:</strong> ${receiptDate}</div>
+          <div><strong>Customer:</strong> ${
+            customerType === "walk-in" ? "Walk-in (Dine-in)" : "Take-out"
+          }</div>
+          <div><strong>Cashier:</strong> ${user?.name || "Admin"}</div>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div style="margin: 15px 0;">
+          <div style="font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #000;">ITEMS:</div>
+          ${itemsHTML}
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div style="margin: 15px 0;">
+          <div class="total-row">
+            <span>Subtotal:</span>
+            <span>₱${totals.baseGrossTotal.toFixed(2)}</span>
+          </div>
+          
+          ${
+            totals.pwdSeniorDiscountAmount > 0
+              ? `
+            <div class="total-row" style="color: green;">
+              <span>PWD/Senior Discount:</span>
+              <span>-₱${totals.pwdSeniorDiscountAmount.toFixed(2)}</span>
+            </div>
+          `
+              : ""
+          }
+          
+          ${
+            totals.redemptionAmount > 0
+              ? `
+            <div class="total-row" style="color: blue;">
+              <span>Redemption:</span>
+              <span>-₱${totals.redemptionAmount.toFixed(2)}</span>
+            </div>
+          `
+              : ""
+          }
+          
+          ${
+            totals.employeeDiscountAmount > 0
+              ? `
+            <div class="total-row" style="color: orange;">
+              <span>Employee Discount:</span>
+              <span>-₱${totals.employeeDiscountAmount.toFixed(2)}</span>
+            </div>
+          `
+              : ""
+          }
+          
+          ${
+            totals.shareholderDiscountAmount > 0
+              ? `
+            <div class="total-row" style="color: purple;">
+              <span>Shareholder Discount:</span>
+              <span>-₱${totals.shareholderDiscountAmount.toFixed(2)}</span>
+            </div>
+          `
+              : ""
+          }
+          
+          <div class="total-row">
+            <span>VAT (12%):</span>
+            <span>₱${totals.vatAmount.toFixed(2)}</span>
+          </div>
+          
+          <div class="total-row total-row-bold">
+            <span>TOTAL:</span>
+            <span>₱${totals.total.toFixed(2)}</span>
+          </div>
+          
+          ${
+            paymentMethod === "Cash"
+              ? `
+            <div class="total-row">
+              <span>Cash:</span>
+              <span>₱${totals.cashAmount.toFixed(2)}</span>
+            </div>
+            <div class="total-row" style="color: green;">
+              <span>Change:</span>
+              <span>₱${totals.change.toFixed(2)}</span>
+            </div>
+          `
+              : ""
+          }
+          
+          <div class="total-row" style="margin-top: 10px;">
+            <span><strong>Payment Method:</strong></span>
+            <span>${paymentMethod}</span>
+          </div>
+        </div>
+        
+        <div class="divider"></div>
+        
+        <div class="thank-you">
+          <div>Thank you for dining with us!</div>
+          <div>Please visit again!</div>
+        </div>
+        
+        <div class="controls no-print">
+          <button class="print-btn" onclick="window.print()">🖨️ Print Receipt</button>
+          <button class="close-btn" onclick="window.close()">Close</button>
+        </div>
+        
+        <script>
+          // Auto-print if this is a popup window
+          if (window.opener) {
+            setTimeout(() => {
+              window.print();
+            }, 500);
+          }
+        </script>
+      </body>
+      </html>
+    `;
   };
 
-  // Print receipt to Bluetooth printer
+  // Print receipt using browser print dialog
   const printReceipt = async (orderData) => {
     try {
-      if (!isPrinterConnected) {
-        await connectToPrinter();
-      }
+      // Generate HTML receipt
+      const receiptHTML = generatePrintableReceipt(orderData);
 
-      if (isPrinterConnected) {
-        const receipt = generateReceipt(orderData);
-        const success = await sendToPrinter(receipt);
+      // Open in new window for printing
+      const printWindow = window.open("", "_blank", "width=400,height=600");
+      printWindow.document.write(receiptHTML);
+      printWindow.document.close();
 
-        if (success) {
-          enqueueSnackbar("Receipt printed successfully!", {
-            variant: "success",
-          });
-
-          // Open cash drawer if payment is cash
-          if (paymentMethod === "Cash") {
-            const cashDrawerCommand = printerCommands.DRAWER_OPEN;
-            await sendToPrinter(cashDrawerCommand);
-            enqueueSnackbar("Cash drawer opened", { variant: "info" });
+      // Wait for content to load
+      printWindow.onload = () => {
+        setTimeout(() => {
+          printWindow.focus();
+          // Try to auto-print
+          if (printWindow.print) {
+            printWindow.print();
           }
-          return true;
-        }
-      } else {
-        throw new Error("Could not connect to printer");
-      }
+        }, 500);
+      };
+
+      enqueueSnackbar("Receipt ready for printing!", {
+        variant: "success",
+      });
+
+      return true;
     } catch (error) {
       console.error("Print error:", error);
       throw error;
@@ -941,28 +973,30 @@ const Bill = ({ orderId }) => {
 
       enqueueSnackbar("Order placed successfully!", { variant: "success" });
 
-      // PRINT RECEIPT AUTOMATICALLY
+      // Show invoice immediately
+      setShowInvoice(true);
+      setIsProcessing(false);
+
+      // Auto-print receipt after a short delay
       setTimeout(async () => {
         try {
           await printReceipt(data);
-          enqueueSnackbar("Receipt printed via Bluetooth!", {
-            variant: "success",
-          });
         } catch (error) {
           console.error("Failed to print:", error);
-          enqueueSnackbar("Failed to print receipt", { variant: "warning" });
+          enqueueSnackbar(
+            "Failed to auto-print receipt. Use print button in receipt window.",
+            {
+              variant: "warning",
+            }
+          );
         }
+      }, 1500);
 
-        // Show invoice
-        setShowInvoice(true);
-        setIsProcessing(false);
-
-        // Auto-close invoice after 5 seconds and navigate
-        setTimeout(() => {
-          setShowInvoice(false);
-          navigate("/menu");
-        }, 5000);
-      }, 1000);
+      // Auto-close invoice after 10 seconds and navigate
+      setTimeout(() => {
+        setShowInvoice(false);
+        navigate("/menu");
+      }, 10000);
     },
     onError: (error) => {
       console.error("Order placement error:", error);
@@ -1056,7 +1090,7 @@ const Bill = ({ orderId }) => {
       change: Number(totals.change.toFixed(2)),
     };
 
-    // Prepare items data
+    // Prepare items data - FIXED: Added missing items array
     const items = cartData.map((item) => {
       const isPwdSeniorDiscounted = pwdSeniorDiscountItems.some(
         (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
@@ -1075,21 +1109,26 @@ const Bill = ({ orderId }) => {
       };
     });
 
-    // Get cashier name
-    const cashierName = user?.name;
+    // Prepare order data - FIXED: Added missing orderData variable
+    const orderData = {
+      items: items,
+      bills: bills,
+      customerDetails: {
+        type: customerType,
+        status: customerType === "walk-in" ? "Dine-in" : "Take-out",
+      },
+      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
+      paymentMethod: paymentMethod,
+      cashAmount: Number(totals.cashAmount.toFixed(2)),
+      change: Number(totals.change.toFixed(2)),
+      orderStatus: "Completed",
+      user: user?._id || "000000000000000000000001",
+    };
 
     console.log("Sending order data:", JSON.stringify(orderData, null, 2));
 
-    // Handle payment methods
-    if (paymentMethod === "BDO" || paymentMethod === "GCASH") {
-      // Digital payment methods - directly submit order
-      console.log(`Processing ${paymentMethod} order...`);
-      orderMutation.mutate(orderData);
-    } else {
-      // Cash payment - directly submit order
-      console.log("Processing cash order...");
-      orderMutation.mutate(orderData);
-    }
+    // Submit order
+    orderMutation.mutate(orderData);
   };
 
   // Handle cash amount submission
@@ -1122,6 +1161,20 @@ const Bill = ({ orderId }) => {
   // Cancel redeem selection
   const handleCancelRedeem = () => {
     setShowRedeemOptions(false);
+  };
+
+  // Print receipt manually
+  const handleManualPrint = async () => {
+    if (!orderInfo) {
+      enqueueSnackbar("No order information available", { variant: "error" });
+      return;
+    }
+
+    try {
+      await printReceipt(orderInfo);
+    } catch (error) {
+      enqueueSnackbar("Failed to print receipt", { variant: "error" });
+    }
   };
 
   // If no current order, show empty state
@@ -1879,6 +1932,18 @@ const Bill = ({ orderId }) => {
             )}
           </button>
         </div>
+
+        {/* Manual Print Button (shown when invoice is visible) */}
+        {showInvoice && orderInfo && (
+          <div className="flex flex-col gap-2">
+            <button
+              onClick={handleManualPrint}
+              className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+            >
+              🖨️ Print Receipt Again
+            </button>
+          </div>
+        )}
 
         {/* 📄 INVOICE MODAL */}
         {showInvoice && orderInfo && (
