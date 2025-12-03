@@ -1148,7 +1148,7 @@ const Bill = ({ orderId }) => {
     },
   });
 
-  // Handle place order WITH customer name validation
+  // Handle place order WITHOUT customer name validation
   const handlePlaceOrder = async () => {
     if (isProcessing) return;
 
@@ -1170,14 +1170,6 @@ const Bill = ({ orderId }) => {
     // Validate total amount
     if (totals.total <= 0) {
       enqueueSnackbar("Invalid order total. Please check your items.", {
-        variant: "error",
-      });
-      return;
-    }
-
-    // Validate customer details
-    if (!customerData.customerName || customerData.customerName.trim() === "") {
-      enqueueSnackbar("Please enter customer name before placing order!", {
         variant: "error",
       });
       return;
@@ -1252,7 +1244,7 @@ const Bill = ({ orderId }) => {
     // Prepare COMPLETE order data with ALL REQUIRED FIELDS
     const orderData = {
       customerDetails: {
-        name: customerData.customerName?.trim() || "", // Required
+        name: customerData.customerName?.trim() || "Walk-in", // Default to "Walk-in"
         phone: customerData.customerPhone?.trim() || "Not provided", // Required
         guests: safeNumber(customerData.guests) || 1, // Required
         email: customerData.customerEmail || "",
@@ -1348,7 +1340,7 @@ const Bill = ({ orderId }) => {
             }
           },
           prefill: {
-            name: customerData.customerName || "Customer",
+            name: customerData.customerName || "Walk-in Customer",
             email: "",
             contact: customerData.customerPhone || "",
           },
