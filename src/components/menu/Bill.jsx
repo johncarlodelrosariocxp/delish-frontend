@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   removeItemFromOrder,
@@ -39,7 +39,7 @@ const Bill = ({ orderId }) => {
   const orders = useSelector((state) => state.order.orders);
   const activeOrderId = useSelector((state) => state.order.activeOrderId);
 
-  // FIXED: Safe access to user data from auth state
+  // Safe access to user data from auth state
   const userState = useSelector((state) => state.auth);
   const user = userState?.user || userState?.data?.user || { name: "Admin" };
 
@@ -68,8 +68,75 @@ const Bill = ({ orderId }) => {
   const [pwdSssDetails, setPwdSssDetails] = useState({
     name: "",
     idNumber: "",
-    type: "PWD", // or "SSS"
+    type: "PWD",
   });
+  const [bluetoothPrinter, setBluetoothPrinter] = useState(null);
+  const [isPrinterConnected, setIsPrinterConnected] = useState(false);
+
+  // Bluetooth printer setup
+  useEffect(() => {
+    // Check if Bluetooth is available
+    if (navigator.bluetooth) {
+      checkPrinterConnection();
+    }
+  }, []);
+
+  const checkPrinterConnection = async () => {
+    try {
+      // Check for existing permissions
+      const devices = await navigator.bluetooth.getDevices();
+      if (devices.length > 0) {
+        setIsPrinterConnected(true);
+        enqueueSnackbar("Printer is ready", { variant: "success" });
+      }
+    } catch (error) {
+      console.log("No existing printer connection");
+    }
+  };
+
+  const connectToPrinter = async () => {
+    if (!navigator.bluetooth) {
+      enqueueSnackbar("Bluetooth not supported on this device", {
+        variant: "error",
+      });
+      return;
+    }
+
+    try {
+      enqueueSnackbar("Searching for Bluetooth printers...", {
+        variant: "info",
+      });
+
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ["battery_service", "device_information"],
+      });
+
+      enqueueSnackbar(`Found: ${device.name || "Unknown Device"}`, {
+        variant: "info",
+      });
+
+      const server = await device.gatt.connect();
+      setBluetoothPrinter(device);
+      setIsPrinterConnected(true);
+
+      enqueueSnackbar("Printer connected successfully!", {
+        variant: "success",
+      });
+
+      // Store device info for future use
+      localStorage.setItem("bluetoothPrinterId", device.id);
+    } catch (error) {
+      console.error("Bluetooth connection error:", error);
+      if (error.name === "NotFoundError") {
+        enqueueSnackbar("No Bluetooth printer found", { variant: "error" });
+      } else if (error.name === "SecurityError") {
+        enqueueSnackbar("Bluetooth permission denied", { variant: "error" });
+      } else {
+        enqueueSnackbar("Failed to connect to printer", { variant: "error" });
+      }
+    }
+  };
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -588,7 +655,6 @@ const Bill = ({ orderId }) => {
   // Cancel selection
   const handleCancelPwdSssSelection = () => {
     setShowPwdSssSelection(false);
-    // Don't clear selections on cancel - let user keep their selections
   };
 
   // Clear PWD/SSS discount
@@ -610,407 +676,357 @@ const Bill = ({ orderId }) => {
     }));
   };
 
-  // Print to Bluetooth Thermal Printer
-  const printToBluetoothPrinter = async (orderData) => {
+  // Thermal printer ESC/POS commands
+  const ESC = "\x1B";
+  const GS = "\x1D";
+  const LF = "\x0A";
+
+  const printerCommands = {
+    INIT: ESC + "@",
+    BOLD_ON: ESC + "E" + "\x01",
+    BOLD_OFF: ESC + "E" + "\x00",
+    ALIGN_LEFT: ESC + "a" + "\x00",
+    ALIGN_CENTER: ESC + "a" + "\x01",
+    ALIGN_RIGHT: ESC + "a" + "\x02",
+    UNDERLINE_ON: ESC + "-" + "\x01",
+    UNDERLINE_OFF: ESC + "-" + "\x00",
+    CUT_PAPER: GS + "V" + "\x41" + "\x00",
+    LINE_SPACING: ESC + "3" + "\x20",
+    FEED_LINES: (lines) => ESC + "d" + String.fromCharCode(lines),
+    SET_CHAR_SIZE: (width, height) =>
+      GS + "!" + String.fromCharCode((height - 1) * 16 + (width - 1)),
+    QR_CODE_STORE: (data) => {
+      const len = data.length + 3;
+      return (
+        GS +
+        "(k" +
+        String.fromCharCode(len % 256) +
+        String.fromCharCode(Math.floor(len / 256)) +
+        "\x31\x50\x30" +
+        data
+      );
+    },
+    QR_CODE_PRINT: GS + "(k\x03\x00\x31\x51\x30",
+  };
+
+  // Send data to Bluetooth printer
+  const sendToPrinter = async (data) => {
+    if (!bluetoothPrinter || !isPrinterConnected) {
+      enqueueSnackbar("Printer not connected", { variant: "error" });
+      return false;
+    }
+
     try {
-      // Create receipt text
-      const receiptText = generateReceiptText(orderData);
+      // Convert text to Uint8Array
+      const encoder = new TextEncoder();
+      const dataArray = encoder.encode(data);
 
-      // Try Web Bluetooth API for mobile/tablet
-      if (navigator.bluetooth) {
-        try {
-          const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: ["generic_access"],
-          });
+      // Get the GATT server
+      const server = await bluetoothPrinter.gatt.connect();
 
-          console.log("Connecting to Bluetooth device:", device.name);
-          enqueueSnackbar(`Connecting to ${device.name}...`, {
-            variant: "info",
-          });
+      // Get the service - thermal printers often use these services
+      const service = await server.getPrimaryService(
+        "000018f0-0000-1000-8000-00805f9b34fb"
+      );
 
-          // For thermal printers, we typically need to use serial over Bluetooth
-          // This is a simplified approach - actual implementation may vary by printer model
-          await sendToPrinter(receiptText);
-        } catch (error) {
-          console.warn("Bluetooth printing failed:", error);
-          // Fallback to mobile printing
-          mobilePrint(receiptText);
-        }
-      } else {
-        // Web Bluetooth not supported, use mobile printing
-        mobilePrint(receiptText);
-      }
+      // Get the characteristic for writing
+      const characteristic = await service.getCharacteristic(
+        "00002af1-0000-1000-8000-00805f9b34fb"
+      );
+
+      // Write the data
+      await characteristic.writeValue(dataArray);
+
+      return true;
     } catch (error) {
-      console.error("Printing error:", error);
-      enqueueSnackbar("Printing failed", { variant: "error" });
-      // Still try mobile print fallback
-      const receiptText = generateReceiptText(orderData);
-      mobilePrint(receiptText);
+      console.error("Print error:", error);
+      enqueueSnackbar("Failed to print", { variant: "error" });
+      return false;
     }
   };
 
-  // Generate receipt text for thermal printer
-  const generateReceiptText = (orderData) => {
-    const lineBreak = "\n";
-    const dashedLine = "--------------------------------";
-    const doubleLine = "===============================";
-
+  // Generate receipt with proper ESC/POS commands
+  const generateReceipt = (orderData) => {
     let receipt = "";
 
-    // Header
-    receipt += doubleLine + lineBreak;
-    receipt += "      DELISH RESTAURANT" + lineBreak;
-    receipt += doubleLine + lineBreak;
-    receipt += `Order: #${orderData._id?.slice(-8) || "N/A"}` + lineBreak;
-    
-    // FIXED: Proper date formatting with locale
-    const currentDate = new Date();
-    const dateOptions = { 
-      year: 'numeric', 
-      month: 'short', 
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: true
-    };
-    
-    // Use English-US locale for consistent formatting
-    receipt += `Date: ${currentDate.toLocaleString('en-US', dateOptions)}` + lineBreak;
+    // Initialize printer
+    receipt += printerCommands.INIT;
+    receipt += printerCommands.ALIGN_CENTER;
+    receipt += printerCommands.BOLD_ON;
+    receipt += printerCommands.SET_CHAR_SIZE(2, 2);
+    receipt += "DELISH RESTAURANT" + LF;
+    receipt += printerCommands.BOLD_OFF;
+    receipt += printerCommands.SET_CHAR_SIZE(1, 1);
+    receipt += "123 Main Street, City" + LF;
+    receipt += "Phone: (123) 456-7890" + LF;
+    receipt += LF;
+
+    // Order info
+    receipt += printerCommands.ALIGN_LEFT;
+    receipt += printerCommands.UNDERLINE_ON;
+    receipt += "ORDER RECEIPT" + LF;
+    receipt += printerCommands.UNDERLINE_OFF;
+    receipt += LF;
+
+    receipt += "Order #: " + (orderData._id?.slice(-8) || "N/A") + LF;
+    receipt += "Date: " + new Date().toLocaleDateString() + LF;
+    receipt += "Time: " + new Date().toLocaleTimeString() + LF;
     receipt +=
-      `Customer: ${orderData.customerDetails?.name || "Walk-in"}` + lineBreak;
-    receipt +=
-      `Table: ${
-        customerData.tables?.[0]?.tableId ||
-        customerData.table?.tableId ||
-        customerData.tableId ||
-        "N/A"
-      }` + lineBreak;
-    receipt += dashedLine + lineBreak;
+      "Customer: " + (orderData.customerDetails?.name || "Walk-in") + LF;
+    receipt += "Table: " + (orderData.table || "N/A") + LF;
+    receipt += LF;
+
+    receipt += printerCommands.UNDERLINE_ON;
+    receipt += "ITEMS" + LF;
+    receipt += printerCommands.UNDERLINE_OFF;
+    receipt += LF;
 
     // Items
-    receipt += "           ORDER ITEMS" + lineBreak;
-    receipt += dashedLine + lineBreak;
-
     combinedCart.forEach((item) => {
-      const itemName =
-        item.name.length > 20 ? item.name.substring(0, 17) + "..." : item.name;
-
-      // Check if item is discounted
-      const isDiscounted = pwdSssDiscountItems.some(
-        (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
-      );
-
-      const originalPrice = safeNumber(item.pricePerQuantity);
+      const name =
+        item.name.length > 24 ? item.name.substring(0, 21) + "..." : item.name;
+      const price = safeNumber(item.pricePerQuantity);
       const quantity = item.quantity;
-      const originalTotal = originalPrice * quantity;
-      const discountAmount = isDiscounted
-        ? originalTotal * pwdSssDiscountRate
-        : 0;
-      const finalPrice = originalTotal - discountAmount;
+      const total = calculateItemTotal(item);
 
-      let priceText;
+      receipt += name + LF;
+      receipt += "  " + quantity + " x ₱" + price.toFixed(2) + LF;
+      receipt += "  " + "₱" + total.toFixed(2) + LF;
       if (item.isRedeemed) {
-        priceText = "FREE";
-      } else if (isDiscounted) {
-        priceText = `₱${finalPrice.toFixed(2)} (was ₱${originalTotal.toFixed(
-          2
-        )})`;
-      } else {
-        priceText = `₱${originalTotal.toFixed(2)}`;
+        receipt += "  [REDEEMED - FREE]" + LF;
       }
-
-      receipt += `${itemName}` + lineBreak;
-      receipt += `  ${quantity}x ₱${originalPrice.toFixed(2)}` + lineBreak;
-
-      if (isDiscounted) {
-        receipt +=
-          `  PWD/SSS 20% Discount: -₱${discountAmount.toFixed(2)}` + lineBreak;
-      }
-
-      receipt +=
-        `  ${priceText}${item.isRedeemed ? " (REDEEMED)" : ""}` + lineBreak;
-      receipt += lineBreak;
+      receipt += LF;
     });
 
-    receipt += dashedLine + lineBreak;
-
-    // PWD/SSS Details
-    if (pwdSssDiscountApplied) {
-      receipt += "PWD/SSS DETAILS:" + lineBreak;
-      receipt += `  Type: ${pwdSssDetails.type}` + lineBreak;
-      receipt += `  Name: ${pwdSssDetails.name}` + lineBreak;
-      receipt += `  ID: ${pwdSssDetails.idNumber}` + lineBreak;
-      receipt += dashedLine + lineBreak;
-    }
-
-    // Show PWD/SSS discounted items if any
-    if (pwdSssDiscountItems.length > 0) {
-      receipt += "PWD/SSS DISCOUNTED ITEMS (20% off):" + lineBreak;
-      pwdSssDiscountItems.forEach((item, idx) => {
-        const itemName =
-          item.name.length > 20
-            ? item.name.substring(0, 17) + "..."
-            : item.name;
-        const itemType = isDrinkItem(item) ? "Drink" : "Food";
-        const originalTotal = calculateItemTotalPrice(item);
-        const discountAmount = originalTotal * pwdSssDiscountRate;
-        const discountedTotal = originalTotal - discountAmount;
-
-        receipt += `  ${idx + 1}. ${itemName} (${itemType})` + lineBreak;
-        receipt +=
-          `     ${item.quantity}x ₱${safeNumber(item.pricePerQuantity).toFixed(
-            2
-          )}` + lineBreak;
-        receipt +=
-          `     Was: ₱${originalTotal.toFixed(
-            2
-          )}, Discount: -₱${discountAmount.toFixed(
-            2
-          )}, Now: ₱${discountedTotal.toFixed(2)}` + lineBreak;
-      });
-      receipt += dashedLine + lineBreak;
-    }
+    // Divider
+    receipt += "--------------------------------" + LF;
 
     // Totals
-    receipt +=
-      "SUBTOTAL:" +
-      padLeft(`₱${totals.baseGrossTotal.toFixed(2)}`, 20) +
-      lineBreak;
+    receipt += printerCommands.ALIGN_RIGHT;
+    receipt += "Subtotal:    ₱" + totals.baseGrossTotal.toFixed(2) + LF;
 
     if (totals.pwdSssDiscountAmount > 0) {
       receipt +=
-        "PWD/SSS DISC:" +
-        padLeft(`-₱${totals.pwdSssDiscountAmount.toFixed(2)}`, 17) +
-        lineBreak;
+        "PWD/SSS Disc: -₱" + totals.pwdSssDiscountAmount.toFixed(2) + LF;
     }
 
     if (totals.redemptionAmount > 0) {
-      receipt +=
-        "REDEMPTION:" +
-        padLeft(`-₱${totals.redemptionAmount.toFixed(2)}`, 19) +
-        lineBreak;
+      receipt += "Redemption:  -₱" + totals.redemptionAmount.toFixed(2) + LF;
     }
 
     if (totals.employeeDiscountAmount > 0) {
       receipt +=
-        "EMP DISCOUNT:" +
-        padLeft(`-₱${totals.employeeDiscountAmount.toFixed(2)}`, 17) +
-        lineBreak;
+        "Emp Disc:    -₱" + totals.employeeDiscountAmount.toFixed(2) + LF;
     }
 
     if (totals.shareholderDiscountAmount > 0) {
       receipt +=
-        "SH DISCOUNT:" +
-        padLeft(`-₱${totals.shareholderDiscountAmount.toFixed(2)}`, 18) +
-        lineBreak;
+        "Shareholder: -₱" + totals.shareholderDiscountAmount.toFixed(2) + LF;
     }
 
-    receipt +=
-      "VAT (12%):" + padLeft(`₱${totals.vatAmount.toFixed(2)}`, 20) + lineBreak;
-    receipt += doubleLine + lineBreak;
-    receipt +=
-      "TOTAL:" + padLeft(`₱${totals.total.toFixed(2)}`, 24) + lineBreak;
-    receipt += doubleLine + lineBreak;
+    receipt += "VAT (12%):   ₱" + totals.vatAmount.toFixed(2) + LF;
+    receipt += "Total:       ₱" + totals.total.toFixed(2) + LF;
 
-    // Cashier info - FIXED: using user.name with fallback
-    const cashierName =
-      user?.name || user?.username || user?.fullName || "Admin";
-    receipt += `Cashier: ${cashierName}` + lineBreak;
-    receipt += `Payment: ${paymentMethod}` + lineBreak;
-    receipt += lineBreak;
-    receipt += "Thank you for dining with us!" + lineBreak;
-    receipt += "Visit us again soon!" + lineBreak;
-    receipt += lineBreak;
-    receipt += lineBreak;
-    receipt += lineBreak; // Extra lines for paper cut
+    receipt += LF;
+    receipt += printerCommands.ALIGN_CENTER;
+    receipt += "Payment: " + paymentMethod + LF;
+    receipt += "Cashier: " + (user?.name || "Admin") + LF;
+    receipt += LF;
+    receipt += "Thank you for dining with us!" + LF;
+    receipt += "Please visit again!" + LF;
+    receipt += LF;
+    receipt += LF;
+
+    // Cut paper
+    receipt += printerCommands.CUT_PAPER;
 
     return receipt;
   };
 
-  // Helper function to pad text for alignment
-  const padLeft = (text, length) => {
-    return text.padStart(length, " ");
-  };
-
-  // Send to printer (simplified - actual implementation depends on printer)
-  const sendToPrinter = async (receiptText) => {
-    // This is a simplified version
-    // Actual implementation would use printer-specific Bluetooth protocols
-    console.log("Sending to printer:", receiptText);
-    
-    // Try to print using thermal printer commands
+  // Print receipt to Bluetooth printer
+  const printReceipt = async (orderData) => {
     try {
-      // Open serial port connection (for thermal printers)
-      // Note: This requires a printer that supports Web Bluetooth or serial over Bluetooth
-      if (navigator.serial) {
-        // Web Serial API for Chrome-based browsers
-        const port = await navigator.serial.requestPort();
-        await port.open({ baudRate: 9600 });
-        const encoder = new TextEncoder();
-        const writer = port.writable.getWriter();
-        await writer.write(encoder.encode(receiptText));
-        writer.releaseLock();
-        await port.close();
-        
-        enqueueSnackbar("Receipt printed successfully", {
-          variant: "success",
-        });
-      } else {
-        // Fallback to mobile printing
-        mobilePrint(receiptText);
+      if (!isPrinterConnected) {
+        enqueueSnackbar("Connecting to printer...", { variant: "info" });
+        await connectToPrinter();
       }
-    } catch (error) {
-      console.warn("Direct printing failed:", error);
-      mobilePrint(receiptText);
-    }
-  };
 
-  // Mobile/Tablet printing method
-  const mobilePrint = (receiptText) => {
-    try {
-      // Create a printable HTML content for mobile
-      const printContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Delish Restaurant Receipt</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            @media print {
-              body { margin: 0; padding: 0; font-family: monospace; }
-              .receipt { width: 80mm; margin: 0 auto; padding: 10px; }
-              .line { white-space: pre-line; line-height: 1.2; }
-              .center { text-align: center; }
-              .right { text-align: right; }
-              .bold { font-weight: bold; }
-              .double-line { border-top: 2px solid #000; }
-              .dashed-line { border-top: 1px dashed #666; }
-              @page { margin: 0; }
-            }
-            body { font-family: monospace; }
-            .receipt { width: 80mm; margin: 0 auto; padding: 10px; }
-          </style>
-        </head>
-        <body>
-          <div class="receipt">
-            ${receiptText.split('\n').map(line => {
-              if (line.includes('======')) {
-                return `<div class="line double-line">${line}</div>`;
-              } else if (line.includes('---')) {
-                return `<div class="line dashed-line">${line}</div>`;
-              } else if (line.includes('DELISH RESTAURANT') || line.includes('TOTAL:')) {
-                return `<div class="line bold center">${line}</div>`;
-              } else {
-                return `<div class="line">${line}</div>`;
-              }
-            }).join('')}
-          </div>
-          <script>
-            // Auto-print on mobile/tablet
-            window.onload = function() {
-              setTimeout(function() {
-                if (window.print) {
-                  window.print();
-                }
-                // Close window after printing (if in new window)
-                setTimeout(function() {
-                  window.close();
-                }, 1000);
-              }, 500);
-            };
-          </script>
-        </body>
-        </html>
-      `;
+      if (isPrinterConnected) {
+        const receipt = generateReceipt(orderData);
+        const success = await sendToPrinter(receipt);
 
-      // For mobile/tablet, open in new window and auto-print
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.open();
-        printWindow.document.write(printContent);
-        printWindow.document.close();
-        
-        enqueueSnackbar("Opening print dialog...", { variant: "info" });
-      } else {
-        // Fallback to iframe printing
-        fallbackPrint(receiptText);
-      }
-    } catch (error) {
-      console.error("Mobile printing failed:", error);
-      // Ultimate fallback
-      fallbackPrint(receiptText);
-    }
-  };
+        if (success) {
+          enqueueSnackbar("Receipt printed successfully!", {
+            variant: "success",
+          });
 
-  // Ultimate fallback printing method
-  const fallbackPrint = (receiptText) => {
-    try {
-      // Try to use browser's print functionality
-      const printWindow = window.open('', '_blank');
-      if (printWindow) {
-        printWindow.document.write(`
-          <html>
-            <head>
-              <title>Delish Restaurant Receipt</title>
-              <style>
-                body { font-family: monospace; white-space: pre; margin: 20px; }
-              </style>
-            </head>
-            <body>${receiptText}</body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.focus();
-        
-        // Try to print
-        setTimeout(() => {
-          if (printWindow.print) {
-            printWindow.print();
+          // Open cash drawer if payment is cash
+          if (paymentMethod === "Cash") {
+            // Send cash drawer open command (ESC p m t1 t2)
+            const cashDrawerCommand = ESC + "p" + "\x00" + "\x19" + "\xFA";
+            await sendToPrinter(cashDrawerCommand);
+            enqueueSnackbar("Cash drawer opened", { variant: "info" });
           }
-        }, 500);
-        
-        enqueueSnackbar("Receipt opened for printing", { variant: "success" });
+        }
       } else {
-        // Last resort - copy to clipboard
-        navigator.clipboard.writeText(receiptText).then(() => {
-          enqueueSnackbar("Receipt copied to clipboard", { variant: "info" });
-        }).catch(() => {
-          // Create textarea for manual copy
-          const textArea = document.createElement("textarea");
-          textArea.value = receiptText;
-          textArea.style.position = "fixed";
-          textArea.style.left = "-9999px";
-          textArea.style.top = "0";
-          document.body.appendChild(textArea);
-          textArea.select();
-          document.execCommand("copy");
-          document.body.removeChild(textArea);
-          enqueueSnackbar("Receipt copied to clipboard", { variant: "info" });
-        });
+        enqueueSnackbar("Could not connect to printer", { variant: "error" });
+        // Fallback to browser print
+        fallbackPrint(orderData);
       }
     } catch (error) {
-      console.error("Fallback printing failed:", error);
-      enqueueSnackbar("Printing failed. Receipt copied to clipboard.", { 
-        variant: "error" 
+      console.error("Print error:", error);
+      enqueueSnackbar("Printing failed, using fallback", {
+        variant: "warning",
       });
-      
-      // Final attempt to copy to clipboard
-      try {
-        navigator.clipboard.writeText(receiptText);
-      } catch (e) {
-        console.error("Could not copy to clipboard:", e);
-      }
+      fallbackPrint(orderData);
     }
   };
 
-  // Open cash drawer
-  const openCashDrawer = () => {
-    // Cash drawer command for thermal printers
-    const cashDrawerCommand = "\x1B\x70\x00\x19\xFA";
-    console.log("Cash drawer command sent");
-    enqueueSnackbar("Cash drawer opened", { variant: "info" });
+  // Fallback print method
+  const fallbackPrint = (orderData) => {
+    const printWindow = window.open("", "_blank");
+    const receiptHTML = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <title>Receipt - Order ${orderData._id?.slice(-8) || ""}</title>
+        <style>
+          body {
+            font-family: 'Courier New', monospace;
+            width: 80mm;
+            margin: 0;
+            padding: 10px;
+          }
+          .header {
+            text-align: center;
+            margin-bottom: 10px;
+          }
+          .restaurant-name {
+            font-size: 18px;
+            font-weight: bold;
+          }
+          .receipt-info {
+            margin: 10px 0;
+          }
+          .item {
+            margin: 5px 0;
+          }
+          .item-name {
+            font-weight: bold;
+          }
+          .total {
+            margin-top: 10px;
+            border-top: 1px dashed #000;
+            padding-top: 10px;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 20px;
+            font-size: 12px;
+          }
+          @media print {
+            body { width: 80mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div class="header">
+          <div class="restaurant-name">DELISH RESTAURANT</div>
+          <div>123 Main Street, City</div>
+          <div>Phone: (123) 456-7890</div>
+        </div>
+        
+        <div class="receipt-info">
+          <div>Order #: ${orderData._id?.slice(-8) || "N/A"}</div>
+          <div>Date: ${new Date().toLocaleDateString()}</div>
+          <div>Time: ${new Date().toLocaleTimeString()}</div>
+          <div>Customer: ${orderData.customerDetails?.name || "Walk-in"}</div>
+          <div>Table: ${orderData.table || "N/A"}</div>
+        </div>
+        
+        <hr>
+        
+        <div class="items">
+          <strong>ITEMS</strong>
+          ${combinedCart
+            .map(
+              (item) => `
+            <div class="item">
+              <div class="item-name">${item.name}</div>
+              <div>${item.quantity} x ₱${safeNumber(
+                item.pricePerQuantity
+              ).toFixed(2)} = ₱${calculateItemTotal(item).toFixed(2)}</div>
+              ${
+                item.isRedeemed
+                  ? '<div style="color: green;">[REDEEMED - FREE]</div>'
+                  : ""
+              }
+            </div>
+          `
+            )
+            .join("")}
+        </div>
+        
+        <hr>
+        
+        <div class="total">
+          <div>Subtotal: ₱${totals.baseGrossTotal.toFixed(2)}</div>
+          ${
+            totals.pwdSssDiscountAmount > 0
+              ? `<div>PWD/SSS Discount: -₱${totals.pwdSssDiscountAmount.toFixed(
+                  2
+                )}</div>`
+              : ""
+          }
+          ${
+            totals.redemptionAmount > 0
+              ? `<div>Redemption: -₱${totals.redemptionAmount.toFixed(2)}</div>`
+              : ""
+          }
+          ${
+            totals.employeeDiscountAmount > 0
+              ? `<div>Employee Discount: -₱${totals.employeeDiscountAmount.toFixed(
+                  2
+                )}</div>`
+              : ""
+          }
+          ${
+            totals.shareholderDiscountAmount > 0
+              ? `<div>Shareholder Discount: -₱${totals.shareholderDiscountAmount.toFixed(
+                  2
+                )}</div>`
+              : ""
+          }
+          <div>VAT (12%): ₱${totals.vatAmount.toFixed(2)}</div>
+          <div><strong>Total: ₱${totals.total.toFixed(2)}</strong></div>
+        </div>
+        
+        <div class="footer">
+          <div>Payment: ${paymentMethod}</div>
+          <div>Cashier: ${user?.name || "Admin"}</div>
+          <br>
+          <div>Thank you for dining with us!</div>
+          <div>Please visit again!</div>
+        </div>
+        
+        <script>
+          window.onload = function() {
+            window.print();
+            setTimeout(function() {
+              window.close();
+            }, 1000);
+          };
+        </script>
+      </body>
+      </html>
+    `;
+
+    if (printWindow) {
+      printWindow.document.write(receiptHTML);
+      printWindow.document.close();
+    } else {
+      enqueueSnackbar("Could not open print window", { variant: "error" });
+    }
   };
 
   // Order mutation with complete order handling
@@ -1025,6 +1041,7 @@ const Bill = ({ orderId }) => {
 
       const { data } = res.data;
 
+      // Create complete order info for invoice
       const invoiceOrderInfo = {
         ...data,
         customerDetails: {
@@ -1059,13 +1076,16 @@ const Bill = ({ orderId }) => {
           redemptionDiscount: totals.redemptionAmount,
         },
         paymentMethod: paymentMethod,
+        orderStatus: "Completed",
         orderDate: new Date().toISOString(),
-        cashier: user?.name || user?.username || user?.fullName || "Admin", // Add cashier info
-        pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null, // Add PWD/SSS details
+        cashier: user?.name || "Admin",
+        pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null,
+        user: user?._id || "system", // Add user field
       };
 
       setOrderInfo(invoiceOrderInfo);
 
+      // Update table status
       const tableId =
         customerData.tables?.[0]?.tableId ||
         customerData.table?.tableId ||
@@ -1092,26 +1112,20 @@ const Bill = ({ orderId }) => {
 
       enqueueSnackbar("Order placed successfully!", { variant: "success" });
 
-      // AUTO PRINT RECEIPT AND OPEN CASH DRAWER
-      setTimeout(() => {
-        // Print receipt - will automatically print on mobile/tablet
-        printToBluetoothPrinter(data);
-
-        // Open cash drawer for cash payments
-        if (paymentMethod === "Cash") {
-          openCashDrawer();
-        }
+      // PRINT RECEIPT
+      setTimeout(async () => {
+        await printReceipt(data);
 
         // Show invoice
         setShowInvoice(true);
         setIsProcessing(false);
 
-        // Force navigation to menu after 3 seconds
+        // Auto-close invoice after 5 seconds and navigate
         setTimeout(() => {
           setShowInvoice(false);
           navigate("/menu");
-        }, 3000);
-      }, 500);
+        }, 5000);
+      }, 1000);
     },
     onError: (error) => {
       console.error("Order placement error:", error);
@@ -1123,7 +1137,7 @@ const Bill = ({ orderId }) => {
       enqueueSnackbar(errorMessage, { variant: "error" });
       setIsProcessing(false);
 
-      // Reset order status on error - change back to active
+      // Reset order status on error
       if (currentOrder) {
         dispatch(resetOrderStatus(currentOrder.id));
       }
@@ -1157,18 +1171,25 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    // Validate PWD/SSS discount selection - now allows 1-3 items
-    if (pwdSssDiscountApplied && pwdSssDiscountItems.length === 0) {
-      enqueueSnackbar(
-        "PWD/SSS discount requires at least 1 item to be selected",
-        {
-          variant: "error",
-        }
-      );
+    // Validate customer details
+    if (!customerData.customerName || customerData.customerName.trim() === "") {
+      enqueueSnackbar("Please enter customer name", {
+        variant: "error",
+      });
       return;
     }
 
-    // Validate PWD/SSS details if discount is applied
+    if (
+      !customerData.customerPhone ||
+      customerData.customerPhone.trim() === ""
+    ) {
+      enqueueSnackbar("Please enter customer phone", {
+        variant: "error",
+      });
+      return;
+    }
+
+    // Validate PWD/SSS discount if applied
     if (pwdSssDiscountApplied) {
       if (!pwdSssDetails.name.trim()) {
         enqueueSnackbar("Please enter PWD/SSS holder name", {
@@ -1189,7 +1210,7 @@ const Bill = ({ orderId }) => {
     // MARK ORDER AS PROCESSING FIRST
     if (currentOrder) {
       console.log("Dispatching processOrder for:", currentOrder.id);
-      dispatch(processOrder(currentOrder.id)); // This changes status from "active" to "processing"
+      dispatch(processOrder(currentOrder.id));
     }
 
     const tableId =
@@ -1198,18 +1219,18 @@ const Bill = ({ orderId }) => {
       customerData.tableId ||
       null;
 
-    // Prepare bills data
+    // Prepare bills data - ALL REQUIRED FIELDS
     const bills = {
-      netSales: Number(totals.netSales.toFixed(2)),
+      total: Number(totals.baseGrossTotal.toFixed(2)),
       tax: Number(totals.vatAmount.toFixed(2)),
       discount: Number(totals.totalDiscountAmount.toFixed(2)),
-      total: Number(totals.total.toFixed(2)),
       totalWithTax: Number(totals.total.toFixed(2)),
       pwdSssDiscount: Number(totals.pwdSssDiscountAmount.toFixed(2)),
       pwdSssDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
       employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
       shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
       redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
+      netSales: Number(totals.netSales.toFixed(2)),
     };
 
     // Prepare items data
@@ -1222,7 +1243,7 @@ const Bill = ({ orderId }) => {
         name: item.name || "Unknown Item",
         quantity: safeNumber(item.quantity),
         pricePerQuantity: safeNumber(item.pricePerQuantity),
-        price: calculateItemTotal(item), // This includes the discount if applicable
+        price: calculateItemTotal(item),
         originalPrice: safeNumber(item.pricePerQuantity),
         isRedeemed: Boolean(item.isRedeemed),
         isPwdSssDiscounted: isPwdSssDiscounted,
@@ -1231,22 +1252,23 @@ const Bill = ({ orderId }) => {
       };
     });
 
-    // Get cashier name with multiple fallback options
-    const cashierName =
-      user?.name || user?.username || user?.fullName || "Admin";
+    // Get cashier name
+    const cashierName = user?.name || "Admin";
 
-    // Prepare order data
+    // Prepare COMPLETE order data with ALL REQUIRED FIELDS
     const orderData = {
       customerDetails: {
-        name: customerData.customerName || "Walk-in",
-        phone: customerData.customerPhone || "Not provided",
+        name: customerData.customerName.trim(),
+        phone: customerData.customerPhone.trim(),
         guests: safeNumber(customerData.guests) || 1,
+        email: customerData.customerEmail || "",
+        address: customerData.customerAddress || "",
       },
       orderStatus: "Completed",
-      bills,
-      items,
+      bills: bills,
+      items: items,
       table: tableId,
-      paymentMethod,
+      paymentMethod: paymentMethod,
       pwdSssDiscountApplied: pwdSssDiscountApplied,
       pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null,
       pwdSssSelectedItems: pwdSssDiscountItems.map((item) => ({
@@ -1255,7 +1277,11 @@ const Bill = ({ orderId }) => {
         pricePerQuantity: item.pricePerQuantity,
         type: isDrinkItem(item) ? "drink" : "food",
       })),
-      cashier: cashierName, // Add cashier info to order data
+      cashier: cashierName,
+      user: user?._id || "system", // REQUIRED FIELD
+      orderDate: new Date().toISOString(),
+      totalAmount: Number(totals.total.toFixed(2)),
+      notes: customerData.notes || "",
     };
 
     console.log("Sending order data:", orderData);
@@ -1271,7 +1297,6 @@ const Bill = ({ orderId }) => {
         if (!loaded) {
           enqueueSnackbar("Razorpay SDK failed to load!", { variant: "error" });
           setIsProcessing(false);
-          // Reset order status on error
           if (currentOrder) {
             dispatch(resetOrderStatus(currentOrder.id));
           }
@@ -1323,7 +1348,6 @@ const Bill = ({ orderId }) => {
                 variant: "error",
               });
               setIsProcessing(false);
-              // Reset order status on error
               if (currentOrder) {
                 dispatch(resetOrderStatus(currentOrder.id));
               }
@@ -1339,7 +1363,6 @@ const Bill = ({ orderId }) => {
             ondismiss: function () {
               enqueueSnackbar("Payment cancelled", { variant: "info" });
               setIsProcessing(false);
-              // Reset order status on cancellation
               if (currentOrder) {
                 dispatch(resetOrderStatus(currentOrder.id));
               }
@@ -1356,7 +1379,6 @@ const Bill = ({ orderId }) => {
           { variant: "error" }
         );
         setIsProcessing(false);
-        // Reset order status on error
         if (currentOrder) {
           dispatch(resetOrderStatus(currentOrder.id));
         }
@@ -1370,11 +1392,10 @@ const Bill = ({ orderId }) => {
 
   const handleCloseInvoice = () => {
     setShowInvoice(false);
-    // Navigate to menu immediately
     navigate("/menu");
   };
 
-  // Handle redeem button click - show redeem options
+  // Handle redeem button click
   const handleShowRedeemOptions = () => {
     if (combinedCart.length === 0) {
       enqueueSnackbar("Cart is empty!", { variant: "warning" });
@@ -1408,7 +1429,7 @@ const Bill = ({ orderId }) => {
 
   return (
     <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
-      {/* PWD/SSS Selection Modal with Name/ID Fields */}
+      {/* PWD/SSS Selection Modal */}
       {showPwdSssSelection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
@@ -1639,6 +1660,32 @@ const Bill = ({ orderId }) => {
       )}
 
       <div className="max-w-[600px] mx-auto space-y-4">
+        {/* Printer Connection Button */}
+        <div className="bg-white rounded-lg p-4 shadow-md">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-gray-900 text-sm font-semibold">
+                Thermal Printer
+              </h2>
+              <p className="text-gray-500 text-xs">
+                {isPrinterConnected
+                  ? "Connected and ready to print"
+                  : "Not connected"}
+              </p>
+            </div>
+            <button
+              onClick={connectToPrinter}
+              className={`px-4 py-2 rounded-lg font-semibold text-xs ${
+                isPrinterConnected
+                  ? "bg-green-100 text-green-700"
+                  : "bg-blue-600 text-white hover:bg-blue-700"
+              }`}
+            >
+              {isPrinterConnected ? "✓ Connected" : "Connect Printer"}
+            </button>
+          </div>
+        </div>
+
         {/* 🛒 CART ITEMS */}
         <div className="bg-white rounded-lg p-4 shadow-md max-h-64 overflow-y-auto">
           <h2 className="text-gray-900 text-sm font-semibold mb-2">
