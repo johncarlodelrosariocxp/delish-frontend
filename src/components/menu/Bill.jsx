@@ -78,7 +78,57 @@ const Bill = ({ orderId }) => {
   const [cashAmount, setCashAmount] = useState(0);
   const [showCashModal, setShowCashModal] = useState(false);
   const [showOnlineOptions, setShowOnlineOptions] = useState(false);
-  const [showPrintOptions, setShowPrintOptions] = useState(false);
+
+  // Bluetooth printer state
+  const [bluetoothPrinter, setBluetoothPrinter] = useState(null);
+  const [isPrinterConnected, setIsPrinterConnected] = useState(false);
+
+  // Bluetooth printer setup
+  useEffect(() => {
+    if (navigator.bluetooth) {
+      checkPrinterConnection();
+    }
+  }, []);
+
+  const checkPrinterConnection = async () => {
+    try {
+      const devices = await navigator.bluetooth.getDevices();
+      if (devices.length > 0) {
+        setIsPrinterConnected(true);
+      }
+    } catch (error) {
+      console.log("No existing printer connection");
+    }
+  };
+
+  const connectToPrinter = async () => {
+    if (!navigator.bluetooth) {
+      enqueueSnackbar("Bluetooth not supported on this device", {
+        variant: "error",
+      });
+      return;
+    }
+
+    try {
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: ["battery_service", "device_information"],
+      });
+
+      const server = await device.gatt.connect();
+      setBluetoothPrinter(device);
+      setIsPrinterConnected(true);
+
+      enqueueSnackbar("Printer connected successfully!", {
+        variant: "success",
+      });
+
+      localStorage.setItem("bluetoothPrinterId", device.id);
+    } catch (error) {
+      console.error("Bluetooth connection error:", error);
+      enqueueSnackbar("Failed to connect to printer", { variant: "error" });
+    }
+  };
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -630,273 +680,191 @@ const Bill = ({ orderId }) => {
     setCashAmount((prev) => safeNumber(prev) + amount);
   };
 
-  // Generate HTML receipt for printing
-  const generatePrintableReceipt = (orderData) => {
-    const receiptDate = new Date().toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  // Thermal printer ESC/POS commands
+  const ESC = "\x1B";
+  const GS = "\x1D";
+  const LF = "\x0A";
 
-    let itemsHTML = "";
+  const printerCommands = {
+    INIT: ESC + "@",
+    BOLD_ON: ESC + "E" + "\x01",
+    BOLD_OFF: ESC + "E" + "\x00",
+    ALIGN_LEFT: ESC + "a" + "\x00",
+    ALIGN_CENTER: ESC + "a" + "\x01",
+    ALIGN_RIGHT: ESC + "a" + "\x02",
+    UNDERLINE_ON: ESC + "-" + "\x01",
+    UNDERLINE_OFF: ESC + "-" + "\x00",
+    CUT_PAPER: GS + "V" + "\x41" + "\x00",
+    LINE_SPACING: ESC + "3" + "\x20",
+    FEED_LINES: (lines) => ESC + "d" + String.fromCharCode(lines),
+    SET_CHAR_SIZE: (width, height) =>
+      GS + "!" + String.fromCharCode((height - 1) * 16 + (width - 1)),
+    DRAWER_OPEN: ESC + "p" + "\x00" + "\x19" + "\xFA",
+  };
+
+  // Send data to Bluetooth printer
+  const sendToPrinter = async (data) => {
+    if (!bluetoothPrinter || !isPrinterConnected) {
+      // Try to auto-connect
+      await connectToPrinter();
+      if (!isPrinterConnected) {
+        throw new Error("Printer not connected");
+      }
+    }
+
+    try {
+      const encoder = new TextEncoder();
+      const dataArray = encoder.encode(data);
+
+      const server = await bluetoothPrinter.gatt.connect();
+      const service = await server.getPrimaryService(
+        "000018f0-0000-1000-8000-00805f9b34fb"
+      );
+      const characteristic = await service.getCharacteristic(
+        "00002af1-0000-1000-8000-00805f9b34fb"
+      );
+
+      await characteristic.writeValue(dataArray);
+      return true;
+    } catch (error) {
+      console.error("Print error:", error);
+      throw error;
+    }
+  };
+
+  // Generate receipt with proper ESC/POS commands
+  const generateReceipt = (orderData) => {
+    let receipt = "";
+
+    // Initialize printer
+    receipt += printerCommands.INIT;
+    receipt += printerCommands.ALIGN_CENTER;
+    receipt += printerCommands.BOLD_ON;
+    receipt += printerCommands.SET_CHAR_SIZE(2, 2);
+    receipt += "DELISH RESTAURANT" + LF;
+    receipt += printerCommands.BOLD_OFF;
+    receipt += printerCommands.SET_CHAR_SIZE(1, 1);
+    receipt += "123 Main Street, City" + LF;
+    receipt += "Phone: (123) 456-7890" + LF;
+    receipt +=
+      "Customer: " + (customerType === "walk-in" ? "Walk-in" : "Take-out") + LF;
+    receipt += LF;
+
+    // Order info
+    receipt += printerCommands.ALIGN_LEFT;
+    receipt += printerCommands.UNDERLINE_ON;
+    receipt += "ORDER RECEIPT" + LF;
+    receipt += printerCommands.UNDERLINE_OFF;
+    receipt += LF;
+
+    receipt += "Order #: " + (orderData._id?.slice(-8) || "N/A") + LF;
+    receipt += "Date: " + new Date().toLocaleDateString() + LF;
+    receipt += "Time: " + new Date().toLocaleTimeString() + LF;
+    receipt +=
+      "Status: Customer " +
+      (customerType === "walk-in" ? "Dine-in" : "Take-out") +
+      LF;
+    receipt += LF;
+
+    receipt += printerCommands.UNDERLINE_ON;
+    receipt += "ITEMS" + LF;
+    receipt += printerCommands.UNDERLINE_OFF;
+    receipt += LF;
+
+    // Items
     combinedCart.forEach((item) => {
+      const name =
+        item.name.length > 24 ? item.name.substring(0, 21) + "..." : item.name;
       const price = safeNumber(item.pricePerQuantity);
       const quantity = item.quantity;
       const total = calculateItemTotal(item);
 
-      itemsHTML += `
-        <div style="margin-bottom: 8px; border-bottom: 1px dashed #ddd; padding-bottom: 8px;">
-          <div style="font-weight: bold;">${item.name}</div>
-          <div style="display: flex; justify-content: space-between; font-size: 12px;">
-            <span>${quantity} × ₱${price.toFixed(2)}</span>
-            <span>₱${total.toFixed(2)}</span>
-          </div>
-          ${
-            item.isRedeemed
-              ? '<div style="color: green; font-size: 11px;">[REDEEMED - FREE]</div>'
-              : ""
-          }
-        </div>
-      `;
+      receipt += name + LF;
+      receipt += "  " + quantity + " x ₱" + price.toFixed(2) + LF;
+      receipt += "  " + "₱" + total.toFixed(2) + LF;
+      if (item.isRedeemed) {
+        receipt += "  [REDEEMED - FREE]" + LF;
+      }
+      receipt += LF;
     });
 
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Receipt - Order ${orderData._id?.slice(-8) || "N/A"}</title>
-        <style>
-          @media print {
-            body { margin: 0; padding: 0; }
-            .no-print { display: none !important; }
-            .print-only { display: block !important; }
-          }
-          body {
-            font-family: 'Courier New', monospace;
-            max-width: 80mm;
-            margin: 0 auto;
-            padding: 10px;
-            font-size: 12px;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 15px;
-          }
-          .restaurant-name {
-            font-size: 18px;
-            font-weight: bold;
-            margin-bottom: 5px;
-          }
-          .divider {
-            border-top: 1px dashed #000;
-            margin: 10px 0;
-          }
-          .total-row {
-            display: flex;
-            justify-content: space-between;
-            margin: 5px 0;
-          }
-          .total-row-bold {
-            font-weight: bold;
-            font-size: 14px;
-            border-top: 2px solid #000;
-            padding-top: 5px;
-            margin-top: 10px;
-          }
-          .thank-you {
-            text-align: center;
-            margin-top: 15px;
-            font-style: italic;
-          }
-          .controls {
-            text-align: center;
-            margin-top: 20px;
-            padding: 10px;
-            background: #f5f5f5;
-            border-radius: 5px;
-          }
-          button {
-            margin: 5px;
-            padding: 10px 20px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-weight: bold;
-          }
-          .print-btn {
-            background: #2196F3;
-            color: white;
-          }
-          .close-btn {
-            background: #f44336;
-            color: white;
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="restaurant-name">DELISH RESTAURANT</div>
-          <div>123 Main Street, City</div>
-          <div>Phone: (123) 456-7890</div>
-        </div>
-        
-        <div class="divider"></div>
-        
-        <div>
-          <div><strong>Order #:</strong> ${
-            orderData._id?.slice(-8) || "N/A"
-          }</div>
-          <div><strong>Date:</strong> ${receiptDate}</div>
-          <div><strong>Customer:</strong> ${
-            customerType === "walk-in" ? "Walk-in (Dine-in)" : "Take-out"
-          }</div>
-          <div><strong>Cashier:</strong> ${user?.name || "Admin"}</div>
-        </div>
-        
-        <div class="divider"></div>
-        
-        <div style="margin: 15px 0;">
-          <div style="font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #000;">ITEMS:</div>
-          ${itemsHTML}
-        </div>
-        
-        <div class="divider"></div>
-        
-        <div style="margin: 15px 0;">
-          <div class="total-row">
-            <span>Subtotal:</span>
-            <span>₱${totals.baseGrossTotal.toFixed(2)}</span>
-          </div>
-          
-          ${
-            totals.pwdSeniorDiscountAmount > 0
-              ? `
-            <div class="total-row" style="color: green;">
-              <span>PWD/Senior Discount:</span>
-              <span>-₱${totals.pwdSeniorDiscountAmount.toFixed(2)}</span>
-            </div>
-          `
-              : ""
-          }
-          
-          ${
-            totals.redemptionAmount > 0
-              ? `
-            <div class="total-row" style="color: blue;">
-              <span>Redemption:</span>
-              <span>-₱${totals.redemptionAmount.toFixed(2)}</span>
-            </div>
-          `
-              : ""
-          }
-          
-          ${
-            totals.employeeDiscountAmount > 0
-              ? `
-            <div class="total-row" style="color: orange;">
-              <span>Employee Discount:</span>
-              <span>-₱${totals.employeeDiscountAmount.toFixed(2)}</span>
-            </div>
-          `
-              : ""
-          }
-          
-          ${
-            totals.shareholderDiscountAmount > 0
-              ? `
-            <div class="total-row" style="color: purple;">
-              <span>Shareholder Discount:</span>
-              <span>-₱${totals.shareholderDiscountAmount.toFixed(2)}</span>
-            </div>
-          `
-              : ""
-          }
-          
-          <div class="total-row">
-            <span>VAT (12%):</span>
-            <span>₱${totals.vatAmount.toFixed(2)}</span>
-          </div>
-          
-          <div class="total-row total-row-bold">
-            <span>TOTAL:</span>
-            <span>₱${totals.total.toFixed(2)}</span>
-          </div>
-          
-          ${
-            paymentMethod === "Cash"
-              ? `
-            <div class="total-row">
-              <span>Cash:</span>
-              <span>₱${totals.cashAmount.toFixed(2)}</span>
-            </div>
-            <div class="total-row" style="color: green;">
-              <span>Change:</span>
-              <span>₱${totals.change.toFixed(2)}</span>
-            </div>
-          `
-              : ""
-          }
-          
-          <div class="total-row" style="margin-top: 10px;">
-            <span><strong>Payment Method:</strong></span>
-            <span>${paymentMethod}</span>
-          </div>
-        </div>
-        
-        <div class="divider"></div>
-        
-        <div class="thank-you">
-          <div>Thank you for dining with us!</div>
-          <div>Please visit again!</div>
-        </div>
-        
-        <div class="controls no-print">
-          <button class="print-btn" onclick="window.print()">🖨️ Print Receipt</button>
-          <button class="close-btn" onclick="window.close()">Close</button>
-        </div>
-        
-        <script>
-          // Auto-print if this is a popup window
-          if (window.opener) {
-            setTimeout(() => {
-              window.print();
-            }, 500);
-          }
-        </script>
-      </body>
-      </html>
-    `;
+    // Divider
+    receipt += "--------------------------------" + LF;
+
+    // Totals
+    receipt += printerCommands.ALIGN_RIGHT;
+    receipt += "Subtotal:    ₱" + totals.baseGrossTotal.toFixed(2) + LF;
+
+    if (totals.pwdSeniorDiscountAmount > 0) {
+      receipt +=
+        "PWD/Senior:   -₱" + totals.pwdSeniorDiscountAmount.toFixed(2) + LF;
+    }
+
+    if (totals.redemptionAmount > 0) {
+      receipt += "Redemption:  -₱" + totals.redemptionAmount.toFixed(2) + LF;
+    }
+
+    if (totals.employeeDiscountAmount > 0) {
+      receipt +=
+        "Emp Disc:    -₱" + totals.employeeDiscountAmount.toFixed(2) + LF;
+    }
+
+    if (totals.shareholderDiscountAmount > 0) {
+      receipt +=
+        "Shareholder: -₱" + totals.shareholderDiscountAmount.toFixed(2) + LF;
+    }
+
+    receipt += "VAT (12%):   ₱" + totals.vatAmount.toFixed(2) + LF;
+    receipt += "Total:       ₱" + totals.total.toFixed(2) + LF;
+
+    if (paymentMethod === "Cash") {
+      receipt += "Cash:        ₱" + totals.cashAmount.toFixed(2) + LF;
+      receipt += "Change:      ₱" + totals.change.toFixed(2) + LF;
+    }
+
+    receipt += LF;
+    receipt += printerCommands.ALIGN_CENTER;
+    receipt += "Payment: " + paymentMethod + LF;
+    receipt += "Cashier: " + (user?.name || "Admin") + LF;
+    receipt += LF;
+    receipt += "Thank you for dining with us!" + LF;
+    receipt += "Please visit again!" + LF;
+    receipt += LF;
+    receipt += LF;
+
+    // Cut paper
+    receipt += printerCommands.CUT_PAPER;
+
+    return receipt;
   };
 
-  // Print receipt using browser print dialog
+  // Print receipt to Bluetooth printer
   const printReceipt = async (orderData) => {
     try {
-      // Generate HTML receipt
-      const receiptHTML = generatePrintableReceipt(orderData);
+      if (!isPrinterConnected) {
+        await connectToPrinter();
+      }
 
-      // Open in new window for printing
-      const printWindow = window.open("", "_blank", "width=400,height=600");
-      printWindow.document.write(receiptHTML);
-      printWindow.document.close();
+      if (isPrinterConnected) {
+        const receipt = generateReceipt(orderData);
+        const success = await sendToPrinter(receipt);
 
-      // Wait for content to load
-      printWindow.onload = () => {
-        setTimeout(() => {
-          printWindow.focus();
-          // Try to auto-print
-          if (printWindow.print) {
-            printWindow.print();
+        if (success) {
+          enqueueSnackbar("Receipt printed successfully!", {
+            variant: "success",
+          });
+
+          // Open cash drawer if payment is cash
+          if (paymentMethod === "Cash") {
+            const cashDrawerCommand = printerCommands.DRAWER_OPEN;
+            await sendToPrinter(cashDrawerCommand);
+            enqueueSnackbar("Cash drawer opened", { variant: "info" });
           }
-        }, 500);
-      };
-
-      enqueueSnackbar("Receipt ready for printing!", {
-        variant: "success",
-      });
-
-      return true;
+          return true;
+        }
+      } else {
+        throw new Error("Could not connect to printer");
+      }
     } catch (error) {
       console.error("Print error:", error);
       throw error;
@@ -973,30 +941,28 @@ const Bill = ({ orderId }) => {
 
       enqueueSnackbar("Order placed successfully!", { variant: "success" });
 
-      // Show invoice immediately
-      setShowInvoice(true);
-      setIsProcessing(false);
-
-      // Auto-print receipt after a short delay
+      // PRINT RECEIPT AUTOMATICALLY
       setTimeout(async () => {
         try {
           await printReceipt(data);
+          enqueueSnackbar("Receipt printed via Bluetooth!", {
+            variant: "success",
+          });
         } catch (error) {
           console.error("Failed to print:", error);
-          enqueueSnackbar(
-            "Failed to auto-print receipt. Use print button in receipt window.",
-            {
-              variant: "warning",
-            }
-          );
+          enqueueSnackbar("Failed to print receipt", { variant: "warning" });
         }
-      }, 1500);
 
-      // Auto-close invoice after 10 seconds and navigate
-      setTimeout(() => {
-        setShowInvoice(false);
-        navigate("/menu");
-      }, 10000);
+        // Show invoice
+        setShowInvoice(true);
+        setIsProcessing(false);
+
+        // Auto-close invoice after 5 seconds and navigate
+        setTimeout(() => {
+          setShowInvoice(false);
+          navigate("/menu");
+        }, 5000);
+      }, 1000);
     },
     onError: (error) => {
       console.error("Order placement error:", error);
@@ -1074,881 +1040,924 @@ const Bill = ({ orderId }) => {
       dispatch(processOrder(currentOrder.id));
     }
 
-    // Prepare bills data
-    const bills = {
-      total: Number(totals.baseGrossTotal.toFixed(2)),
-      tax: Number(totals.vatAmount.toFixed(2)),
-      totalWithTax: Number(totals.total.toFixed(2)),
-      discount: Number(totals.totalDiscountAmount.toFixed(2)),
-      pwdSeniorDiscount: Number(totals.pwdSeniorDiscountAmount.toFixed(2)),
-      pwdSeniorDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
-      employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
-      shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
-      redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
-      netSales: Number(totals.netSales.toFixed(2)),
-      cashAmount: Number(totals.cashAmount.toFixed(2)),
-      change: Number(totals.change.toFixed(2)),
-    };
-
-    // Prepare items data - FIXED: Added missing items array
-    const items = cartData.map((item) => {
-      const isPwdSeniorDiscounted = pwdSeniorDiscountItems.some(
-        (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
+    // RAZORPAY PAYMENT
+    if (paymentMethod === "Razorpay") {
+      const res = await loadScript(
+        "https://checkout.razorpay.com/v1/checkout.js"
       );
 
-      return {
-        name: item.name || "Unknown Item",
-        quantity: safeNumber(item.quantity),
-        pricePerQuantity: safeNumber(item.pricePerQuantity),
-        price: calculateItemTotal(item),
-        originalPrice: safeNumber(item.pricePerQuantity),
-        isRedeemed: Boolean(item.isRedeemed),
-        isPwdSeniorDiscounted: isPwdSeniorDiscounted,
-        category: isDrinkItem(item) ? "drink" : "food", // Only food or drink
-        id: item.id || Date.now().toString(),
-      };
-    });
+      if (!res) {
+        enqueueSnackbar("Razorpay SDK failed to load. Are you online?", {
+          variant: "error",
+        });
+        setIsProcessing(false);
+        if (currentOrder) dispatch(resetOrderStatus(currentOrder.id));
+        return;
+      }
 
-    // Prepare order data - FIXED: Added missing orderData variable
-    const orderData = {
-      items: items,
-      bills: bills,
-      customerDetails: {
-        type: customerType,
-        status: customerType === "walk-in" ? "Dine-in" : "Take-out",
-      },
-      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
-      paymentMethod: paymentMethod,
-      cashAmount: Number(totals.cashAmount.toFixed(2)),
-      change: Number(totals.change.toFixed(2)),
-      orderStatus: "Completed",
-      user: user?._id || "000000000000000000000001",
-    };
+      try {
+        const orderDataForRazorpay = {
+          amount: Math.round(totals.total * 100), // amount in paisa
+          currency: "PHP", // Assuming Philippine Peso for a local context
+        };
+        const { data: razorpayOrderResponse } = await createOrderRazorpay(
+          orderDataForRazorpay
+        );
 
-    console.log("Sending order data:", JSON.stringify(orderData, null, 2));
+        if (!razorpayOrderResponse || !razorpayOrderResponse.data) {
+          throw new Error("Failed to create Razorpay order.");
+        }
 
-    // Submit order
-    orderMutation.mutate(orderData);
+        const razorpayOrder = razorpayOrderResponse.data;
+
+        const options = {
+          key: process.env.REACT_APP_RAZORPAY_KEY_ID, // Enter the Key ID generated from the Razorpay Dashboard
+          amount: razorpayOrder.amount,
+          currency: razorpayOrder.currency,
+          name: "DELISH RESTAURANT",
+          description: `Order Payment for ${currentOrder.id.slice(-8)}`,
+          order_id: razorpayOrder.id,
+          handler: async function (response) {
+            try {
+              const paymentVerificationData = {
+                orderId: razorpayOrder.id,
+                paymentId: response.razorpay_payment_id,
+                signature: response.razorpay_signature,
+              };
+
+              const { data: verificationResponse } =
+                await verifyPaymentRazorpay(paymentVerificationData);
+
+              if (verificationResponse.success) {
+                enqueueSnackbar("Payment successful!", { variant: "success" });
+                // Proceed to place order on backend
+                const orderDetails = prepareOrderData(
+                  razorpayOrder.id,
+                  response.razorpay_payment_id
+                );
+                orderMutation.mutate(orderDetails);
+              } else {
+                throw new Error("Payment verification failed.");
+              }
+            } catch (error) {
+              console.error("Razorpay Verification Error:", error);
+              enqueueSnackbar(
+                error.response?.data?.message || "Payment verification failed.",
+                {
+                  variant: "error",
+                }
+              );
+              setIsProcessing(false);
+              if (currentOrder) dispatch(resetOrderStatus(currentOrder.id));
+            }
+          },
+          prefill: {
+            name: user?.name || "Cashier",
+            email: user?.email || "pos@delish.com",
+            contact: user?.phone || "9999999999",
+          },
+          theme: {
+            color: "#686CFD",
+          },
+        };
+
+        const paymentObject = new window.Razorpay(options);
+        paymentObject.on("payment.failed", function (response) {
+          const errorMessage =
+            response.error.description || "Razorpay Payment Failed";
+          enqueueSnackbar(errorMessage, { variant: "error" });
+          setIsProcessing(false);
+          if (currentOrder) dispatch(resetOrderStatus(currentOrder.id));
+        });
+
+        paymentObject.open();
+      } catch (error) {
+        console.error("Razorpay Integration Error:", error);
+        enqueueSnackbar(
+          error.response?.data?.message ||
+            "Failed to initiate Razorpay payment.",
+          {
+            variant: "error",
+          }
+        );
+        setIsProcessing(false);
+        if (currentOrder) dispatch(resetOrderStatus(currentOrder.id));
+      }
+    } else {
+      // CASH / GCASH / PAYMAYA / OTHER payments (non-Razorpay/Online)
+      const orderDetails = prepareOrderData(null, null); // Pass null for Razorpay fields
+      orderMutation.mutate(orderDetails);
+    }
   };
 
-  // Handle cash amount submission
-  const handleCashSubmit = () => {
+  const prepareOrderData = (razorpayOrderId, razorpayPaymentId) => {
+    return {
+      orderId: currentOrder.id,
+      items: combinedCart.map((item) => ({
+        menuId: item.id,
+        name: item.name,
+        category: item.category,
+        quantity: item.quantity,
+        pricePerQuantity: safeNumber(item.pricePerQuantity),
+        totalPrice: calculateItemTotal(item),
+        isRedeemed: item.isRedeemed || false,
+        isPwdSeniorDiscounted: pwdSeniorDiscountItems.some(
+          (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
+        ),
+      })),
+      totalAmount: totals.total,
+      baseGrossTotal: totals.baseGrossTotal,
+      vatAmount: totals.vatAmount,
+      totalDiscountAmount: totals.totalDiscountAmount,
+      pwdSeniorDiscountAmount: totals.pwdSeniorDiscountAmount,
+      employeeDiscountAmount: totals.employeeDiscountAmount,
+      shareholderDiscountAmount: totals.shareholderDiscountAmount,
+      redemptionAmount: totals.redemptionAmount,
+      netSales: totals.netSales,
+      paymentMethod,
+      customerType,
+      cashAmount: totals.cashAmount,
+      change: totals.change,
+      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
+      cashier: user?.name || "Admin",
+      cashierId: user?._id || "000000000000000000000001",
+      razorpayOrderId,
+      razorpayPaymentId,
+      orderStatus: "Completed", // Will be set to 'Processing' then 'Completed' by mutation onSuccess
+    };
+  };
+
+  // Helper for cash modal completion
+  const handleCashModalComplete = () => {
+    setShowCashModal(false);
     if (totals.cashAmount >= totals.total) {
-      setShowCashModal(false);
-      // Continue with order placement
       handlePlaceOrder();
     } else {
-      enqueueSnackbar("Cash amount must be greater than or equal to total", {
-        variant: "error",
+      enqueueSnackbar("Cash amount is still insufficient.", {
+        variant: "warning",
       });
     }
   };
 
-  const handleCloseInvoice = () => {
-    setShowInvoice(false);
-    navigate("/menu");
-  };
+  // Denomination buttons array
+  const denominations = [1000, 500, 200, 100, 50, 20];
 
-  // Handle redeem button click
-  const handleShowRedeemOptions = () => {
-    if (combinedCart.length === 0) {
-      enqueueSnackbar("Cart is empty!", { variant: "warning" });
-      return;
-    }
-    setShowRedeemOptions(true);
-  };
-
-  // Cancel redeem selection
-  const handleCancelRedeem = () => {
-    setShowRedeemOptions(false);
-  };
-
-  // Print receipt manually
-  const handleManualPrint = async () => {
-    if (!orderInfo) {
-      enqueueSnackbar("No order information available", { variant: "error" });
-      return;
-    }
-
-    try {
-      await printReceipt(orderInfo);
-    } catch (error) {
-      enqueueSnackbar("Failed to print receipt", { variant: "error" });
-    }
-  };
-
-  // If no current order, show empty state
-  if (!currentOrder) {
+  // Component rendering starts here
+  if (showInvoice && orderInfo) {
     return (
-      <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
-        <div className="max-w-[600px] mx-auto text-center">
-          <div className="bg-white rounded-lg p-8 shadow-md">
-            <h2 className="text-gray-900 text-lg font-semibold mb-4">
-              No Active Order
-            </h2>
-            <p className="text-gray-500 text-sm">
-              Please create a new order or select an existing one.
-            </p>
-          </div>
-        </div>
-      </div>
+      <Invoice
+        orderInfo={orderInfo}
+        onClose={() => {
+          setShowInvoice(false);
+          navigate("/menu");
+        }}
+        onPrint={() => printReceipt(orderInfo)}
+      />
     );
   }
 
   return (
-    <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
-      {/* Cash Modal */}
-      {showCashModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900">
-              Enter Cash Amount
-            </h3>
-
-            <div className="mb-4">
-              <p className="text-gray-600 mb-2">
-                Total Amount: ₱{totals.total.toFixed(2)}
-              </p>
-              <input
-                type="number"
-                value={cashAmount}
-                onChange={(e) => setCashAmount(e.target.value)}
-                className="w-full px-3 py-3 border border-gray-300 rounded-lg text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none mb-4"
-                placeholder="Enter cash amount"
-                min={totals.total}
-                step="0.01"
-                autoFocus
-              />
-
-              <div className="grid grid-cols-3 gap-2 mb-4">
-                <button
-                  onClick={() => handleDenominationClick(10)}
-                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
-                >
-                  ₱10
-                </button>
-                <button
-                  onClick={() => handleDenominationClick(20)}
-                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
-                >
-                  ₱20
-                </button>
-                <button
-                  onClick={() => handleDenominationClick(50)}
-                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
-                >
-                  ₱50
-                </button>
-                <button
-                  onClick={() => handleDenominationClick(100)}
-                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
-                >
-                  ₱100
-                </button>
-                <button
-                  onClick={() => handleDenominationClick(500)}
-                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
-                >
-                  ₱500
-                </button>
-                <button
-                  onClick={() => handleDenominationClick(1000)}
-                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
-                >
-                  ₱1000
-                </button>
-              </div>
-
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm text-gray-600">Entered Amount:</span>
-                <span className="text-lg font-bold text-gray-900">
-                  ₱{safeNumber(cashAmount).toFixed(2)}
-                </span>
-              </div>
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-sm text-gray-600">Change:</span>
-                <span className="text-lg font-bold text-green-600">
-                  ₱
-                  {Math.max(0, safeNumber(cashAmount) - totals.total).toFixed(
-                    2
-                  )}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setShowCashModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+    <div className="bg-white p-4 rounded-lg shadow-xl h-full flex flex-col">
+      <h2 className="text-3xl font-bold mb-4 text-gray-800 border-b pb-2">
+        Order Bill
+      </h2>
+      <div className="flex-1 overflow-y-auto pr-2 custom-scrollbar">
+        {/* Cart Items List */}
+        <div className="space-y-3">
+          {combinedCart.length > 0 ? (
+            combinedCart.map((item, index) => (
+              <div
+                key={getUniqueKey(item, index)}
+                className="flex items-center justify-between border-b py-2"
               >
-                Cancel
-              </button>
-              <button
-                onClick={handleCashSubmit}
-                disabled={totals.cashAmount < totals.total}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Online Payment Options Modal */}
-      {showOnlineOptions && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900">
-              Select Digital Payment Method
-            </h3>
-            <div className="space-y-3">
-              <button
-                onClick={() => handleOnlinePaymentSelect("BDO")}
-                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition-colors"
-              >
-                BDO
-              </button>
-              <button
-                onClick={() => handleOnlinePaymentSelect("GCASH")}
-                className="w-full px-4 py-3 bg-green-600 text-white rounded-lg font-semibold text-sm hover:bg-green-700 transition-colors"
-              >
-                GCASH
-              </button>
-              <button
-                onClick={() => setShowOnlineOptions(false)}
-                className="w-full px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-300 transition-colors"
-              >
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* PWD/Senior Selection Modal */}
-      {showPwdSeniorSelection && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900">
-              PWD/Senior Discount Application
-            </h3>
-
-            {/* PWD/Senior Details Form */}
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="text-sm font-semibold text-blue-800 mb-3">
-                PWD/Senior Holder Information
-              </h4>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Discount Type
-                  </label>
-                  <div className="flex gap-3">
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="type"
-                        value="PWD"
-                        checked={pwdSeniorDetails.type === "PWD"}
-                        onChange={handlePwdSeniorDetailsChange}
-                        className="mr-2"
-                      />
-                      <span className="text-sm">PWD</span>
-                    </label>
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="type"
-                        value="Senior"
-                        checked={pwdSeniorDetails.type === "Senior"}
-                        onChange={handlePwdSeniorDetailsChange}
-                        className="mr-2"
-                      />
-                      <span className="text-sm">Senior Citizen</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={pwdSeniorDetails.name}
-                    onChange={handlePwdSeniorDetailsChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    placeholder="Enter PWD/Senior holder name"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    ID Number *
-                  </label>
-                  <input
-                    type="text"
-                    name="idNumber"
-                    value={pwdSeniorDetails.idNumber}
-                    onChange={handlePwdSeniorDetailsChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    placeholder="Enter PWD/Senior ID number"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium text-yellow-800">
-                  Selected Items:
-                </span>
-                <span className="text-sm font-bold text-yellow-800">
-                  {pwdSeniorDiscountItems.length}/3
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="text-xs text-yellow-700">
-                  Drinks:{" "}
-                  {
-                    pwdSeniorDiscountItems.filter((item) => isDrinkItem(item))
-                      .length
-                  }
-                  /1
-                </div>
-                <div className="text-xs text-yellow-700">
-                  Food:{" "}
-                  {
-                    pwdSeniorDiscountItems.filter((item) => isFoodItem(item))
-                      .length
-                  }
-                  /2
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3 mb-6 max-h-[300px] overflow-y-auto">
-              <p className="text-sm font-medium text-gray-700 mb-2">
-                Select items for 20% discount (1-3 items allowed):
-              </p>
-              {combinedCart.map((item, index) => {
-                const itemKey = getItemKey(item);
-                const isSelected = pwdSeniorDiscountItems.some(
-                  (selected) => getItemKey(selected) === itemKey
-                );
-                const isDrink = isDrinkItem(item);
-                const isFood = isFoodItem(item);
-                const isEligible = isDrink || isFood;
-
-                if (!isEligible) return null;
-
-                const itemType = isDrink ? "Drink" : "Food";
-                const itemValue = calculateItemTotalPrice(item);
-                const discountAmount = itemValue * pwdSeniorDiscountRate;
-                const discountedValue = itemValue - discountAmount;
-
-                return (
-                  <div
-                    key={itemKey}
-                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
-                      isSelected
-                        ? "bg-green-50 border-green-300"
-                        : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                <div className="flex-1 min-w-0">
+                  <p
+                    className={`font-semibold text-gray-900 ${
+                      item.isRedeemed ? "line-through text-red-500" : ""
                     }`}
-                    onClick={() => toggleItemSelection(item)}
                   >
-                    <div className="flex items-center flex-1">
-                      <div
-                        className={`w-5 h-5 rounded-full border mr-3 flex-shrink-0 ${
-                          isSelected
-                            ? "bg-green-500 border-green-500"
-                            : "border-gray-400"
-                        }`}
-                      >
-                        {isSelected && (
-                          <div className="w-2 h-2 rounded-full bg-white"></div>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          {item.name}
-                        </p>
-                        <div className="flex justify-between items-center">
-                          <p className="text-xs text-gray-500">
-                            {itemType} • {item.quantity}x ₱
-                            {safeNumber(item.pricePerQuantity).toFixed(2)}
-                          </p>
-                          <p className="text-xs font-semibold text-gray-700">
-                            ₱{itemValue.toFixed(2)}
-                          </p>
-                        </div>
-                        {isSelected && (
-                          <p className="text-xs text-green-600 mt-1">
-                            After 20% discount (-₱{discountAmount.toFixed(2)}):
-                            ₱{discountedValue.toFixed(2)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+                    {item.name}
+                  </p>
+                  <p className="text-sm text-gray-500">
+                    @ ₱{safeNumber(item.pricePerQuantity).toFixed(2)}
+                  </p>
+                  {item.isRedeemed && (
+                    <span className="text-xs text-red-600 font-medium">
+                      (Redeemed - FREE)
+                    </span>
+                  )}
+                  {pwdSeniorDiscountItems.some(
+                    (dItem) => getItemKey(dItem) === getItemKey(item)
+                  ) && (
+                    <span className="text-xs text-green-600 font-medium ml-2">
+                      (20% PWD/Senior Disc)
+                    </span>
+                  )}
+                </div>
 
-              {combinedCart.filter(
-                (item) => isDrinkItem(item) || isFoodItem(item)
-              ).length === 0 && (
-                <p className="text-gray-500 text-sm text-center py-4">
-                  No drinks or food items found in cart.
-                </p>
-              )}
-            </div>
-
-            <div className="flex justify-between items-center pt-4 border-t">
-              <div>
-                <p className="text-sm font-medium text-gray-900">
-                  Selected Value: ₱
-                  {pwdSeniorDiscountItems
-                    .reduce(
-                      (sum, item) => sum + calculateItemTotalPrice(item),
-                      0
-                    )
-                    .toFixed(2)}
-                </p>
-                <p className="text-xs text-gray-600">
-                  After 20% discount (-₱
-                  {(
-                    pwdSeniorDiscountItems.reduce(
-                      (sum, item) => sum + calculateItemTotalPrice(item),
-                      0
-                    ) * pwdSeniorDiscountRate
-                  ).toFixed(2)}
-                  ): ₱
-                  {(
-                    pwdSeniorDiscountItems.reduce(
-                      (sum, item) => sum + calculateItemTotalPrice(item),
-                      0
-                    ) *
-                    (1 - pwdSeniorDiscountRate)
-                  ).toFixed(2)}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleCancelPwdSeniorSelection}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleApplyPwdSeniorSelection}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={pwdSeniorDiscountItems.length === 0}
-                >
-                  Apply Discount
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="max-w-[600px] mx-auto space-y-4">
-        {/* 🧾 CUSTOMER TYPE */}
-        <div className="bg-white rounded-lg p-4 shadow-md">
-          <h2 className="text-gray-900 text-sm font-semibold mb-3">
-            Customer Type
-          </h2>
-          <div className="flex gap-3">
-            <button
-              onClick={() => handleCustomerTypeChange("walk-in")}
-              className={`flex-1 px-4 py-3 rounded-lg font-semibold text-sm ${
-                customerType === "walk-in"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-              } transition-colors`}
-            >
-              Walk-in
-            </button>
-            <button
-              onClick={() => handleCustomerTypeChange("take-out")}
-              className={`flex-1 px-4 py-3 rounded-lg font-semibold text-sm ${
-                customerType === "take-out"
-                  ? "bg-blue-600 text-white"
-                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-              } transition-colors`}
-            >
-              Take-out
-            </button>
-          </div>
-          <p className="text-xs text-gray-500 mt-2">
-            Status will be updated to{" "}
-            {customerType === "walk-in" ? "Dine-in" : "Take-out"} on receipt
-          </p>
-        </div>
-
-        {/* 🛒 CART ITEMS */}
-        <div className="bg-white rounded-lg p-4 shadow-md max-h-64 overflow-y-auto">
-          <h2 className="text-gray-900 text-sm font-semibold mb-2">
-            Cart Items (Order {currentOrder?.number})
-          </h2>
-          {combinedCart.length === 0 ? (
-            <p className="text-gray-500 text-xs">No items added yet.</p>
-          ) : (
-            combinedCart.map((item, index) => {
-              const itemKey = getItemKey(item);
-              const isDiscounted = pwdSeniorDiscountItems.some(
-                (discountedItem) => getItemKey(discountedItem) === itemKey
-              );
-              const isDrink = isDrinkItem(item);
-              const isFood = isFoodItem(item);
-              const itemType = isDrink ? "Drink" : isFood ? "Food" : "Other";
-
-              const originalTotal = calculateItemTotalPrice(item);
-              const displayedTotal = calculateItemTotal(item);
-              const discountAmount = calculateItemDiscountAmount(item);
-
-              return (
-                <div
-                  key={getUniqueKey(item, index)}
-                  className={`flex justify-between items-center px-3 py-2 rounded-md border mb-2 ${
-                    item.isRedeemed
-                      ? "bg-green-50 border-green-200"
-                      : isDiscounted
-                      ? "bg-green-50 border-green-300"
-                      : "bg-gray-50 border-gray-200"
-                  }`}
-                >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-1">
-                      <p className="text-gray-900 text-sm font-medium">
-                        {item.name}
-                        {item.isRedeemed && (
-                          <span className="ml-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
-                            FREE
-                          </span>
-                        )}
-                        {isDiscounted && !item.isRedeemed && (
-                          <span className="ml-2 bg-green-600 text-white text-xs px-2 py-1 rounded-full">
-                            PWD/SENIOR -20%
-                          </span>
-                        )}
-                      </p>
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                        {itemType}
-                      </span>
-                    </div>
-                    <p className="text-gray-500 text-xs">
-                      {item.quantity} × ₱
-                      {safeNumber(item.pricePerQuantity).toFixed(2)}
-                      {isDiscounted ? (
-                        <>
-                          {" "}
-                          = ₱{originalTotal.toFixed(2)} → ₱
-                          {displayedTotal.toFixed(2)}{" "}
-                          <span className="text-green-600">
-                            (-₱{discountAmount.toFixed(2)})
-                          </span>
-                        </>
-                      ) : item.isRedeemed ? (
-                        <>
-                          {" "}
-                          = ₱{originalTotal.toFixed(2)} → FREE{" "}
-                          <span className="text-blue-600">
-                            (-₱{discountAmount.toFixed(2)})
-                          </span>
-                        </>
-                      ) : (
-                        ` = ₱${originalTotal.toFixed(2)}`
-                      )}
-                    </p>
-                  </div>
-
-                  {/* Quantity Controls */}
-                  <div className="flex items-center gap-2 mr-3">
+                <div className="flex items-center space-x-2">
+                  <div className="flex items-center border rounded-lg overflow-hidden">
                     <button
-                      onClick={() => handleDecrement(item.id)}
-                      className="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-gray-600 hover:bg-gray-300 text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={item.quantity <= 1 || item.isRedeemed}
+                      onClick={() =>
+                        handleDecrement(item.originalItems[0].internalId)
+                      }
+                      className="p-2 text-sm bg-gray-100 hover:bg-gray-200"
+                      disabled={isProcessing}
                     >
                       -
                     </button>
-                    <span className="text-gray-900 text-sm font-medium min-w-6 text-center">
+                    <span className="px-3 text-sm font-medium">
                       {item.quantity}
                     </span>
                     <button
-                      onClick={() => handleIncrement(item.id)}
-                      className="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-gray-600 hover:bg-gray-300 text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-                      disabled={item.isRedeemed}
+                      onClick={() =>
+                        handleIncrement(item.originalItems[0].internalId)
+                      }
+                      className="p-2 text-sm bg-gray-100 hover:bg-gray-200"
+                      disabled={isProcessing}
                     >
                       +
                     </button>
                   </div>
+                  <p className="font-bold text-lg text-right w-20">
+                    ₱{calculateItemTotal(item).toFixed(2)}
+                  </p>
+                  <button
+                    onClick={() =>
+                      dispatch(
+                        removeItemFromOrder({
+                          orderId: currentOrder.id,
+                          itemId: item.originalItems[0].internalId,
+                        })
+                      )
+                    }
+                    className="text-red-500 hover:text-red-700 p-2"
+                    disabled={isProcessing}
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="h-5 w-5"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 7a1 1 0 011 1v7a1 1 0 11-2 0V8a1 1 0 011-1zm6 0a1 1 0 00-1 1v7a1 1 0 102 0V8a1 1 0 00-1-1z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))
+          ) : (
+            <p className="text-center text-gray-500 py-10">
+              No items in this order.
+            </p>
+          )}
+        </div>
+      </div>
 
-                  <div className="flex items-center gap-3">
-                    <p className="text-gray-900 text-sm font-bold min-w-20 text-right">
-                      {item.isRedeemed ? (
-                        <span className="text-green-600">FREE</span>
-                      ) : (
-                        `₱${displayedTotal.toFixed(2)}`
-                      )}
-                    </p>
-                    <div className="flex flex-col gap-1">
-                      {showRedeemOptions && !item.isRedeemed && (
-                        <button
-                          onClick={() => handleRedeemItem(item.id, item.name)}
-                          className="text-blue-500 hover:text-blue-700 text-xs font-semibold"
-                        >
-                          Redeem
-                        </button>
-                      )}
+      <div className="mt-4 pt-4 border-t border-gray-200">
+        {/* Discounts Section */}
+        <div className="mb-4 space-y-2">
+          <h3 className="text-xl font-semibold text-gray-800">Discounts</h3>
+          {/* PWD/Senior Discount */}
+          <div className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
+            <button
+              onClick={handlePwdSeniorDiscount}
+              className={`text-left text-sm font-medium transition duration-150 ${
+                pwdSeniorDiscountApplied
+                  ? "text-green-600 hover:text-green-700"
+                  : "text-gray-600 hover:text-gray-800"
+              }`}
+            >
+              <span className="flex items-center">
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+                  ></path>
+                </svg>
+                {pwdSeniorDiscountApplied
+                  ? "Remove PWD/Senior Discount"
+                  : "Apply PWD/Senior Discount (20%)"}
+              </span>
+            </button>
+            {discountedItemsInfo && (
+              <span className="text-sm font-bold text-red-600">
+                {discountedItemsInfo}
+              </span>
+            )}
+            {pwdSeniorDiscountApplied && (
+              <span className="text-xs text-gray-500 italic">
+                {pwdSeniorDetails.type}: {pwdSeniorDetails.name}
+              </span>
+            )}
+          </div>
+
+          {/* Employee Discount */}
+          <div className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
+            <button
+              onClick={handleEmployeeDiscount}
+              className={`text-left text-sm font-medium transition duration-150 ${
+                employeeDiscountApplied
+                  ? "text-green-600 hover:text-green-700"
+                  : "text-gray-600 hover:text-gray-800"
+              }`}
+            >
+              <span className="flex items-center">
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M15 7a2 2 0 012 2v10a2 2 0 01-2 2H9a2 2 0 01-2-2V9a2 2 0 012-2h6zM7 7V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"
+                  ></path>
+                </svg>
+                {employeeDiscountApplied
+                  ? "Remove Employee Discount (15%)"
+                  : "Apply Employee Discount (15%)"}
+              </span>
+            </button>
+            {employeeDiscountApplied && (
+              <span className="text-sm font-bold text-red-600">
+                -₱{totals.employeeDiscountAmount.toFixed(2)}
+              </span>
+            )}
+          </div>
+
+          {/* Shareholder Discount */}
+          <div className="flex justify-between items-center p-2 bg-gray-50 rounded-lg">
+            <button
+              onClick={handleShareholderDiscount}
+              className={`text-left text-sm font-medium transition duration-150 ${
+                shareholderDiscountApplied
+                  ? "text-green-600 hover:text-green-700"
+                  : "text-gray-600 hover:text-gray-800"
+              }`}
+            >
+              <span className="flex items-center">
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3v-5a3 3 0 00-3-3H6a3 3 0 00-3 3v5a3 3 0 003 3z"
+                  ></path>
+                </svg>
+                {shareholderDiscountApplied
+                  ? "Remove Shareholder Discount (10%)"
+                  : "Apply Shareholder Discount (10%)"}
+              </span>
+            </button>
+            {shareholderDiscountApplied && (
+              <span className="text-sm font-bold text-red-600">
+                -₱{totals.shareholderDiscountAmount.toFixed(2)}
+              </span>
+            )}
+          </div>
+
+          {/* Redemption Option */}
+          <div className="relative p-2 bg-gray-50 rounded-lg">
+            <button
+              onClick={() => setShowRedeemOptions(!showRedeemOptions)}
+              className={`w-full text-left text-sm font-medium flex justify-between items-center transition duration-150 ${
+                hasRedeemedItem
+                  ? "text-red-600 hover:text-red-700"
+                  : "text-gray-600 hover:text-gray-800"
+              }`}
+            >
+              <span className="flex items-center">
+                <svg
+                  className="w-5 h-5 mr-2"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M11 16l-4-4m0 0l4-4m-4 4h14m-5 4v1m-10-1V7a4 4 0 018 0v7a4 4 0 00-8 0z"
+                  ></path>
+                </svg>
+                {hasRedeemedItem ? "Remove Redemption" : "Redeem Item (Free)"}
+              </span>
+              {hasRedeemedItem && (
+                <span className="text-sm font-bold text-red-600">
+                  -₱{totals.redemptionAmount.toFixed(2)}
+                </span>
+              )}
+            </button>
+            {showRedeemOptions && (
+              <div className="absolute z-10 w-full mt-2 p-3 bg-white border rounded-lg shadow-lg max-h-40 overflow-y-auto">
+                <h4 className="font-bold text-gray-700 mb-2">
+                  Select item to redeem:
+                </h4>
+                {combinedCart.filter((item) => !item.isRedeemed).length > 0 ? (
+                  combinedCart
+                    .filter((item) => !item.isRedeemed)
+                    .map((item) => (
                       <button
+                        key={`redeem-${getItemKey(item)}`}
                         onClick={() =>
-                          dispatch(
-                            removeItemFromOrder({
-                              orderId: currentOrder.id,
-                              itemId: item.id,
-                            })
+                          handleRedeemItem(
+                            item.originalItems[0].internalId,
+                            item.name
                           )
                         }
-                        className="text-red-500 hover:text-red-700 text-xs font-semibold"
+                        className="w-full text-left p-1 text-sm text-gray-700 hover:bg-red-50 rounded transition duration-100"
                       >
-                        Delete
+                        {item.name} (x{item.quantity}) - ₱
+                        {calculateItemTotalPrice(item).toFixed(2)}
                       </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* 🧾 TOTALS */}
-        <div className="bg-white rounded-lg p-4 shadow-md space-y-2">
-          <div className="flex justify-between items-center">
-            <p className="text-xs text-gray-500 font-medium">
-              Items ({cartData?.length || 0})
-            </p>
-            <h1 className="text-gray-900 text-md font-bold">
-              ₱{totals.baseGrossTotal.toFixed(2)}
-            </h1>
-          </div>
-
-          {pwdSeniorDiscountApplied && totals.pwdSeniorDiscountAmount > 0 && (
-            <div className="flex justify-between items-center text-green-600">
-              <div className="flex items-center">
-                <p className="text-xs font-medium mr-2">
-                  {discountedItemsInfo}
-                  {pwdSeniorDetails.name && ` (${pwdSeniorDetails.name})`}
-                </p>
-                <button
-                  onClick={clearPwdSeniorDiscount}
-                  className="text-xs text-red-500 hover:text-red-700 font-medium"
-                  disabled={isProcessing}
-                >
-                  (Clear)
-                </button>
-              </div>
-              <h1 className="text-md font-bold">
-                -₱{totals.pwdSeniorDiscountAmount.toFixed(2)}
-              </h1>
-            </div>
-          )}
-
-          {hasRedeemedItem && (
-            <div className="flex justify-between items-center text-blue-600">
-              <p className="text-xs font-medium">Redemption Discount</p>
-              <h1 className="text-md font-bold">
-                -₱{totals.redemptionAmount.toFixed(2)}
-              </h1>
-            </div>
-          )}
-
-          {employeeDiscountApplied && totals.employeeDiscountAmount > 0 && (
-            <div className="flex justify-between items-center text-yellow-600">
-              <p className="text-xs font-medium">Employee Discount (15%)</p>
-              <h1 className="text-md font-bold">
-                -₱{totals.employeeDiscountAmount.toFixed(2)}
-              </h1>
-            </div>
-          )}
-
-          {shareholderDiscountApplied &&
-            totals.shareholderDiscountAmount > 0 && (
-              <div className="flex justify-between items-center text-purple-600">
-                <p className="text-xs font-medium">
-                  Shareholder Discount (10%)
-                </p>
-                <h1 className="text-md font-bold">
-                  -₱{totals.shareholderDiscountAmount.toFixed(2)}
-                </h1>
+                    ))
+                ) : (
+                  <p className="text-sm text-gray-500">
+                    All items are already redeemed or cart is empty.
+                  </p>
+                )}
+                {hasRedeemedItem && (
+                  <button
+                    onClick={handleRemoveRedemption}
+                    className="w-full text-center mt-2 p-1 text-xs text-red-500 hover:bg-red-100 rounded transition duration-100 border-t pt-2"
+                  >
+                    Clear All Redemptions
+                  </button>
+                )}
               </div>
             )}
-
-          <div className="flex justify-between items-center">
-            <p className="text-xs text-gray-500 font-medium">Net of VAT</p>
-            <h1 className="text-gray-900 text-md font-bold">
-              ₱{totals.netSales.toFixed(2)}
-            </h1>
           </div>
-
-          <div className="flex justify-between items-center">
-            <p className="text-xs text-gray-500 font-medium">VAT (12%)</p>
-            <h1 className="text-gray-900 text-md font-bold">
-              ₱{totals.vatAmount.toFixed(2)}
-            </h1>
+        </div>
+        {/* Totals Summary */}
+        <div className="space-y-1 text-lg font-medium">
+          <div className="flex justify-between text-gray-600">
+            <span>Subtotal (Gross)</span>
+            <span>₱{totals.baseGrossTotal.toFixed(2)}</span>
           </div>
-
-          <div className="flex justify-between items-center border-t pt-2">
-            <p className="text-sm text-gray-700 font-semibold">TOTAL</p>
-            <h1 className="text-gray-900 text-xl font-bold">
-              ₱{totals.total.toFixed(2)}
-            </h1>
+          <div className="flex justify-between text-red-600">
+            <span>Total Discount</span>
+            <span>-₱{totals.totalDiscountAmount.toFixed(2)}</span>
           </div>
-
-          {paymentMethod === "Cash" && totals.cashAmount > 0 && (
-            <>
-              <div className="flex justify-between items-center border-t pt-2">
-                <p className="text-xs text-gray-600 font-medium">Cash</p>
-                <p className="text-md text-gray-800 font-bold">
-                  ₱{totals.cashAmount.toFixed(2)}
-                </p>
-              </div>
-              <div className="flex justify-between items-center">
-                <p className="text-xs text-gray-600 font-medium">Change</p>
-                <p className="text-md text-green-600 font-bold">
-                  ₱{totals.change.toFixed(2)}
-                </p>
-              </div>
-            </>
-          )}
+          <div className="flex justify-between text-gray-600">
+            <span>Net of VAT/Discounts</span>
+            <span>₱{totals.netSales.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-gray-600">
+            <span>VAT (12%)</span>
+            <span>₱{totals.vatAmount.toFixed(2)}</span>
+          </div>
+          <div className="flex justify-between text-3xl font-bold text-gray-900 border-t pt-2 mt-2">
+            <span>TOTAL AMOUNT DUE</span>
+            <span>₱{totals.total.toFixed(2)}</span>
+          </div>
         </div>
 
-        {/* 🎟 DISCOUNT & REDEMPTION BUTTONS - IN ONE ROW */}
-        <div className="grid grid-cols-4 gap-2">
-          <button
-            onClick={handlePwdSeniorDiscount}
-            disabled={isProcessing}
-            className={`px-2 py-2 rounded-lg font-semibold text-xs ${
-              pwdSeniorDiscountApplied
-                ? "bg-green-500 text-white hover:bg-green-600"
-                : "bg-green-100 text-green-700 hover:bg-green-200"
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-          >
-            {pwdSeniorDiscountApplied ? "✓ PWD/SENIOR" : "PWD/SENIOR"}
-          </button>
-
-          <button
-            onClick={handleEmployeeDiscount}
-            disabled={isProcessing}
-            className={`px-2 py-2 rounded-lg font-semibold text-xs ${
-              employeeDiscountApplied
-                ? "bg-yellow-500 text-white hover:bg-yellow-600"
-                : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-          >
-            {employeeDiscountApplied ? "✓ Employee" : "Employee"}
-          </button>
-
-          <button
-            onClick={handleShareholderDiscount}
-            disabled={isProcessing}
-            className={`px-2 py-2 rounded-lg font-semibold text-xs ${
-              shareholderDiscountApplied
-                ? "bg-purple-500 text-white hover:bg-purple-600"
-                : "bg-purple-100 text-purple-700 hover:bg-purple-200"
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-          >
-            {shareholderDiscountApplied ? "✓ Shareholder" : "Shareholder"}
-          </button>
-
-          {!hasRedeemedItem ? (
+        {/* Customer Type Selection */}
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <h3 className="text-xl font-semibold text-gray-800 mb-2">
+            Customer Type
+          </h3>
+          <div className="flex space-x-4">
             <button
-              onClick={handleShowRedeemOptions}
-              disabled={isProcessing || combinedCart.length === 0}
-              className="px-2 py-2 rounded-lg font-semibold text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Redeem
-            </button>
-          ) : (
-            <button
-              onClick={handleRemoveRedemption}
+              onClick={() => handleCustomerTypeChange("walk-in")}
+              className={`flex-1 p-3 rounded-lg border-2 font-semibold transition duration-150 ${
+                customerType === "walk-in"
+                  ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+              }`}
               disabled={isProcessing}
-              className="px-2 py-2 rounded-lg font-semibold text-xs bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Remove
+              Walk-in (Dine-in)
             </button>
-          )}
+            <button
+              onClick={() => handleCustomerTypeChange("take-out")}
+              className={`flex-1 p-3 rounded-lg border-2 font-semibold transition duration-150 ${
+                customerType === "take-out"
+                  ? "bg-blue-600 text-white border-blue-600 shadow-md"
+                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+              }`}
+              disabled={isProcessing}
+            >
+              Take-out
+            </button>
+          </div>
         </div>
 
-        {/* 💳 PAYMENT BUTTONS */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            onClick={() => setPaymentMethod("Cash")}
-            disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
-              paymentMethod === "Cash"
-                ? "bg-blue-600 text-white hover:bg-blue-700"
-                : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-          >
-            Cash
-          </button>
-
-          <button
-            onClick={() => setShowOnlineOptions(true)}
-            disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
-              paymentMethod === "BDO" || paymentMethod === "GCASH"
-                ? "bg-blue-600 text-white hover:bg-blue-700"
-                : "bg-gray-200 text-gray-600 hover:bg-gray-300"
-            } disabled:opacity-50 disabled:cursor-not-allowed`}
-          >
-            {paymentMethod === "BDO"
-              ? "✓ BDO"
-              : paymentMethod === "GCASH"
-              ? "✓ GCASH"
-              : "Online"}
-          </button>
+        {/* Payment Methods */}
+        <div className="mt-4 pt-4 border-t border-gray-200">
+          <h3 className="text-xl font-semibold text-gray-800 mb-2">
+            Payment Method
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            <button
+              onClick={() => {
+                setPaymentMethod("Cash");
+                setShowCashModal(true);
+                setShowOnlineOptions(false);
+              }}
+              className={`p-3 rounded-lg border-2 font-semibold transition duration-150 ${
+                paymentMethod === "Cash"
+                  ? "bg-green-600 text-white border-green-600 shadow-md"
+                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+              }`}
+              disabled={isProcessing}
+            >
+              Cash
+            </button>
+            <div className="relative">
+              <button
+                onClick={() => setShowOnlineOptions(!showOnlineOptions)}
+                className={`w-full p-3 rounded-lg border-2 font-semibold transition duration-150 flex justify-center items-center ${
+                  ["GCash", "PayMaya", "Razorpay"].includes(paymentMethod)
+                    ? "bg-purple-600 text-white border-purple-600 shadow-md"
+                    : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+                }`}
+                disabled={isProcessing}
+              >
+                Online/Card{" "}
+                <svg
+                  className={`w-4 h-4 ml-2 transition-transform ${
+                    showOnlineOptions ? "transform rotate-180" : ""
+                  }`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M19 9l-7 7-7-7"
+                  ></path>
+                </svg>
+              </button>
+              {showOnlineOptions && (
+                <div className="absolute z-20 w-full mt-2 bg-white border rounded-lg shadow-xl divide-y">
+                  <button
+                    onClick={() => handleOnlinePaymentSelect("GCash")}
+                    className={`w-full text-left p-3 text-sm transition duration-100 ${
+                      paymentMethod === "GCash"
+                        ? "bg-purple-100"
+                        : "hover:bg-gray-50"
+                    }`}
+                  >
+                    GCash
+                  </button>
+                  <button
+                    onClick={() => handleOnlinePaymentSelect("PayMaya")}
+                    className={`w-full text-left p-3 text-sm transition duration-100 ${
+                      paymentMethod === "PayMaya"
+                        ? "bg-purple-100"
+                        : "hover:bg-gray-50"
+                    }`}
+                  >
+                    PayMaya
+                  </button>
+                  <button
+                    onClick={() => handleOnlinePaymentSelect("Razorpay")}
+                    className={`w-full text-left p-3 text-sm transition duration-100 ${
+                      paymentMethod === "Razorpay"
+                        ? "bg-purple-100"
+                        : "hover:bg-gray-50"
+                    }`}
+                  >
+                    Credit/Debit Card (Razorpay)
+                  </button>
+                </div>
+              )}
+            </div>
+            <button
+              onClick={() => handleOnlinePaymentSelect("Other")}
+              className={`p-3 rounded-lg border-2 font-semibold transition duration-150 ${
+                paymentMethod === "Other"
+                  ? "bg-yellow-600 text-white border-yellow-600 shadow-md"
+                  : "bg-white text-gray-700 border-gray-300 hover:bg-gray-50"
+              }`}
+              disabled={isProcessing}
+            >
+              Other
+            </button>
+          </div>
         </div>
 
-        {/* 🧾 PLACE ORDER */}
-        <div className="flex flex-col sm:flex-row gap-3 mt-6">
+        {/* Place Order Button */}
+        <div className="mt-6">
           <button
             onClick={handlePlaceOrder}
-            disabled={isProcessing || !paymentMethod || cartData.length === 0}
-            className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            className={`w-full py-4 text-2xl font-extrabold rounded-xl transition duration-300 ease-in-out ${
+              !currentOrder || currentOrder.items.length === 0 || !paymentMethod
+                ? "bg-gray-400 text-gray-700 cursor-not-allowed"
+                : isProcessing
+                ? "bg-blue-400 text-white cursor-wait"
+                : "bg-blue-600 hover:bg-blue-700 text-white shadow-lg transform hover:scale-[1.01]"
+            }`}
+            disabled={
+              !currentOrder ||
+              currentOrder.items.length === 0 ||
+              !paymentMethod ||
+              isProcessing
+            }
           >
-            {isProcessing ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Processing...
-              </>
-            ) : (
-              "Place Order & Print"
-            )}
+            {isProcessing ? "Processing Order..." : "Place Order"}
           </button>
+          {isProcessing && (
+            <p className="text-center text-sm text-blue-500 mt-2">
+              Please wait, do not close this window.
+            </p>
+          )}
         </div>
+      </div>
 
-        {/* Manual Print Button (shown when invoice is visible) */}
-        {showInvoice && orderInfo && (
-          <div className="flex flex-col gap-2">
-            <button
-              onClick={handleManualPrint}
-              className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-green-600 text-white hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-            >
-              🖨️ Print Receipt Again
-            </button>
+      {/* PWD/Senior Selection Modal */}
+      {showPwdSeniorSelection && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-2xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <h3 className="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">
+              <span className="text-green-600">PWD/Senior Discount</span> (20%
+              Off)
+            </h3>
+
+            {/* PWD/Senior Details Input */}
+            <div className="mb-4 space-y-3">
+              <label className="block text-sm font-medium text-gray-700">
+                Discount Type
+              </label>
+              <div className="flex space-x-4">
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="type"
+                    value="PWD"
+                    checked={pwdSeniorDetails.type === "PWD"}
+                    onChange={handlePwdSeniorDetailsChange}
+                    className="form-radio h-4 w-4 text-green-600"
+                  />
+                  <span className="ml-2 text-gray-700">PWD</span>
+                </label>
+                <label className="flex items-center">
+                  <input
+                    type="radio"
+                    name="type"
+                    value="Senior"
+                    checked={pwdSeniorDetails.type === "Senior"}
+                    onChange={handlePwdSeniorDetailsChange}
+                    className="form-radio h-4 w-4 text-green-600"
+                  />
+                  <span className="ml-2 text-gray-700">Senior Citizen</span>
+                </label>
+              </div>
+              <input
+                type="text"
+                name="name"
+                placeholder={`${pwdSeniorDetails.type} Holder Name`}
+                value={pwdSeniorDetails.name}
+                onChange={handlePwdSeniorDetailsChange}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+              />
+              <input
+                type="text"
+                name="idNumber"
+                placeholder={`${pwdSeniorDetails.type} ID Number`}
+                value={pwdSeniorDetails.idNumber}
+                onChange={handlePwdSeniorDetailsChange}
+                className="w-full p-3 border border-gray-300 rounded-lg focus:ring-green-500 focus:border-green-500"
+              />
+              <p className="text-xs text-red-500 italic">
+                *Only one PWD/Senior discount can be applied per order.
+              </p>
+            </div>
+
+            <h4 className="text-xl font-semibold mb-3 text-gray-800">
+              Select Items (Max 3: 1 Drink, 2 Food)
+            </h4>
+
+            {/* Item Selection List */}
+            <div className="flex-1 overflow-y-auto space-y-2 mb-4 pr-2 custom-scrollbar">
+              {combinedCart.map((item) => (
+                <div
+                  key={`select-${getItemKey(item)}`}
+                  className={`flex justify-between items-center p-3 border rounded-lg cursor-pointer transition duration-100 ${
+                    item.isRedeemed || item.quantity === 0
+                      ? "bg-gray-100 cursor-not-allowed opacity-50"
+                      : pwdSeniorDiscountItems.some(
+                          (selected) =>
+                            getItemKey(selected) === getItemKey(item)
+                        )
+                      ? "bg-green-100 border-green-500"
+                      : "bg-white hover:bg-gray-50 border-gray-200"
+                  }`}
+                  onClick={() =>
+                    !item.isRedeemed &&
+                    item.quantity > 0 &&
+                    toggleItemSelection(item)
+                  }
+                >
+                  <span className="font-medium text-gray-900">
+                    {item.name} (x{item.quantity})
+                  </span>
+                  <span className="text-sm text-gray-600">
+                    ₱{calculateItemTotalPrice(item).toFixed(2)}
+                  </span>
+                  {pwdSeniorDiscountItems.some(
+                    (selected) => getItemKey(selected) === getItemKey(item)
+                  ) && (
+                    <svg
+                      className="w-6 h-6 text-green-600"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                      xmlns="http://www.w3.org/2000/svg"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="2"
+                        d="M5 13l4 4L19 7"
+                      ></path>
+                    </svg>
+                  )}
+                  {item.isRedeemed && (
+                    <span className="text-xs text-red-500">Redeemed</span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-3 border-t pt-4">
+              <button
+                onClick={handleCancelPwdSeniorSelection}
+                className="px-6 py-2 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition duration-150"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyPwdSeniorSelection}
+                className={`px-6 py-2 rounded-lg text-white font-semibold transition duration-150 ${
+                  pwdSeniorDiscountItems.length > 0
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-green-300 cursor-not-allowed"
+                }`}
+                disabled={pwdSeniorDiscountItems.length === 0}
+              >
+                Apply Discount
+              </button>
+            </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* 📄 INVOICE MODAL */}
-        {showInvoice && orderInfo && (
-          <Invoice orderInfo={orderInfo} setShowInvoice={handleCloseInvoice} />
-        )}
+      {/* Cash Payment Modal */}
+      {showCashModal && paymentMethod === "Cash" && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white p-6 rounded-lg shadow-2xl w-full max-w-md">
+            <h3 className="text-2xl font-bold mb-4 text-gray-800 border-b pb-2">
+              Cash Payment
+            </h3>
+
+            {/* Total Due */}
+            <div className="flex justify-between items-center bg-gray-100 p-3 rounded-lg mb-4">
+              <span className="text-lg font-medium text-gray-700">
+                Total Due:
+              </span>
+              <span className="text-2xl font-bold text-red-600">
+                ₱{totals.total.toFixed(2)}
+              </span>
+            </div>
+
+            {/* Cash Received Input */}
+            <div className="mb-4">
+              <label className="block text-lg font-medium text-gray-700 mb-2">
+                Cash Received:
+              </label>
+              <input
+                type="number"
+                value={cashAmount === 0 ? "" : cashAmount}
+                onChange={(e) => setCashAmount(safeNumber(e.target.value))}
+                placeholder="Enter amount"
+                className="w-full p-3 text-3xl text-center border-2 border-green-500 rounded-lg focus:ring-green-500 focus:border-green-500"
+                min="0"
+                step="0.01"
+              />
+            </div>
+
+            {/* Denomination Buttons */}
+            <div className="grid grid-cols-3 gap-2 mb-4">
+              {denominations.map((amount) => (
+                <button
+                  key={amount}
+                  onClick={() => handleDenominationClick(amount)}
+                  className="p-3 bg-blue-100 text-blue-800 rounded-lg font-bold text-xl hover:bg-blue-200 transition duration-150"
+                >
+                  ₱{amount}
+                </button>
+              ))}
+              <button
+                onClick={() => setCashAmount(totals.total)}
+                className="col-span-3 p-3 bg-yellow-100 text-yellow-800 rounded-lg font-bold text-lg hover:bg-yellow-200 transition duration-150"
+              >
+                Exact Amount (₱{totals.total.toFixed(2)})
+              </button>
+              <button
+                onClick={() => setCashAmount(0)}
+                className="col-span-3 p-3 bg-red-100 text-red-800 rounded-lg font-bold text-lg hover:bg-red-200 transition duration-150"
+              >
+                Clear
+              </button>
+            </div>
+
+            {/* Change Due */}
+            <div
+              className={`flex justify-between items-center p-3 rounded-lg mb-6 ${
+                totals.change >= 0 ? "bg-green-100" : "bg-red-100"
+              }`}
+            >
+              <span className="text-lg font-medium text-gray-700">
+                {totals.change >= 0 ? "Change Due:" : "Insufficient Funds:"}
+              </span>
+              <span
+                className={`text-3xl font-bold ${
+                  totals.change >= 0 ? "text-green-600" : "text-red-600"
+                }`}
+              >
+                ₱{Math.abs(totals.change).toFixed(2)}
+              </span>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setShowCashModal(false)}
+                className="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-100 transition duration-150"
+                disabled={isProcessing}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCashModalComplete}
+                className={`px-6 py-3 rounded-lg text-white font-semibold transition duration-150 ${
+                  totals.cashAmount >= totals.total
+                    ? "bg-green-600 hover:bg-green-700"
+                    : "bg-green-300 cursor-not-allowed"
+                }`}
+                disabled={totals.cashAmount < totals.total || isProcessing}
+              >
+                {totals.cashAmount >= totals.total
+                  ? "Complete Payment"
+                  : "Insufficient Amount"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Bluetooth Printer Connection Button (Visible at the bottom) */}
+      <div className="mt-4 pt-4 border-t border-gray-200 flex justify-between items-center">
+        <p className="text-sm text-gray-600">
+          Bluetooth Printer Status:{" "}
+          <span
+            className={`font-semibold ${
+              isPrinterConnected ? "text-green-500" : "text-red-500"
+            }`}
+          >
+            {isPrinterConnected ? "Connected" : "Disconnected"}
+          </span>
+        </p>
+        <button
+          onClick={connectToPrinter}
+          className={`px-4 py-2 text-sm rounded-lg font-medium transition duration-150 ${
+            isPrinterConnected
+              ? "bg-gray-300 text-gray-700 cursor-not-allowed"
+              : "bg-blue-500 hover:bg-blue-600 text-white"
+          }`}
+          disabled={isPrinterConnected || isProcessing}
+        >
+          {isPrinterConnected ? "Printer Ready" : "Connect Printer"}
+        </button>
       </div>
     </div>
   );
