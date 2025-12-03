@@ -88,6 +88,17 @@ const Bill = ({ orderId }) => {
     customerData.guests || 1
   );
 
+  // Font family configuration
+  const fontFamily =
+    "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif";
+
+  // Background color configuration
+  const backgroundColor = "#f9fafb"; // gray-50
+  const cardBackgroundColor = "#ffffff"; // white
+  const primaryColor = "#3b82f6"; // blue-600
+  const textPrimaryColor = "#111827"; // gray-900
+  const textSecondaryColor = "#6b7280"; // gray-500
+
   // Bluetooth printer setup
   useEffect(() => {
     // Check if Bluetooth is available
@@ -906,11 +917,15 @@ const Bill = ({ orderId }) => {
       <head>
         <title>Receipt - Order ${orderData._id?.slice(-8) || ""}</title>
         <style>
+          @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+          
           body {
-            font-family: 'Courier New', monospace;
+            font-family: 'Inter', sans-serif;
             width: 80mm;
             margin: 0;
             padding: 10px;
+            background-color: ${cardBackgroundColor};
+            color: ${textPrimaryColor};
           }
           .header {
             text-align: center;
@@ -919,28 +934,40 @@ const Bill = ({ orderId }) => {
           .restaurant-name {
             font-size: 18px;
             font-weight: bold;
+            color: ${primaryColor};
           }
           .receipt-info {
             margin: 10px 0;
+            font-size: 12px;
+            color: ${textSecondaryColor};
           }
           .item {
             margin: 5px 0;
+            padding: 4px 0;
+            border-bottom: 1px solid #e5e7eb;
           }
           .item-name {
-            font-weight: bold;
+            font-weight: 600;
+            font-size: 13px;
           }
           .total {
             margin-top: 10px;
-            border-top: 1px dashed #000;
+            border-top: 2px dashed #d1d5db;
             padding-top: 10px;
+            font-size: 13px;
           }
           .footer {
             text-align: center;
             margin-top: 20px;
-            font-size: 12px;
+            font-size: 11px;
+            color: ${textSecondaryColor};
           }
           @media print {
-            body { width: 80mm; }
+            body { 
+              width: 80mm; 
+              background-color: white !important;
+              -webkit-print-color-adjust: exact;
+            }
           }
         </style>
       </head>
@@ -973,7 +1000,7 @@ const Bill = ({ orderId }) => {
               ).toFixed(2)} = ₱${calculateItemTotal(item).toFixed(2)}</div>
               ${
                 item.isRedeemed
-                  ? '<div style="color: green;">[REDEEMED - FREE]</div>'
+                  ? '<div style="color: #10b981; font-weight: 600;">[REDEEMED - FREE]</div>'
                   : ""
               }
             </div>
@@ -988,26 +1015,28 @@ const Bill = ({ orderId }) => {
           <div>Subtotal: ₱${totals.baseGrossTotal.toFixed(2)}</div>
           ${
             totals.pwdSssDiscountAmount > 0
-              ? `<div>PWD/SSS Discount: -₱${totals.pwdSssDiscountAmount.toFixed(
+              ? `<div style="color: #10b981;">PWD/SSS Discount: -₱${totals.pwdSssDiscountAmount.toFixed(
                   2
                 )}</div>`
               : ""
           }
           ${
             totals.redemptionAmount > 0
-              ? `<div>Redemption: -₱${totals.redemptionAmount.toFixed(2)}</div>`
+              ? `<div style="color: #3b82f6;">Redemption: -₱${totals.redemptionAmount.toFixed(
+                  2
+                )}</div>`
               : ""
           }
           ${
             totals.employeeDiscountAmount > 0
-              ? `<div>Employee Discount: -₱${totals.employeeDiscountAmount.toFixed(
+              ? `<div style="color: #f59e0b;">Employee Discount: -₱${totals.employeeDiscountAmount.toFixed(
                   2
                 )}</div>`
               : ""
           }
           ${
             totals.shareholderDiscountAmount > 0
-              ? `<div>Shareholder Discount: -₱${totals.shareholderDiscountAmount.toFixed(
+              ? `<div style="color: #8b5cf6;">Shareholder Discount: -₱${totals.shareholderDiscountAmount.toFixed(
                   2
                 )}</div>`
               : ""
@@ -1355,7 +1384,7 @@ const Bill = ({ orderId }) => {
             email: "",
             contact: orderData.customerDetails.phone,
           },
-          theme: { color: "#2563eb" },
+          theme: { color: primaryColor },
           modal: {
             ondismiss: function () {
               enqueueSnackbar("Payment cancelled", { variant: "info" });
@@ -1409,13 +1438,26 @@ const Bill = ({ orderId }) => {
   // If no current order, show empty state
   if (!currentOrder) {
     return (
-      <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
+      <div
+        className="w-full h-screen overflow-y-auto px-4 py-6"
+        style={{
+          fontFamily: fontFamily,
+          backgroundColor: backgroundColor,
+          color: textPrimaryColor,
+        }}
+      >
         <div className="max-w-[600px] mx-auto text-center">
-          <div className="bg-white rounded-lg p-8 shadow-md">
-            <h2 className="text-gray-900 text-lg font-semibold mb-4">
+          <div
+            className="rounded-lg p-8 shadow-md"
+            style={{ backgroundColor: cardBackgroundColor }}
+          >
+            <h2
+              className="text-lg font-semibold mb-4"
+              style={{ color: textPrimaryColor }}
+            >
               No Active Order
             </h2>
-            <p className="text-gray-500 text-sm">
+            <p style={{ color: textSecondaryColor }} className="text-sm">
               Please create a new order or select an existing one.
             </p>
           </div>
@@ -1425,23 +1467,45 @@ const Bill = ({ orderId }) => {
   }
 
   return (
-    <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
+    <div
+      className="w-full h-screen overflow-y-auto px-4 py-6"
+      style={{
+        fontFamily: fontFamily,
+        backgroundColor: backgroundColor,
+        color: textPrimaryColor,
+      }}
+    >
       {/* PWD/SSS Selection Modal */}
       {showPwdSssSelection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+          <div
+            className="rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto"
+            style={{ backgroundColor: cardBackgroundColor }}
+          >
+            <h3
+              className="text-lg font-semibold mb-4"
+              style={{ color: textPrimaryColor }}
+            >
               PWD/SSS Discount Application
             </h3>
 
             {/* PWD/SSS Details Form */}
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="text-sm font-semibold text-blue-800 mb-3">
+            <div
+              className="mb-6 p-4 border rounded-lg"
+              style={{ backgroundColor: "#eff6ff", borderColor: "#93c5fd" }}
+            >
+              <h4
+                className="text-sm font-semibold mb-3"
+                style={{ color: "#1e40af" }}
+              >
                 PWD/SSS Holder Information
               </h4>
               <div className="space-y-3">
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                  <label
+                    className="block text-xs font-medium mb-1"
+                    style={{ color: "#374151" }}
+                  >
                     Discount Type
                   </label>
                   <div className="flex gap-3">
@@ -1453,8 +1517,14 @@ const Bill = ({ orderId }) => {
                         checked={pwdSssDetails.type === "PWD"}
                         onChange={handlePwdSssDetailsChange}
                         className="mr-2"
+                        style={{ accentColor: primaryColor }}
                       />
-                      <span className="text-sm">PWD</span>
+                      <span
+                        className="text-sm"
+                        style={{ color: textPrimaryColor }}
+                      >
+                        PWD
+                      </span>
                     </label>
                     <label className="flex items-center">
                       <input
@@ -1464,14 +1534,23 @@ const Bill = ({ orderId }) => {
                         checked={pwdSssDetails.type === "SSS"}
                         onChange={handlePwdSssDetailsChange}
                         className="mr-2"
+                        style={{ accentColor: primaryColor }}
                       />
-                      <span className="text-sm">SSS</span>
+                      <span
+                        className="text-sm"
+                        style={{ color: textPrimaryColor }}
+                      >
+                        SSS
+                      </span>
                     </label>
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                  <label
+                    className="block text-xs font-medium mb-1"
+                    style={{ color: "#374151" }}
+                  >
                     Full Name *
                   </label>
                   <input
@@ -1479,14 +1558,22 @@ const Bill = ({ orderId }) => {
                     name="name"
                     value={pwdSssDetails.name}
                     onChange={handlePwdSssDetailsChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:border-blue-500 outline-none"
+                    style={{
+                      borderColor: "#d1d5db",
+                      color: textPrimaryColor,
+                      backgroundColor: cardBackgroundColor,
+                    }}
                     placeholder="Enter PWD/SSS holder name"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                  <label
+                    className="block text-xs font-medium mb-1"
+                    style={{ color: "#374151" }}
+                  >
                     ID Number *
                   </label>
                   <input
@@ -1494,7 +1581,12 @@ const Bill = ({ orderId }) => {
                     name="idNumber"
                     value={pwdSssDetails.idNumber}
                     onChange={handlePwdSssDetailsChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:border-blue-500 outline-none"
+                    style={{
+                      borderColor: "#d1d5db",
+                      color: textPrimaryColor,
+                      backgroundColor: cardBackgroundColor,
+                    }}
                     placeholder="Enter PWD/SSS ID number"
                     required
                   />
@@ -1502,17 +1594,26 @@ const Bill = ({ orderId }) => {
               </div>
             </div>
 
-            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div
+              className="mb-4 p-3 border rounded-lg"
+              style={{ backgroundColor: "#fffbeb", borderColor: "#fcd34d" }}
+            >
               <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium text-yellow-800">
+                <span
+                  className="text-sm font-medium"
+                  style={{ color: "#92400e" }}
+                >
                   Selected Items:
                 </span>
-                <span className="text-sm font-bold text-yellow-800">
+                <span
+                  className="text-sm font-bold"
+                  style={{ color: "#92400e" }}
+                >
                   {pwdSssDiscountItems.length}/3
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2">
-                <div className="text-xs text-yellow-700">
+                <div className="text-xs" style={{ color: "#92400e" }}>
                   Drinks:{" "}
                   {
                     pwdSssDiscountItems.filter((item) => isDrinkItem(item))
@@ -1520,7 +1621,7 @@ const Bill = ({ orderId }) => {
                   }
                   /1
                 </div>
-                <div className="text-xs text-yellow-700">
+                <div className="text-xs" style={{ color: "#92400e" }}>
                   Food:{" "}
                   {
                     pwdSssDiscountItems.filter((item) => isFoodItem(item))
@@ -1532,7 +1633,10 @@ const Bill = ({ orderId }) => {
             </div>
 
             <div className="space-y-3 mb-6 max-h-[300px] overflow-y-auto">
-              <p className="text-sm font-medium text-gray-700 mb-2">
+              <p
+                className="text-sm font-medium mb-2"
+                style={{ color: "#374151" }}
+              >
                 Select items for 20% discount:
               </p>
               {combinedCart.map((item, index) => {
@@ -1556,38 +1660,57 @@ const Bill = ({ orderId }) => {
                     key={itemKey}
                     className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
                       isSelected
-                        ? "bg-green-50 border-green-300"
-                        : "bg-gray-50 border-gray-200 hover:bg-gray-100"
+                        ? "border-green-300"
+                        : "border-gray-200 hover:bg-gray-50"
                     }`}
+                    style={
+                      isSelected
+                        ? { backgroundColor: "#f0fdf4" }
+                        : { backgroundColor: cardBackgroundColor }
+                    }
                     onClick={() => toggleItemSelection(item)}
                   >
                     <div className="flex items-center flex-1">
                       <div
                         className={`w-5 h-5 rounded-full border mr-3 flex items-center justify-center flex-shrink-0 ${
-                          isSelected
-                            ? "bg-green-500 border-green-500"
-                            : "border-gray-400"
+                          isSelected ? "border-green-500" : "border-gray-400"
                         }`}
+                        style={isSelected ? { backgroundColor: "#10b981" } : {}}
                       >
                         {isSelected && (
-                          <div className="w-2 h-2 rounded-full bg-white"></div>
+                          <div
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: cardBackgroundColor }}
+                          ></div>
                         )}
                       </div>
                       <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">
+                        <p
+                          className="text-sm font-medium"
+                          style={{ color: textPrimaryColor }}
+                        >
                           {item.name}
                         </p>
                         <div className="flex justify-between items-center">
-                          <p className="text-xs text-gray-500">
+                          <p
+                            className="text-xs"
+                            style={{ color: textSecondaryColor }}
+                          >
                             {itemType} • {item.quantity}x ₱
                             {safeNumber(item.pricePerQuantity).toFixed(2)}
                           </p>
-                          <p className="text-xs font-semibold text-gray-700">
+                          <p
+                            className="text-xs font-semibold"
+                            style={{ color: textPrimaryColor }}
+                          >
                             ₱{itemValue.toFixed(2)}
                           </p>
                         </div>
                         {isSelected && (
-                          <p className="text-xs text-green-600 mt-1">
+                          <p
+                            className="text-xs mt-1"
+                            style={{ color: "#059669" }}
+                          >
                             After 20% discount (-₱{discountAmount.toFixed(2)}):
                             ₱{discountedValue.toFixed(2)}
                           </p>
@@ -1601,15 +1724,24 @@ const Bill = ({ orderId }) => {
               {combinedCart.filter(
                 (item) => isDrinkItem(item) || isFoodItem(item)
               ).length === 0 && (
-                <p className="text-gray-500 text-sm text-center py-4">
+                <p
+                  className="text-center py-4 text-sm"
+                  style={{ color: textSecondaryColor }}
+                >
                   No drinks or food items found in cart.
                 </p>
               )}
             </div>
 
-            <div className="flex justify-between items-center pt-4 border-t">
+            <div
+              className="flex justify-between items-center pt-4 border-t"
+              style={{ borderColor: "#e5e7eb" }}
+            >
               <div>
-                <p className="text-sm font-medium text-gray-900">
+                <p
+                  className="text-sm font-medium"
+                  style={{ color: textPrimaryColor }}
+                >
                   Selected Value: ₱
                   {pwdSssDiscountItems
                     .reduce(
@@ -1618,7 +1750,7 @@ const Bill = ({ orderId }) => {
                     )
                     .toFixed(2)}
                 </p>
-                <p className="text-xs text-gray-600">
+                <p className="text-xs" style={{ color: textSecondaryColor }}>
                   After 20% discount (-₱
                   {(
                     pwdSssDiscountItems.reduce(
@@ -1639,13 +1771,21 @@ const Bill = ({ orderId }) => {
               <div className="flex gap-2">
                 <button
                   onClick={handleCancelPwdSssSelection}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+                  className="px-4 py-2 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+                  style={{
+                    backgroundColor: "#e5e7eb",
+                    color: "#374151",
+                  }}
                 >
                   Cancel
                 </button>
                 <button
                   onClick={handleApplyPwdSssSelection}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="px-4 py-2 rounded-lg font-medium text-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  style={{
+                    backgroundColor: "#10b981",
+                    color: cardBackgroundColor,
+                  }}
                   disabled={pwdSssDiscountItems.length === 0}
                 >
                   Apply Discount
@@ -1658,13 +1798,19 @@ const Bill = ({ orderId }) => {
 
       <div className="max-w-[600px] mx-auto space-y-4">
         {/* Printer Connection Button */}
-        <div className="bg-white rounded-lg p-4 shadow-md">
+        <div
+          className="rounded-lg p-4 shadow-md"
+          style={{ backgroundColor: cardBackgroundColor }}
+        >
           <div className="flex items-center justify-between">
             <div>
-              <h2 className="text-gray-900 text-sm font-semibold">
+              <h2
+                className="text-sm font-semibold"
+                style={{ color: textPrimaryColor }}
+              >
                 Thermal Printer
               </h2>
-              <p className="text-gray-500 text-xs">
+              <p className="text-xs" style={{ color: textSecondaryColor }}>
                 {isPrinterConnected
                   ? "Connected and ready to print"
                   : "Not connected"}
@@ -1674,9 +1820,18 @@ const Bill = ({ orderId }) => {
               onClick={connectToPrinter}
               className={`px-4 py-2 rounded-lg font-semibold text-xs ${
                 isPrinterConnected
-                  ? "bg-green-100 text-green-700"
-                  : "bg-blue-600 text-white hover:bg-blue-700"
+                  ? "text-green-700"
+                  : "text-white hover:bg-blue-700"
               }`}
+              style={
+                isPrinterConnected
+                  ? {
+                      backgroundColor: "#d1fae5",
+                    }
+                  : {
+                      backgroundColor: primaryColor,
+                    }
+              }
             >
               {isPrinterConnected ? "✓ Connected" : "Connect Printer"}
             </button>
@@ -1684,37 +1839,62 @@ const Bill = ({ orderId }) => {
         </div>
 
         {/* 🧾 CUSTOMER DETAILS */}
-        <div className="bg-white rounded-lg p-4 shadow-md">
-          <h2 className="text-gray-900 text-sm font-semibold mb-3">
+        <div
+          className="rounded-lg p-4 shadow-md"
+          style={{ backgroundColor: cardBackgroundColor }}
+        >
+          <h2
+            className="text-sm font-semibold mb-3"
+            style={{ color: textPrimaryColor }}
+          >
             Customer Details (Optional)
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label
+                className="block text-xs font-medium mb-1"
+                style={{ color: "#374151" }}
+              >
                 Name (Optional)
               </label>
               <input
                 type="text"
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:border-blue-500 outline-none"
+                style={{
+                  borderColor: "#d1d5db",
+                  color: textPrimaryColor,
+                  backgroundColor: cardBackgroundColor,
+                }}
                 placeholder="Walk-in Customer"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label
+                className="block text-xs font-medium mb-1"
+                style={{ color: "#374151" }}
+              >
                 Phone (Optional)
               </label>
               <input
                 type="text"
                 value={customerPhone}
                 onChange={(e) => setCustomerPhone(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:border-blue-500 outline-none"
+                style={{
+                  borderColor: "#d1d5db",
+                  color: textPrimaryColor,
+                  backgroundColor: cardBackgroundColor,
+                }}
                 placeholder="0000000000"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
+              <label
+                className="block text-xs font-medium mb-1"
+                style={{ color: "#374151" }}
+              >
                 Guests
               </label>
               <input
@@ -1722,7 +1902,12 @@ const Bill = ({ orderId }) => {
                 value={customerGuests}
                 onChange={(e) => setCustomerGuests(e.target.value)}
                 min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-3 py-2 border rounded-lg text-sm focus:ring-2 focus:border-blue-500 outline-none"
+                style={{
+                  borderColor: "#d1d5db",
+                  color: textPrimaryColor,
+                  backgroundColor: cardBackgroundColor,
+                }}
                 placeholder="1"
               />
             </div>
@@ -1730,12 +1915,20 @@ const Bill = ({ orderId }) => {
         </div>
 
         {/* 🛒 CART ITEMS */}
-        <div className="bg-white rounded-lg p-4 shadow-md max-h-64 overflow-y-auto">
-          <h2 className="text-gray-900 text-sm font-semibold mb-2">
+        <div
+          className="rounded-lg p-4 shadow-md max-h-64 overflow-y-auto"
+          style={{ backgroundColor: cardBackgroundColor }}
+        >
+          <h2
+            className="text-sm font-semibold mb-2"
+            style={{ color: textPrimaryColor }}
+          >
             Cart Items (Order {currentOrder?.number})
           </h2>
           {combinedCart.length === 0 ? (
-            <p className="text-gray-500 text-xs">No items added yet.</p>
+            <p className="text-xs" style={{ color: textSecondaryColor }}>
+              No items added yet.
+            </p>
           ) : (
             combinedCart.map((item, index) => {
               const itemKey = getItemKey(item);
@@ -1755,32 +1948,63 @@ const Bill = ({ orderId }) => {
                   key={getUniqueKey(item, index)}
                   className={`flex justify-between items-center px-3 py-2 rounded-md border mb-2 ${
                     item.isRedeemed
-                      ? "bg-green-50 border-green-200"
+                      ? "border-green-200"
                       : isDiscounted
-                      ? "bg-green-50 border-green-300"
-                      : "bg-gray-50 border-gray-200"
+                      ? "border-green-300"
+                      : "border-gray-200"
                   }`}
+                  style={
+                    item.isRedeemed
+                      ? {
+                          backgroundColor: "#f0fdf4",
+                        }
+                      : isDiscounted
+                      ? {
+                          backgroundColor: "#f0fdf4",
+                        }
+                      : {
+                          backgroundColor: "#f9fafb",
+                        }
+                  }
                 >
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <p className="text-gray-900 text-sm font-medium">
+                      <p
+                        className="text-sm font-medium"
+                        style={{ color: textPrimaryColor }}
+                      >
                         {item.name}
                         {item.isRedeemed && (
-                          <span className="ml-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
+                          <span
+                            className="ml-2 text-white text-xs px-2 py-1 rounded-full"
+                            style={{ backgroundColor: "#10b981" }}
+                          >
                             FREE
                           </span>
                         )}
                         {isDiscounted && !item.isRedeemed && (
-                          <span className="ml-2 bg-green-600 text-white text-xs px-2 py-1 rounded-full">
+                          <span
+                            className="ml-2 text-white text-xs px-2 py-1 rounded-full"
+                            style={{ backgroundColor: "#059669" }}
+                          >
                             PWD/SSS -20%
                           </span>
                         )}
                       </p>
-                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                      <span
+                        className="text-xs px-2 py-0.5 rounded"
+                        style={{
+                          backgroundColor: "#f3f4f6",
+                          color: textSecondaryColor,
+                        }}
+                      >
                         {itemType}
                       </span>
                     </div>
-                    <p className="text-gray-500 text-xs">
+                    <p
+                      className="text-xs"
+                      style={{ color: textSecondaryColor }}
+                    >
                       {item.quantity} × ₱
                       {safeNumber(item.pricePerQuantity).toFixed(2)}
                       {isDiscounted ? (
@@ -1788,7 +2012,7 @@ const Bill = ({ orderId }) => {
                           {" "}
                           = ₱{originalTotal.toFixed(2)} → ₱
                           {displayedTotal.toFixed(2)}{" "}
-                          <span className="text-green-600">
+                          <span style={{ color: "#059669" }}>
                             (-₱{discountAmount.toFixed(2)})
                           </span>
                         </>
@@ -1796,7 +2020,7 @@ const Bill = ({ orderId }) => {
                         <>
                           {" "}
                           = ₱{originalTotal.toFixed(2)} → FREE{" "}
-                          <span className="text-blue-600">
+                          <span style={{ color: "#3b82f6" }}>
                             (-₱{discountAmount.toFixed(2)})
                           </span>
                         </>
@@ -1810,17 +2034,28 @@ const Bill = ({ orderId }) => {
                   <div className="flex items-center gap-2 mr-3">
                     <button
                       onClick={() => handleDecrement(item.id)}
-                      className="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-gray-600 hover:bg-gray-300 text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: "#e5e7eb",
+                        color: "#4b5563",
+                      }}
                       disabled={item.quantity <= 1 || item.isRedeemed}
                     >
                       -
                     </button>
-                    <span className="text-gray-900 text-sm font-medium min-w-6 text-center">
+                    <span
+                      className="text-sm font-medium min-w-6 text-center"
+                      style={{ color: textPrimaryColor }}
+                    >
                       {item.quantity}
                     </span>
                     <button
                       onClick={() => handleIncrement(item.id)}
-                      className="w-6 h-6 flex items-center justify-center bg-gray-200 rounded-full text-gray-600 hover:bg-gray-300 text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="w-6 h-6 flex items-center justify-center rounded-full text-xs font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                      style={{
+                        backgroundColor: "#e5e7eb",
+                        color: "#4b5563",
+                      }}
                       disabled={item.isRedeemed}
                     >
                       +
@@ -1828,9 +2063,12 @@ const Bill = ({ orderId }) => {
                   </div>
 
                   <div className="flex items-center gap-3">
-                    <p className="text-gray-900 text-sm font-bold min-w-20 text-right">
+                    <p
+                      className="text-sm font-bold min-w-20 text-right"
+                      style={{ color: textPrimaryColor }}
+                    >
                       {item.isRedeemed ? (
-                        <span className="text-green-600">FREE</span>
+                        <span style={{ color: "#10b981" }}>FREE</span>
                       ) : (
                         `₱${displayedTotal.toFixed(2)}`
                       )}
@@ -1839,7 +2077,8 @@ const Bill = ({ orderId }) => {
                       {showRedeemOptions && !item.isRedeemed && (
                         <button
                           onClick={() => handleRedeemItem(item.id, item.name)}
-                          className="text-blue-500 hover:text-blue-700 text-xs font-semibold"
+                          className="text-xs font-semibold hover:text-blue-700"
+                          style={{ color: primaryColor }}
                         >
                           Redeem
                         </button>
@@ -1853,7 +2092,8 @@ const Bill = ({ orderId }) => {
                             })
                           )
                         }
-                        className="text-red-500 hover:text-red-700 text-xs font-semibold"
+                        className="text-xs font-semibold hover:text-red-700"
+                        style={{ color: "#ef4444" }}
                       >
                         Delete
                       </button>
@@ -1866,50 +2106,67 @@ const Bill = ({ orderId }) => {
         </div>
 
         {/* 🧾 TOTALS */}
-        <div className="bg-white rounded-lg p-4 shadow-md space-y-2">
+        <div
+          className="rounded-lg p-4 shadow-md space-y-2"
+          style={{ backgroundColor: cardBackgroundColor }}
+        >
           <div className="flex justify-between items-center">
-            <p className="text-xs text-gray-500 font-medium">
+            <p
+              className="text-xs font-medium"
+              style={{ color: textSecondaryColor }}
+            >
               Items ({cartData?.length || 0})
             </p>
-            <h1 className="text-gray-900 text-md font-bold">
+            <h1
+              className="text-md font-bold"
+              style={{ color: textPrimaryColor }}
+            >
               ₱{totals.baseGrossTotal.toFixed(2)}
             </h1>
           </div>
 
           {pwdSssDiscountApplied && totals.pwdSssDiscountAmount > 0 && (
-            <div className="flex justify-between items-center text-green-600">
+            <div className="flex justify-between items-center">
               <div className="flex items-center">
-                <p className="text-xs font-medium mr-2">
+                <p
+                  className="text-xs font-medium mr-2"
+                  style={{ color: "#059669" }}
+                >
                   {discountedItemsInfo}
                   {pwdSssDetails.name && ` (${pwdSssDetails.name})`}
                 </p>
                 <button
                   onClick={clearPwdSssDiscount}
-                  className="text-xs text-red-500 hover:text-red-700 font-medium"
+                  className="text-xs font-medium hover:text-red-700"
+                  style={{ color: "#ef4444" }}
                   disabled={isProcessing}
                 >
                   (Clear)
                 </button>
               </div>
-              <h1 className="text-md font-bold">
+              <h1 className="text-md font-bold" style={{ color: "#059669" }}>
                 -₱{totals.pwdSssDiscountAmount.toFixed(2)}
               </h1>
             </div>
           )}
 
           {hasRedeemedItem && (
-            <div className="flex justify-between items-center text-blue-600">
-              <p className="text-xs font-medium">Redemption Discount</p>
-              <h1 className="text-md font-bold">
+            <div className="flex justify-between items-center">
+              <p className="text-xs font-medium" style={{ color: "#3b82f6" }}>
+                Redemption Discount
+              </p>
+              <h1 className="text-md font-bold" style={{ color: "#3b82f6" }}>
                 -₱{totals.redemptionAmount.toFixed(2)}
               </h1>
             </div>
           )}
 
           {employeeDiscountApplied && totals.employeeDiscountAmount > 0 && (
-            <div className="flex justify-between items-center text-yellow-600">
-              <p className="text-xs font-medium">Employee Discount (15%)</p>
-              <h1 className="text-md font-bold">
+            <div className="flex justify-between items-center">
+              <p className="text-xs font-medium" style={{ color: "#d97706" }}>
+                Employee Discount (15%)
+              </p>
+              <h1 className="text-md font-bold" style={{ color: "#d97706" }}>
                 -₱{totals.employeeDiscountAmount.toFixed(2)}
               </h1>
             </div>
@@ -1917,28 +2174,42 @@ const Bill = ({ orderId }) => {
 
           {shareholderDiscountApplied &&
             totals.shareholderDiscountAmount > 0 && (
-              <div className="flex justify-between items-center text-purple-600">
-                <p className="text-xs font-medium">
+              <div className="flex justify-between items-center">
+                <p className="text-xs font-medium" style={{ color: "#7c3aed" }}>
                   Shareholder Discount (10%)
                 </p>
-                <h1 className="text-md font-bold">
+                <h1 className="text-md font-bold" style={{ color: "#7c3aed" }}>
                   -₱{totals.shareholderDiscountAmount.toFixed(2)}
                 </h1>
               </div>
             )}
 
           <div className="flex justify-between items-center">
-            <p className="text-xs text-gray-500 font-medium">Net of VAT</p>
-            <h1 className="text-gray-900 text-md font-bold">
+            <p
+              className="text-xs font-medium"
+              style={{ color: textSecondaryColor }}
+            >
+              Net of VAT
+            </p>
+            <h1
+              className="text-md font-bold"
+              style={{ color: textPrimaryColor }}
+            >
               ₱{totals.netSales.toFixed(2)}
             </h1>
           </div>
 
           <div className="flex justify-between items-center">
-            <p className="text-xs text-gray-500 font-medium">
+            <p
+              className="text-xs font-medium"
+              style={{ color: textSecondaryColor }}
+            >
               Total (VAT inclusive)
             </p>
-            <h1 className="text-gray-900 text-md font-bold">
+            <h1
+              className="text-md font-bold"
+              style={{ color: textPrimaryColor }}
+            >
               ₱{totals.total.toFixed(2)}
             </h1>
           </div>
@@ -1951,9 +2222,20 @@ const Bill = ({ orderId }) => {
             disabled={isProcessing}
             className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
               pwdSssDiscountApplied
-                ? "bg-green-500 text-white hover:bg-green-600"
-                : "bg-green-100 text-green-700 hover:bg-green-200"
+                ? "hover:bg-green-600"
+                : "hover:bg-green-200"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
+            style={
+              pwdSssDiscountApplied
+                ? {
+                    backgroundColor: "#10b981",
+                    color: cardBackgroundColor,
+                  }
+                : {
+                    backgroundColor: "#d1fae5",
+                    color: "#047857",
+                  }
+            }
           >
             {pwdSssDiscountApplied ? (
               <span className="flex items-center justify-center gap-1">
@@ -1974,9 +2256,20 @@ const Bill = ({ orderId }) => {
             disabled={isProcessing}
             className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
               employeeDiscountApplied
-                ? "bg-yellow-500 text-white hover:bg-yellow-600"
-                : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                ? "hover:bg-yellow-600"
+                : "hover:bg-yellow-200"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
+            style={
+              employeeDiscountApplied
+                ? {
+                    backgroundColor: "#f59e0b",
+                    color: cardBackgroundColor,
+                  }
+                : {
+                    backgroundColor: "#fef3c7",
+                    color: "#92400e",
+                  }
+            }
           >
             {employeeDiscountApplied
               ? "✓ Employee Discount (15%)"
@@ -1988,9 +2281,20 @@ const Bill = ({ orderId }) => {
             disabled={isProcessing}
             className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
               shareholderDiscountApplied
-                ? "bg-purple-500 text-white hover:bg-purple-600"
-                : "bg-purple-100 text-purple-700 hover:bg-purple-200"
+                ? "hover:bg-purple-600"
+                : "hover:bg-purple-200"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
+            style={
+              shareholderDiscountApplied
+                ? {
+                    backgroundColor: "#8b5cf6",
+                    color: cardBackgroundColor,
+                  }
+                : {
+                    backgroundColor: "#ede9fe",
+                    color: "#7c3aed",
+                  }
+            }
           >
             {shareholderDiscountApplied
               ? "✓ Shareholder Discount (10%)"
@@ -2005,7 +2309,11 @@ const Bill = ({ orderId }) => {
               <button
                 onClick={handleCancelRedeem}
                 disabled={isProcessing}
-                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-gray-500 text-white hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: "#6b7280",
+                  color: cardBackgroundColor,
+                }}
               >
                 Cancel Redeem
               </button>
@@ -2013,7 +2321,11 @@ const Bill = ({ orderId }) => {
               <button
                 onClick={handleShowRedeemOptions}
                 disabled={isProcessing || combinedCart.length === 0}
-                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                style={{
+                  backgroundColor: "#dbeafe",
+                  color: primaryColor,
+                }}
               >
                 Redeem (Free 1 Item)
               </button>
@@ -2022,7 +2334,11 @@ const Bill = ({ orderId }) => {
             <button
               onClick={handleRemoveRedemption}
               disabled={isProcessing}
-              className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{
+                backgroundColor: "#ef4444",
+                color: cardBackgroundColor,
+              }}
             >
               Remove Redemption
             </button>
@@ -2036,9 +2352,20 @@ const Bill = ({ orderId }) => {
             disabled={isProcessing}
             className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
               paymentMethod === "Cash"
-                ? "bg-blue-600 text-white hover:bg-blue-700"
-                : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                ? "hover:bg-blue-700"
+                : "hover:bg-gray-300"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
+            style={
+              paymentMethod === "Cash"
+                ? {
+                    backgroundColor: primaryColor,
+                    color: cardBackgroundColor,
+                  }
+                : {
+                    backgroundColor: "#e5e7eb",
+                    color: "#4b5563",
+                  }
+            }
           >
             Cash
           </button>
@@ -2048,9 +2375,20 @@ const Bill = ({ orderId }) => {
             disabled={isProcessing}
             className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
               paymentMethod === "Online"
-                ? "bg-blue-600 text-white hover:bg-blue-700"
-                : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                ? "hover:bg-blue-700"
+                : "hover:bg-gray-300"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
+            style={
+              paymentMethod === "Online"
+                ? {
+                    backgroundColor: primaryColor,
+                    color: cardBackgroundColor,
+                  }
+                : {
+                    backgroundColor: "#e5e7eb",
+                    color: "#4b5563",
+                  }
+            }
           >
             Online
           </button>
@@ -2061,7 +2399,12 @@ const Bill = ({ orderId }) => {
           <button
             onClick={handlePlaceOrder}
             disabled={isProcessing || !paymentMethod || cartData.length === 0}
-            className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white shadow hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            className="w-full px-4 py-3 rounded-lg font-semibold text-sm shadow hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            style={{
+              backgroundColor:
+                paymentMethod && cartData.length > 0 ? primaryColor : "#93c5fd",
+              color: cardBackgroundColor,
+            }}
           >
             {isProcessing ? (
               <>

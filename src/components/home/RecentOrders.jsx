@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import {
   FaSearch,
   FaUser,
@@ -12,8 +12,6 @@ import {
   FaEye,
   FaEyeSlash,
   FaList,
-  FaRedo,
-  FaBug,
 } from "react-icons/fa";
 import {
   keepPreviousData,
@@ -29,84 +27,19 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
   const [showAllOrders, setShowAllOrders] = useState(false);
   const queryClient = useQueryClient();
 
-  // DEBUG: Log initial props
-  useEffect(() => {
-    console.log("📊 RecentOrders Component Mounted");
-    console.log("📥 Orders prop received:", {
-      hasOrders: !!orders,
-      isArray: Array.isArray(orders),
-      length: Array.isArray(orders) ? orders.length : "N/A",
-    });
-  }, []);
-
   // Use provided orders prop or fetch if not provided
   const {
     data: resData,
     isError,
     isLoading,
-    refetch,
   } = useQuery({
     queryKey: ["orders"],
     queryFn: async () => {
       try {
-        console.log("🔄 Fetching orders from API...");
         const response = await getOrders();
-
-        // DEBUG: Log full API response
-        console.log("📦 Full API Response:", {
-          status: response?.status,
-          statusText: response?.statusText,
-          dataStructure: Object.keys(response || {}),
-          responseData: response?.data ? Object.keys(response.data) : "No data",
-        });
-
-        // Log the actual data structure
-        if (response?.data) {
-          console.log("🔍 Response.data structure:", response.data);
-
-          // Check if it's an array
-          if (Array.isArray(response.data)) {
-            console.log(
-              "✅ response.data is an array, length:",
-              response.data.length
-            );
-          } else if (response.data && typeof response.data === "object") {
-            console.log(
-              "📋 response.data is an object, keys:",
-              Object.keys(response.data)
-            );
-
-            // Check nested arrays
-            if (Array.isArray(response.data.data)) {
-              console.log(
-                "✅ response.data.data is an array, length:",
-                response.data.data.length
-              );
-            }
-            if (Array.isArray(response.data.orders)) {
-              console.log(
-                "✅ response.data.orders is an array, length:",
-                response.data.orders.length
-              );
-            }
-            if (Array.isArray(response.data.results)) {
-              console.log(
-                "✅ response.data.results is an array, length:",
-                response.data.results.length
-              );
-            }
-            if (Array.isArray(response.data.items)) {
-              console.log(
-                "✅ response.data.items is an array, length:",
-                response.data.items.length
-              );
-            }
-          }
-        }
-
         return response;
       } catch (error) {
-        console.error("❌ Error fetching orders:", error);
+        console.error("Error fetching orders:", error);
         throw error;
       }
     },
@@ -114,133 +47,49 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     enabled: !orders || orders.length === 0,
   });
 
-  // DEBUG: Log when data changes
-  useEffect(() => {
-    if (resData) {
-      console.log("🔄 Query data updated:", {
-        hasData: !!resData,
-        hasResponseData: !!resData?.data,
-        fullResponse: resData,
-      });
-    }
-  }, [resData]);
-
   if (isError) {
     enqueueSnackbar("Failed to load orders", { variant: "error" });
   }
 
   // Get all orders - use prop if provided, otherwise use fetched data
   const allOrders = React.useMemo(() => {
-    console.log("🧮 Calculating allOrders...");
-
     // If orders prop is provided and it's an array, use it
-    if (orders && Array.isArray(orders) && orders.length > 0) {
-      console.log("📤 Using orders prop, count:", orders.length);
+    if (orders && Array.isArray(orders)) {
       return orders;
     }
 
     // Handle the API response structure
     if (resData) {
-      console.log("📥 Processing API response data...");
-
       // First check if data exists
       const responseData = resData.data;
 
-      // DEBUG: Log what we're working with
-      console.log("📊 Response data type:", typeof responseData);
-      console.log("📊 Is array?", Array.isArray(responseData));
-
+      // Handle different possible response structures
       if (Array.isArray(responseData)) {
         // If response.data is directly an array
-        console.log(
-          "✅ response.data is directly an array, length:",
-          responseData.length
-        );
         return responseData;
       } else if (responseData && typeof responseData === "object") {
-        console.log("📋 response.data is an object, examining structure...");
-
         // Check for common nested structures
         if (Array.isArray(responseData.data)) {
-          console.log(
-            "✅ Found response.data.data array, length:",
-            responseData.data.length
-          );
           return responseData.data;
         } else if (Array.isArray(responseData.orders)) {
-          console.log(
-            "✅ Found response.data.orders array, length:",
-            responseData.orders.length
-          );
           return responseData.orders;
         } else if (Array.isArray(responseData.items)) {
-          console.log(
-            "✅ Found response.data.items array, length:",
-            responseData.items.length
-          );
           return responseData.items;
         } else if (Array.isArray(responseData.results)) {
-          console.log(
-            "✅ Found response.data.results array, length:",
-            responseData.results.length
-          );
           return responseData.results;
-        } else {
-          console.log(
-            "⚠️ No array found in response.data, keys:",
-            Object.keys(responseData)
-          );
-
-          // Try to extract any array from the object
-          for (const key in responseData) {
-            if (Array.isArray(responseData[key])) {
-              console.log(
-                `✅ Found array in response.data.${key}, length:`,
-                responseData[key].length
-              );
-              return responseData[key];
-            }
-          }
-
-          // If no array found, try to see if it's a single order object
-          if (responseData._id) {
-            console.log("⚠️ Single order object found, wrapping in array");
-            return [responseData];
-          }
         }
       }
     }
 
-    console.log("⚠️ No orders found, returning empty array");
+    // Return empty array as fallback
     return [];
   }, [orders, resData]);
 
-  // DEBUG: Log when allOrders changes
-  useEffect(() => {
-    console.log("📈 allOrders updated:", {
-      count: allOrders.length,
-      firstFew: allOrders.slice(0, 3).map((o) => ({
-        id: o._id,
-        name: o.customerDetails?.name,
-        status: o.orderStatus,
-      })),
-      lastFew: allOrders.slice(-3).map((o) => ({
-        id: o._id,
-        name: o.customerDetails?.name,
-        status: o.orderStatus,
-      })),
-    });
-  }, [allOrders]);
-
   // Filter orders based on search query
   const filteredOrders = React.useMemo(() => {
-    if (!Array.isArray(allOrders)) {
-      console.log("❌ allOrders is not an array");
-      return [];
-    }
+    if (!Array.isArray(allOrders)) return [];
 
-    console.log("🔍 Filtering orders...");
-    const result = allOrders.filter((order) => {
+    return allOrders.filter((order) => {
       if (!order) return false;
 
       const searchLower = searchQuery.toLowerCase();
@@ -260,23 +109,12 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
 
       return false;
     });
-
-    console.log(`✅ Filtered ${result.length} of ${allOrders.length} orders`);
-    return result;
   }, [allOrders, searchQuery]);
 
   // Show only recent orders (last 5) when not in "show all" mode, otherwise show filtered results
   const displayOrders = React.useMemo(() => {
-    if (!Array.isArray(filteredOrders)) {
-      console.log("❌ filteredOrders is not an array");
-      return [];
-    }
-
-    const result = showAllOrders ? filteredOrders : filteredOrders.slice(0, 5);
-    console.log(
-      `📋 Displaying ${result.length} orders (showAllOrders: ${showAllOrders})`
-    );
-    return result;
+    if (!Array.isArray(filteredOrders)) return [];
+    return showAllOrders ? filteredOrders : filteredOrders.slice(0, 5);
   }, [filteredOrders, showAllOrders]);
 
   // Status configuration - Matching the Home component style
@@ -532,83 +370,6 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     setShowAllOrders(!showAllOrders);
   };
 
-  // Manual fetch function to debug
-  const manualFetchOrders = async () => {
-    try {
-      enqueueSnackbar("Manually fetching orders...", { variant: "info" });
-      console.log("🔍 Manual fetch started...");
-
-      // Try direct fetch to see raw response
-      const response = await fetch("http://localhost:8000/api/orders");
-      const data = await response.json();
-
-      console.log("📊 Manual fetch result:", {
-        status: response.status,
-        data: data,
-        dataLength: Array.isArray(data) ? data.length : "Not an array",
-        dataKeys: data && typeof data === "object" ? Object.keys(data) : "N/A",
-      });
-
-      if (Array.isArray(data)) {
-        console.log(`✅ Manual fetch got ${data.length} orders`);
-        enqueueSnackbar(`Manual fetch got ${data.length} orders`, {
-          variant: "success",
-        });
-      } else if (data && typeof data === "object") {
-        console.log("📋 Manual fetch got object, checking for arrays...");
-        for (const key in data) {
-          if (Array.isArray(data[key])) {
-            console.log(
-              `✅ Found array in data.${key}, length: ${data[key].length}`
-            );
-            enqueueSnackbar(`Found ${data[key].length} orders in ${key}`, {
-              variant: "success",
-            });
-          }
-        }
-      }
-
-      // Trigger a refetch of the query
-      await refetch();
-    } catch (error) {
-      console.error("❌ Manual fetch error:", error);
-      enqueueSnackbar(`Manual fetch failed: ${error.message}`, {
-        variant: "error",
-      });
-    }
-  };
-
-  // Debug function
-  const showDebugInfo = () => {
-    console.log("=== DEBUG INFO ===");
-    console.log("allOrders length:", allOrders.length);
-    console.log("filteredOrders length:", filteredOrders.length);
-    console.log("displayOrders length:", displayOrders.length);
-    console.log("showAllOrders:", showAllOrders);
-    console.log("searchQuery:", searchQuery);
-    console.log(
-      "API response structure:",
-      resData ? Object.keys(resData) : "No response"
-    );
-
-    if (resData?.data) {
-      console.log("response.data type:", typeof resData.data);
-      console.log("response.data keys:", Object.keys(resData.data));
-    }
-
-    // Show sample orders
-    if (allOrders.length > 0) {
-      console.log("First 3 orders:", allOrders.slice(0, 3));
-      console.log("Last 3 orders:", allOrders.slice(-3));
-    }
-
-    console.log("==================");
-
-    enqueueSnackbar(`Debug: ${allOrders.length} orders loaded`, {
-      variant: "info",
-    });
-  };
-
   // Show loading state
   if (isLoading && (!orders || orders.length === 0)) {
     return (
@@ -623,44 +384,12 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
 
   return (
     <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-4 shadow-lg hover:shadow-xl transition-all duration-300">
-      {/* Header with Debug Button */}
+      {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-lg font-semibold text-gray-900">
           {showAllOrders ? "All Orders" : "Recent Orders"}
         </h1>
         <div className="flex items-center gap-2">
-          {/* Debug Button */}
-          <button
-            onClick={showDebugInfo}
-            className="text-xs text-gray-600 bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded flex items-center gap-1"
-            title="Show Debug Info"
-          >
-            <FaBug className="text-xs" />
-            Debug
-          </button>
-
-          {/* Refresh Button */}
-          <button
-            onClick={() => {
-              queryClient.invalidateQueries({ queryKey: ["orders"] });
-              enqueueSnackbar("Refreshing orders...", { variant: "info" });
-            }}
-            className="text-xs text-green-600 bg-green-100 hover:bg-green-200 px-2 py-1 rounded flex items-center gap-1"
-            title="Refresh Orders"
-          >
-            <FaRedo className="text-xs" />
-            Refresh
-          </button>
-
-          {/* Manual Fetch Button */}
-          <button
-            onClick={manualFetchOrders}
-            className="text-xs text-blue-600 bg-blue-100 hover:bg-blue-200 px-2 py-1 rounded flex items-center gap-1"
-            title="Manual Fetch"
-          >
-            🔍 Fetch
-          </button>
-
           {showAllOrders && (
             <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
               <FaList className="text-xs" />
@@ -700,21 +429,13 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
 
       {/* Orders Count Info */}
       <div className="mb-4 flex justify-between items-center">
-        <div>
-          <p className="text-xs text-gray-600">
-            Showing {displayOrders.length} of {filteredOrders.length} orders
-            {!showAllOrders && filteredOrders.length > 5 && " (most recent 5)"}
-          </p>
-          <p className="text-xs text-gray-400">
-            Total in database: {allOrders.length}
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-xs text-gray-500">
-            Filtered: {filteredOrders.length}
-          </p>
-          <p className="text-xs text-gray-400">Raw count: {allOrders.length}</p>
-        </div>
+        <p className="text-xs text-gray-600">
+          Showing {displayOrders.length} of {filteredOrders.length} orders
+          {!showAllOrders && filteredOrders.length > 5 && " (most recent 5)"}
+        </p>
+        <p className="text-xs text-gray-500">
+          Total orders: {allOrders.length}
+        </p>
       </div>
 
       {/* Orders List */}
