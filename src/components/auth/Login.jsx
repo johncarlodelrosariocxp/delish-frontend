@@ -14,6 +14,7 @@ const Login = () => {
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
   const [backendUrl, setBackendUrl] = useState("");
+  const [isBackendConnected, setIsBackendConnected] = useState(false);
 
   // Test backend connection on load
   useEffect(() => {
@@ -33,6 +34,7 @@ const Login = () => {
         console.log("📊 Backend response:", data);
 
         setBackendUrl(RENDER_URL);
+        setIsBackendConnected(true);
 
         // Show success message
         enqueueSnackbar("✅ Connected to production backend", {
@@ -42,6 +44,7 @@ const Login = () => {
       } catch (error) {
         console.error("❌ Cannot connect to backend:", error.message);
         console.log("⚠️ Backend might be down or CORS issue");
+        setIsBackendConnected(false);
 
         // Show error message
         enqueueSnackbar(
@@ -80,36 +83,55 @@ const Login = () => {
     onSuccess: (res) => {
       console.log("🔐 Full login response:", res.data);
 
-      // Token is at res.data.data.token (FIXED!)
-      const token = res.data?.data?.token;
+      // ✅ FIXED: Token is at res.data.token (NOT res.data.data.token)
+      const token = res.data?.token;
+      console.log("✅ Token found at res.data.token:", token ? "YES" : "NO");
 
-      console.log("✅ Token found:", token);
+      // ✅ FIXED: User is at res.data.data?.user
+      const user = res.data?.data?.user;
+      console.log("✅ User found at res.data.data.user:", user ? "YES" : "NO");
 
       if (res.data?.success && token) {
-        const user = res.data.data.user;
-        const { _id, name, email, phone, role } = user;
+        console.log("✅ Login successful! Processing...");
 
-        console.log("✅ User data:", { _id, name, email, phone, role });
-
-        // Save token to localStorage (FIXED!)
+        // Save token to localStorage
         localStorage.setItem("authToken", token);
         localStorage.setItem("token", token);
         console.log("✅ Token saved to localStorage");
 
-        // Force authentication check
-        window.dispatchEvent(new Event("storage"));
-
-        // Save user in Redux
-        dispatch(
-          setUser({
+        // If user is in response, use it
+        if (user) {
+          const { _id, name, email, phone, role } = user;
+          console.log("✅ User data from response:", {
             _id,
             name,
             email,
             phone,
             role,
-            token: token,
-          })
-        );
+          });
+
+          // Save user in Redux
+          dispatch(
+            setUser({
+              _id,
+              name,
+              email,
+              phone,
+              role,
+              token: token,
+            })
+          );
+
+          // Also save to localStorage for persistence
+          localStorage.setItem("user", JSON.stringify(user));
+        } else {
+          // If no user in response, fetch it from /me endpoint
+          console.log("⚠️ No user in login response, fetching from /me...");
+          fetchUserProfile(token);
+        }
+
+        // Force authentication check
+        window.dispatchEvent(new Event("storage"));
 
         // Navigate after a short delay
         setTimeout(() => {
@@ -119,8 +141,9 @@ const Login = () => {
           );
           navigate("/", { replace: true });
           console.log("🚀 Navigated to home");
-        }, 300);
+        }, 500);
       } else {
+        console.error("❌ Login failed - no token or success false");
         enqueueSnackbar(
           res.data?.message || "Login failed - no token received",
           {
@@ -135,6 +158,7 @@ const Login = () => {
         code: error.code,
         status: error.response?.status,
         url: error.config?.url,
+        responseData: error.response?.data,
       });
 
       let errorMessage = "Wrong password or email";
@@ -167,6 +191,61 @@ const Login = () => {
     },
   });
 
+  // Helper function to fetch user profile
+  const fetchUserProfile = async (token) => {
+    try {
+      console.log("🔍 Fetching user profile...");
+      const response = await fetch(
+        "https://delish-backend-1.onrender.com/api/user/me",
+        {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: "application/json",
+          },
+        }
+      );
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log("✅ User profile response:", data);
+
+        // User might be at data.data or data.data.user or data.user
+        const user = data.data?.user || data.data || data.user;
+
+        if (user) {
+          const { _id, name, email, phone, role } = user;
+          console.log("✅ Fetched user data:", {
+            _id,
+            name,
+            email,
+            phone,
+            role,
+          });
+
+          // Save user in Redux
+          dispatch(
+            setUser({
+              _id,
+              name,
+              email,
+              phone,
+              role,
+              token: token,
+            })
+          );
+
+          // Save to localStorage
+          localStorage.setItem("user", JSON.stringify(user));
+        }
+      } else {
+        console.error("❌ Failed to fetch user profile:", response.status);
+      }
+    } catch (error) {
+      console.error("❌ Error fetching user profile:", error);
+    }
+  };
+
   // Emergency: Create user directly
   const handleEmergencyCreateUser = async () => {
     try {
@@ -183,7 +262,7 @@ const Login = () => {
             name: "Admin User",
             email: "admin@delish.com",
             phone: "1234567890",
-            password: "admin123",
+            password: "password123", // Changed from admin123 to password123
             role: "admin",
           }),
         }
@@ -194,7 +273,7 @@ const Login = () => {
 
       if (data.success) {
         enqueueSnackbar(
-          "✅ Emergency user created! Try logging in with admin@delish.com / admin123",
+          "✅ Emergency user created! Try logging in with admin@delish.com / password123",
           {
             variant: "success",
             autoHideDuration: 8000,
@@ -204,7 +283,7 @@ const Login = () => {
         // Auto-fill the form
         setFormData({
           email: "admin@delish.com",
-          password: "admin123",
+          password: "password123",
         });
       }
     } catch (error) {
@@ -227,27 +306,46 @@ const Login = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: "admin@delish.com",
-            password: "admin123",
+            password: "password123", // Changed from admin123 to password123
           }),
         }
       );
 
       const data = await response.json();
       console.log("Quick test response:", data);
+      console.log("Token location:", data.token ? "data.token ✓" : "NOT FOUND");
+      console.log(
+        "User location:",
+        data.data?.user
+          ? "data.data.user ✓"
+          : data.user
+          ? "data.user ✓"
+          : "NOT FOUND"
+      );
 
-      if (data.success && data.data?.token) {
+      if (data.success && data.token) {
         // Auto-fill form with test credentials
         setFormData({
           email: "admin@delish.com",
-          password: "admin123",
+          password: "password123",
         });
 
         enqueueSnackbar("✅ Test credentials ready! Click Sign In", {
           variant: "success",
         });
+      } else {
+        enqueueSnackbar(
+          "❌ Test failed: " + (data.message || "Unknown error"),
+          {
+            variant: "error",
+          }
+        );
       }
     } catch (error) {
       console.error("Quick test failed:", error);
+      enqueueSnackbar("❌ Test failed: " + error.message, {
+        variant: "error",
+      });
     }
   };
 
@@ -276,7 +374,7 @@ const Login = () => {
           </button>
         </div>
 
-        {backendUrl ? (
+        {isBackendConnected ? (
           <div className="mt-2 p-2 bg-green-900 bg-opacity-20 border border-green-700 rounded">
             <p className="text-green-300 text-sm">✅ Backend connected</p>
           </div>
@@ -314,7 +412,7 @@ const Login = () => {
               name="password"
               value={formData.password}
               onChange={handleChange}
-              placeholder="admin123"
+              placeholder="password123"
               className="w-full p-3 bg-[#1f1f1f] border border-gray-700 rounded-lg text-white mb-4"
               required
             />
@@ -333,7 +431,10 @@ const Login = () => {
             <button
               type="button"
               onClick={() =>
-                setFormData({ email: "admin@delish.com", password: "admin123" })
+                setFormData({
+                  email: "admin@delish.com",
+                  password: "password123",
+                })
               }
               className="w-full p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded"
             >
@@ -394,9 +495,26 @@ const Login = () => {
       {/* Debug Info */}
       <div className="mt-6 p-3 bg-gray-900 rounded-lg text-xs text-gray-400">
         <p className="font-semibold mb-1">Debug Info:</p>
-        <p>Token location: res.data.data.token</p>
-        <p>User location: res.data.data.user</p>
+        <p>
+          ✅ Token location: <code>res.data.token</code>
+        </p>
+        <p>
+          ✅ User location: <code>res.data.data?.user</code>
+        </p>
         <p>Backend: Render</p>
+        <p>Test Email: admin@delish.com</p>
+        <p>Test Password: password123</p>
+        <p className="mt-2 text-yellow-400">Response structure:</p>
+        <pre className="text-xs mt-1 overflow-x-auto">
+          {`{
+  success: true,
+  message: "...",
+  data: {
+    user: { ... }   // User is here
+  },
+  token: "eyJ..."   // Token is here (NOT in data!)
+}`}
+        </pre>
       </div>
     </div>
   );
