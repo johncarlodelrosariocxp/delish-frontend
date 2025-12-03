@@ -76,84 +76,100 @@ const Login = () => {
   );
 
   // =============================
-  // 📌 Login Mutation - FIXED VERSION
+  // 📌 Login Mutation - COMPLETELY FIXED VERSION
   // =============================
   const loginMutation = useMutation({
     mutationFn: (reqData) => login(reqData),
     onSuccess: (res) => {
-      console.log("🔐 Full login response:", res.data);
+      console.log("🔐 Full login response:", res);
+      console.log("🔐 Response data:", res.data);
+      console.log("🔐 Response structure:", JSON.stringify(res.data, null, 2));
 
-      // ✅ FIXED: Token is at res.data.token (NOT res.data.data.token)
-      const token = res.data?.token;
-      console.log("✅ Token found at res.data.token:", token ? "YES" : "NO");
+      try {
+        // SAFE: Get token from multiple possible locations
+        const token = res.data?.token || res.data?.data?.token;
+        console.log("✅ Token found:", token ? "YES" : "NO");
 
-      // ✅ FIXED: User is at res.data.data?.user
-      const user = res.data?.data?.user;
-      console.log("✅ User found at res.data.data.user:", user ? "YES" : "NO");
-
-      if (res.data?.success && token) {
-        console.log("✅ Login successful! Processing...");
-
-        // Save token to localStorage
-        localStorage.setItem("authToken", token);
-        localStorage.setItem("token", token);
-        console.log("✅ Token saved to localStorage");
-
-        // If user is in response, use it
-        if (user) {
-          const { _id, name, email, phone, role } = user;
-          console.log("✅ User data from response:", {
-            _id,
-            name,
-            email,
-            phone,
-            role,
-          });
-
-          // Save user in Redux
-          dispatch(
-            setUser({
-              _id,
-              name,
-              email,
-              phone,
-              role,
-              token: token,
-            })
-          );
-
-          // Also save to localStorage for persistence
-          localStorage.setItem("user", JSON.stringify(user));
-        } else {
-          // If no user in response, fetch it from /me endpoint
-          console.log("⚠️ No user in login response, fetching from /me...");
-          fetchUserProfile(token);
+        if (!token) {
+          throw new Error("No token received in response");
         }
 
-        // Force authentication check
-        window.dispatchEvent(new Event("storage"));
+        // SAFE: Get user from multiple possible locations
+        const user = res.data?.data?.user || res.data?.user || res.data?.data;
+        console.log("✅ User data found:", user ? "YES" : "NO");
 
-        // Navigate after a short delay
-        setTimeout(() => {
-          console.log(
-            "🔍 Final auth check:",
-            localStorage.getItem("authToken")
-          );
-          navigate("/", { replace: true });
-          console.log("🚀 Navigated to home");
-        }, 500);
-      } else {
-        console.error("❌ Login failed - no token or success false");
-        enqueueSnackbar(
-          res.data?.message || "Login failed - no token received",
-          {
+        if (res.data?.success && token) {
+          console.log("✅ Login successful! Processing...");
+
+          // Save token to localStorage
+          localStorage.setItem("authToken", token);
+          localStorage.setItem("token", token);
+          console.log("✅ Token saved to localStorage");
+
+          // Extract user data SAFELY with fallbacks
+          const userData = {
+            _id: user?._id || "unknown-id",
+            name: user?.name || "User",
+            email: formData.email,
+            phone: user?.phone || "",
+            role: user?.role || "cashier",
+            token: token,
+          };
+
+          console.log("✅ Processed user data:", userData);
+
+          // Save user in Redux
+          dispatch(setUser(userData));
+
+          // Save to localStorage for persistence
+          localStorage.setItem("user", JSON.stringify(userData));
+
+          // Force authentication check
+          window.dispatchEvent(new Event("storage"));
+
+          // Navigate after a short delay
+          setTimeout(() => {
+            console.log(
+              "🔍 Final auth check - Token:",
+              localStorage.getItem("authToken")
+            );
+            console.log(
+              "🔍 Final auth check - User:",
+              localStorage.getItem("user")
+            );
+            navigate("/", { replace: true });
+            console.log("🚀 Navigated to home");
+          }, 500);
+        } else {
+          console.error("❌ Login failed - no success flag");
+          enqueueSnackbar(res.data?.message || "Login failed", {
             variant: "error",
-          }
-        );
+          });
+        }
+      } catch (error) {
+        console.error("❌ Error in onSuccess handler:", error);
+        console.error("❌ Error details:", {
+          message: error.message,
+          stack: error.stack,
+          response: res.data,
+        });
+
+        // Even if there's an error, if we have a token, try to continue
+        const token = localStorage.getItem("authToken");
+        if (token) {
+          console.log("⚠️ Continuing with token despite error");
+          setTimeout(() => {
+            navigate("/", { replace: true });
+          }, 500);
+        } else {
+          enqueueSnackbar("Login processing error: " + error.message, {
+            variant: "error",
+          });
+        }
       }
     },
     onError: (error) => {
-      console.error("❌ Login error:", {
+      console.error("❌ Login mutation error:", {
         message: error.message,
         code: error.code,
         status: error.response?.status,
@@ -171,6 +187,9 @@ const Login = () => {
         errorMessage = "Login endpoint not found";
         helpMessage =
           "Backend API endpoint is not available. Check deployment.";
+      } else if (error?.response?.status === 401) {
+        errorMessage = "Invalid email or password";
+        helpMessage = "Use: admin@delish.com / password123";
       } else if (error?.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
@@ -191,61 +210,6 @@ const Login = () => {
     },
   });
 
-  // Helper function to fetch user profile
-  const fetchUserProfile = async (token) => {
-    try {
-      console.log("🔍 Fetching user profile...");
-      const response = await fetch(
-        "https://delish-backend-1.onrender.com/api/user/me",
-        {
-          method: "GET",
-          headers: {
-            Authorization: `Bearer ${token}`,
-            Accept: "application/json",
-          },
-        }
-      );
-
-      if (response.ok) {
-        const data = await response.json();
-        console.log("✅ User profile response:", data);
-
-        // User might be at data.data or data.data.user or data.user
-        const user = data.data?.user || data.data || data.user;
-
-        if (user) {
-          const { _id, name, email, phone, role } = user;
-          console.log("✅ Fetched user data:", {
-            _id,
-            name,
-            email,
-            phone,
-            role,
-          });
-
-          // Save user in Redux
-          dispatch(
-            setUser({
-              _id,
-              name,
-              email,
-              phone,
-              role,
-              token: token,
-            })
-          );
-
-          // Save to localStorage
-          localStorage.setItem("user", JSON.stringify(user));
-        }
-      } else {
-        console.error("❌ Failed to fetch user profile:", response.status);
-      }
-    } catch (error) {
-      console.error("❌ Error fetching user profile:", error);
-    }
-  };
-
   // Emergency: Create user directly
   const handleEmergencyCreateUser = async () => {
     try {
@@ -262,7 +226,7 @@ const Login = () => {
             name: "Admin User",
             email: "admin@delish.com",
             phone: "1234567890",
-            password: "password123", // Changed from admin123 to password123
+            password: "password123",
             role: "admin",
           }),
         }
@@ -285,6 +249,10 @@ const Login = () => {
           email: "admin@delish.com",
           password: "password123",
         });
+      } else {
+        enqueueSnackbar("Failed to create user: " + data.message, {
+          variant: "error",
+        });
       }
     } catch (error) {
       console.error("Emergency user failed:", error);
@@ -306,21 +274,15 @@ const Login = () => {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             email: "admin@delish.com",
-            password: "password123", // Changed from admin123 to password123
+            password: "password123",
           }),
         }
       );
 
       const data = await response.json();
-      console.log("Quick test response:", data);
-      console.log("Token location:", data.token ? "data.token ✓" : "NOT FOUND");
       console.log(
-        "User location:",
-        data.data?.user
-          ? "data.data.user ✓"
-          : data.user
-          ? "data.user ✓"
-          : "NOT FOUND"
+        "Quick test response structure:",
+        JSON.stringify(data, null, 2)
       );
 
       if (data.success && data.token) {
@@ -495,26 +457,55 @@ const Login = () => {
       {/* Debug Info */}
       <div className="mt-6 p-3 bg-gray-900 rounded-lg text-xs text-gray-400">
         <p className="font-semibold mb-1">Debug Info:</p>
-        <p>
-          ✅ Token location: <code>res.data.token</code>
-        </p>
-        <p>
-          ✅ User location: <code>res.data.data?.user</code>
-        </p>
-        <p>Backend: Render</p>
-        <p>Test Email: admin@delish.com</p>
-        <p>Test Password: password123</p>
-        <p className="mt-2 text-yellow-400">Response structure:</p>
-        <pre className="text-xs mt-1 overflow-x-auto">
-          {`{
-  success: true,
-  message: "...",
-  data: {
-    user: { ... }   // User is here
-  },
-  token: "eyJ..."   // Token is here (NOT in data!)
-}`}
-        </pre>
+        <p>Token location check order:</p>
+        <ol className="ml-4 list-decimal">
+          <li>
+            <code>res.data.token</code>
+          </li>
+          <li>
+            <code>res.data.data?.token</code>
+          </li>
+        </ol>
+        <p>User location check order:</p>
+        <ol className="ml-4 list-decimal">
+          <li>
+            <code>res.data.data?.user</code>
+          </li>
+          <li>
+            <code>res.data.user</code>
+          </li>
+          <li>
+            <code>res.data.data</code>
+          </li>
+        </ol>
+        <p className="mt-2">Test Credentials:</p>
+        <p>Email: admin@delish.com</p>
+        <p>Password: password123</p>
+        <button
+          onClick={async () => {
+            try {
+              const res = await fetch(
+                "https://delish-backend-1.onrender.com/api/user/login",
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    email: "admin@delish.com",
+                    password: "password123",
+                  }),
+                }
+              );
+              const data = await res.json();
+              console.log("Response structure:", JSON.stringify(data, null, 2));
+              alert("Check console for response structure");
+            } catch (error) {
+              console.error("Test failed:", error);
+            }
+          }}
+          className="mt-2 px-3 py-1 bg-purple-700 hover:bg-purple-800 text-white text-xs rounded"
+        >
+          Log Response Structure
+        </button>
       </div>
     </div>
   );
