@@ -77,6 +77,17 @@ const Bill = ({ orderId }) => {
   const [bluetoothPrinter, setBluetoothPrinter] = useState(null);
   const [isPrinterConnected, setIsPrinterConnected] = useState(false);
 
+  // Customer details state
+  const [customerName, setCustomerName] = useState(
+    customerData.customerName || ""
+  );
+  const [customerPhone, setCustomerPhone] = useState(
+    customerData.customerPhone || ""
+  );
+  const [customerGuests, setCustomerGuests] = useState(
+    customerData.guests || 1
+  );
+
   // Bluetooth printer setup
   useEffect(() => {
     // Check if Bluetooth is available
@@ -1049,9 +1060,9 @@ const Bill = ({ orderId }) => {
       const invoiceOrderInfo = {
         ...data,
         customerDetails: {
-          name: customerData.customerName || "Walk-in",
-          phone: customerData.customerPhone || "Not provided",
-          guests: customerData.guests || 1,
+          name: customerName || "Walk-in",
+          phone: customerPhone || "Not provided",
+          guests: customerGuests || 1,
         },
         items: combinedCart.map((item) => {
           const isDiscounted = pwdSssDiscountItems.some(
@@ -1244,9 +1255,9 @@ const Bill = ({ orderId }) => {
     // Prepare COMPLETE order data with ALL REQUIRED FIELDS - FIXED
     const orderData = {
       customerDetails: {
-        name: customerData.customerName?.trim() || "Walk-in Customer", // Required
-        phone: customerData.customerPhone?.trim() || "0000000000", // Required
-        guests: Number(safeNumber(customerData.guests)) || 1, // Required
+        name: customerName.trim() || "Walk-in Customer", // Required
+        phone: customerPhone.trim() || "0000000000", // Required
+        guests: Number(safeNumber(customerGuests)) || 1, // Required
         email: customerData.customerEmail || "",
         address: customerData.customerAddress || "",
       },
@@ -1669,6 +1680,52 @@ const Bill = ({ orderId }) => {
             >
               {isPrinterConnected ? "✓ Connected" : "Connect Printer"}
             </button>
+          </div>
+        </div>
+
+        {/* 🧾 CUSTOMER DETAILS */}
+        <div className="bg-white rounded-lg p-4 shadow-md">
+          <h2 className="text-gray-900 text-sm font-semibold mb-3">
+            Customer Details (Optional)
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Name (Optional)
+              </label>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                placeholder="Walk-in Customer"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Phone (Optional)
+              </label>
+              <input
+                type="text"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                placeholder="0000000000"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Guests
+              </label>
+              <input
+                type="number"
+                value={customerGuests}
+                onChange={(e) => setCustomerGuests(e.target.value)}
+                min="1"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                placeholder="1"
+              />
+            </div>
           </div>
         </div>
 
