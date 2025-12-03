@@ -1148,7 +1148,7 @@ const Bill = ({ orderId }) => {
     },
   });
 
-  // Handle place order WITHOUT customer name validation
+  // Handle place order with ALL required fields
   const handlePlaceOrder = async () => {
     if (isProcessing) return;
 
@@ -1205,10 +1205,10 @@ const Bill = ({ orderId }) => {
       customerData.tableId ||
       null;
 
-    // Prepare bills data with ALL REQUIRED FIELDS
+    // Prepare bills data with ALL REQUIRED FIELDS - FIXED
     const bills = {
-      total: Number(totals.baseGrossTotal.toFixed(2)),
-      tax: Number(totals.vatAmount.toFixed(2)),
+      total: Number(totals.baseGrossTotal.toFixed(2)), // Required
+      tax: Number(totals.vatAmount.toFixed(2)), // Required
       discount: Number(totals.totalDiscountAmount.toFixed(2)),
       totalWithTax: Number(totals.total.toFixed(2)), // Required
       pwdSssDiscount: Number(totals.pwdSssDiscountAmount.toFixed(2)),
@@ -1241,12 +1241,12 @@ const Bill = ({ orderId }) => {
     // Get cashier name
     const cashierName = user?.name || "Admin";
 
-    // Prepare COMPLETE order data with ALL REQUIRED FIELDS
+    // Prepare COMPLETE order data with ALL REQUIRED FIELDS - FIXED
     const orderData = {
       customerDetails: {
-        name: customerData.customerName?.trim() || "Walk-in", // Default to "Walk-in"
-        phone: customerData.customerPhone?.trim() || "Not provided", // Required
-        guests: safeNumber(customerData.guests) || 1, // Required
+        name: customerData.customerName?.trim() || "Walk-in Customer", // Required
+        phone: customerData.customerPhone?.trim() || "0000000000", // Required
+        guests: Number(safeNumber(customerData.guests)) || 1, // Required
         email: customerData.customerEmail || "",
         address: customerData.customerAddress || "",
       },
@@ -1340,9 +1340,9 @@ const Bill = ({ orderId }) => {
             }
           },
           prefill: {
-            name: customerData.customerName || "Walk-in Customer",
+            name: orderData.customerDetails.name,
             email: "",
-            contact: customerData.customerPhone || "",
+            contact: orderData.customerDetails.phone,
           },
           theme: { color: "#2563eb" },
           modal: {
