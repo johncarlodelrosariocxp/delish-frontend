@@ -77,6 +77,17 @@ const Bill = ({ orderId }) => {
   const [bluetoothPrinter, setBluetoothPrinter] = useState(null);
   const [isPrinterConnected, setIsPrinterConnected] = useState(false);
 
+  // Customer details state
+  const [customerName, setCustomerName] = useState(
+    customerData.customerName || ""
+  );
+  const [customerPhone, setCustomerPhone] = useState(
+    customerData.customerPhone || ""
+  );
+  const [customerGuests, setCustomerGuests] = useState(
+    customerData.guests || 1
+  );
+
   // Bluetooth printer setup
   useEffect(() => {
     // Check if Bluetooth is available
@@ -1049,9 +1060,9 @@ const Bill = ({ orderId }) => {
       const invoiceOrderInfo = {
         ...data,
         customerDetails: {
-          name: customerData.customerName || "Walk-in",
-          phone: customerData.customerPhone || "Not provided",
-          guests: customerData.guests || 1,
+          name: customerName || "Walk-in",
+          phone: customerPhone || "Not provided",
+          guests: customerGuests || 1,
         },
         items: combinedCart.map((item) => {
           const isDiscounted = pwdSssDiscountItems.some(
@@ -1191,6 +1202,28 @@ const Bill = ({ orderId }) => {
       }
     }
 
+    // Validate customer details
+    if (!customerName.trim()) {
+      enqueueSnackbar("Please enter customer name", {
+        variant: "error",
+      });
+      return;
+    }
+
+    if (!customerPhone.trim()) {
+      enqueueSnackbar("Please enter customer phone number", {
+        variant: "error",
+      });
+      return;
+    }
+
+    if (!customerGuests || customerGuests < 1) {
+      enqueueSnackbar("Please enter valid number of guests", {
+        variant: "error",
+      });
+      return;
+    }
+
     setIsProcessing(true);
 
     // MARK ORDER AS PROCESSING FIRST
@@ -1209,8 +1242,8 @@ const Bill = ({ orderId }) => {
     const bills = {
       total: Number(totals.baseGrossTotal.toFixed(2)), // Required
       tax: Number(totals.vatAmount.toFixed(2)), // Required
-      discount: Number(totals.totalDiscountAmount.toFixed(2)),
       totalWithTax: Number(totals.total.toFixed(2)), // Required
+      discount: Number(totals.totalDiscountAmount.toFixed(2)),
       pwdSssDiscount: Number(totals.pwdSssDiscountAmount.toFixed(2)),
       pwdSssDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
       employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
@@ -1244,9 +1277,9 @@ const Bill = ({ orderId }) => {
     // Prepare COMPLETE order data with ALL REQUIRED FIELDS - FIXED
     const orderData = {
       customerDetails: {
-        name: customerData.customerName?.trim() || "Walk-in Customer", // Required
-        phone: customerData.customerPhone?.trim() || "0000000000", // Required
-        guests: Number(safeNumber(customerData.guests)) || 1, // Required
+        name: customerName.trim(), // Required
+        phone: customerPhone.trim(), // Required
+        guests: Number(safeNumber(customerGuests)), // Required
         email: customerData.customerEmail || "",
         address: customerData.customerAddress || "",
       },
@@ -1672,6 +1705,55 @@ const Bill = ({ orderId }) => {
           </div>
         </div>
 
+        {/* 🧾 CUSTOMER DETAILS */}
+        <div className="bg-white rounded-lg p-4 shadow-md">
+          <h2 className="text-gray-900 text-sm font-semibold mb-3">
+            Customer Details (Required)
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Name *
+              </label>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => setCustomerName(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                placeholder="Customer Name"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Phone *
+              </label>
+              <input
+                type="text"
+                value={customerPhone}
+                onChange={(e) => setCustomerPhone(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                placeholder="Phone Number"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                Guests *
+              </label>
+              <input
+                type="number"
+                value={customerGuests}
+                onChange={(e) => setCustomerGuests(e.target.value)}
+                min="1"
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                placeholder="1"
+                required
+              />
+            </div>
+          </div>
+        </div>
+
         {/* 🛒 CART ITEMS */}
         <div className="bg-white rounded-lg p-4 shadow-md max-h-64 overflow-y-auto">
           <h2 className="text-gray-900 text-sm font-semibold mb-2">
@@ -1878,6 +1960,13 @@ const Bill = ({ orderId }) => {
           </div>
 
           <div className="flex justify-between items-center">
+            <p className="text-xs text-gray-500 font-medium">VAT (12%)</p>
+            <h1 className="text-gray-900 text-md font-bold">
+              ₱{totals.vatAmount.toFixed(2)}
+            </h1>
+          </div>
+
+          <div className="flex justify-between items-center">
             <p className="text-xs text-gray-500 font-medium">
               Total (VAT inclusive)
             </p>
@@ -2003,7 +2092,14 @@ const Bill = ({ orderId }) => {
         <div className="flex flex-col sm:flex-row gap-3 mt-6">
           <button
             onClick={handlePlaceOrder}
-            disabled={isProcessing || !paymentMethod || cartData.length === 0}
+            disabled={
+              isProcessing ||
+              !paymentMethod ||
+              cartData.length === 0 ||
+              !customerName.trim() ||
+              !customerPhone.trim() ||
+              !customerGuests
+            }
             className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white shadow hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
             {isProcessing ? (
