@@ -1,5 +1,17 @@
 import React from "react";
 import PropTypes from "prop-types";
+import {
+  FaDollarSign,
+  FaShoppingCart,
+  FaUsers,
+  FaChartLine,
+  FaBox,
+  FaReceipt,
+  FaCheckCircle,
+  FaClock,
+  FaPercent,
+  FaSpinner,
+} from "react-icons/fa";
 
 const MiniCard = ({
   title,
@@ -12,8 +24,9 @@ const MiniCard = ({
   onClick,
   period,
   comparisonPeriod,
+  variant = "default",
 }) => {
-  // Format number with proper currency formatting and error handling
+  // Local number formatting function
   const formatNumber = (num) => {
     if (loading) return currency ? "₱---" : "---";
 
@@ -31,22 +44,30 @@ const MiniCard = ({
       }
 
       if (currency) {
+        // Use toLocaleString for Philippine Peso formatting
         return `₱${numericValue.toLocaleString("en-PH", {
           minimumFractionDigits: 2,
           maximumFractionDigits: 2,
         })}`;
       }
 
-      // For non-currency numbers, format based on whether it's a whole number
-      return Number.isInteger(numericValue)
-        ? numericValue.toLocaleString("en-PH")
-        : numericValue.toLocaleString("en-PH", {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          });
+      // For non-currency numbers
+      return numericValue.toLocaleString("en-PH");
     } catch (error) {
       console.error("Error formatting number:", error);
       return currency ? "₱0.00" : "0";
+    }
+  };
+
+  // Format number without currency symbol for percentage calculations
+  const formatPlainNumber = (num) => {
+    try {
+      if (num === null || num === undefined || num === "") return "0";
+      const numericValue = Number(num);
+      if (!isFinite(numericValue)) return "0";
+      return numericValue.toLocaleString("en-PH");
+    } catch (error) {
+      return "0";
     }
   };
 
@@ -67,8 +88,11 @@ const MiniCard = ({
         return { text: "0%", color: "text-gray-400" };
       }
 
-      // Format percentage with proper sign
-      const formattedPercentage = Math.abs(numericFooterNum).toFixed(1);
+      // Format percentage with proper sign and localization
+      const formattedPercentage = Math.abs(numericFooterNum).toLocaleString("en-PH", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      });
 
       if (numericFooterNum > 0)
         return {
@@ -89,61 +113,220 @@ const MiniCard = ({
 
   const footerDisplay = getFooterDisplay();
 
-  // Color mapping based on title
+  // Get icon component based on variant or icon prop
+  const getIconComponent = () => {
+    if (typeof icon === "string") {
+      const iconMap = {
+        sales: FaDollarSign,
+        revenue: FaDollarSign,
+        earnings: FaDollarSign,
+        orders: FaShoppingCart,
+        customers: FaUsers,
+        growth: FaChartLine,
+        products: FaBox,
+        inventory: FaBox,
+        receipts: FaReceipt,
+        completed: FaCheckCircle,
+        pending: FaClock,
+        progress: FaSpinner,
+        percentage: FaPercent,
+        default: FaChartLine,
+      };
+
+      const IconComponent = iconMap[icon.toLowerCase()] || iconMap.default;
+      return <IconComponent className="text-lg" />;
+    }
+
+    // If icon is already a React component
+    return icon || <FaChartLine className="text-lg" />;
+  };
+
+  // Color mapping based on variant and title
   const getColorScheme = () => {
+    if (variant !== "default") {
+      const variantSchemes = {
+        primary: {
+          bg: "from-blue-100 to-blue-50",
+          text: "text-blue-600",
+          iconBg: "bg-blue-500",
+        },
+        secondary: {
+          bg: "from-purple-100 to-purple-50",
+          text: "text-purple-600",
+          iconBg: "bg-purple-500",
+        },
+        success: {
+          bg: "from-green-100 to-green-50",
+          text: "text-green-600",
+          iconBg: "bg-green-500",
+        },
+        warning: {
+          bg: "from-yellow-100 to-yellow-50",
+          text: "text-yellow-600",
+          iconBg: "bg-yellow-500",
+        },
+        danger: {
+          bg: "from-red-100 to-red-50",
+          text: "text-red-600",
+          iconBg: "bg-red-500",
+        },
+        info: {
+          bg: "from-cyan-100 to-cyan-50",
+          text: "text-cyan-600",
+          iconBg: "bg-cyan-500",
+        },
+      };
+
+      return variantSchemes[variant] || variantSchemes.primary;
+    }
+
     const safeTitle = title?.toLowerCase() || "metric";
 
     const colorSchemes = {
-      // Earnings/Revenue/Sales
-      earning: { bg: "from-yellow-100 to-amber-100", text: "text-yellow-600" },
-      revenue: { bg: "from-yellow-100 to-amber-100", text: "text-yellow-600" },
-      sales: { bg: "from-yellow-100 to-amber-100", text: "text-yellow-600" },
-
-      // Orders (non-completed)
-      order: { bg: "from-blue-100 to-cyan-100", text: "text-blue-600" },
-
-      // Completed/Success
-      complete: { bg: "from-green-100 to-emerald-100", text: "text-green-600" },
-      success: { bg: "from-green-100 to-emerald-100", text: "text-green-600" },
-
-      // Progress/Processing
-      progress: { bg: "from-orange-100 to-red-100", text: "text-orange-600" },
-      processing: { bg: "from-orange-100 to-red-100", text: "text-orange-600" },
-
-      // Customer/People
-      customer: {
-        bg: "from-purple-100 to-indigo-100",
-        text: "text-purple-600",
+      earning: {
+        bg: "from-green-100 to-emerald-50",
+        text: "text-green-600",
+        iconBg: "bg-green-500",
       },
-      people: { bg: "from-purple-100 to-indigo-100", text: "text-purple-600" },
-
-      // Product/Inventory
-      product: { bg: "from-pink-100 to-rose-100", text: "text-pink-600" },
-      inventory: { bg: "from-pink-100 to-rose-100", text: "text-pink-600" },
-
-      // Average/Value
-      average: { bg: "from-teal-100 to-cyan-100", text: "text-teal-600" },
-      value: { bg: "from-teal-100 to-cyan-100", text: "text-teal-600" },
+      revenue: {
+        bg: "from-green-100 to-emerald-50",
+        text: "text-green-600",
+        iconBg: "bg-green-500",
+      },
+      sales: {
+        bg: "from-green-100 to-emerald-50",
+        text: "text-green-600",
+        iconBg: "bg-green-500",
+      },
+      income: {
+        bg: "from-green-100 to-emerald-50",
+        text: "text-green-600",
+        iconBg: "bg-green-500",
+      },
+      order: {
+        bg: "from-blue-100 to-blue-50",
+        text: "text-blue-600",
+        iconBg: "bg-blue-500",
+      },
+      transaction: {
+        bg: "from-blue-100 to-blue-50",
+        text: "text-blue-600",
+        iconBg: "bg-blue-500",
+      },
+      customer: {
+        bg: "from-purple-100 to-purple-50",
+        text: "text-purple-600",
+        iconBg: "bg-purple-500",
+      },
+      users: {
+        bg: "from-purple-100 to-purple-50",
+        text: "text-purple-600",
+        iconBg: "bg-purple-500",
+      },
+      people: {
+        bg: "from-purple-100 to-purple-50",
+        text: "text-purple-600",
+        iconBg: "bg-purple-500",
+      },
+      product: {
+        bg: "from-orange-100 to-orange-50",
+        text: "text-orange-600",
+        iconBg: "bg-orange-500",
+      },
+      inventory: {
+        bg: "from-orange-100 to-orange-50",
+        text: "text-orange-600",
+        iconBg: "bg-orange-500",
+      },
+      items: {
+        bg: "from-orange-100 to-orange-50",
+        text: "text-orange-600",
+        iconBg: "bg-orange-500",
+      },
+      average: {
+        bg: "from-teal-100 to-teal-50",
+        text: "text-teal-600",
+        iconBg: "bg-teal-500",
+      },
+      value: {
+        bg: "from-teal-100 to-teal-50",
+        text: "text-teal-600",
+        iconBg: "bg-teal-500",
+      },
+      avg: {
+        bg: "from-teal-100 to-teal-50",
+        text: "text-teal-600",
+        iconBg: "bg-teal-500",
+      },
+      completed: {
+        bg: "from-green-100 to-green-50",
+        text: "text-green-600",
+        iconBg: "bg-green-500",
+      },
+      delivered: {
+        bg: "from-green-100 to-green-50",
+        text: "text-green-600",
+        iconBg: "bg-green-500",
+      },
+      success: {
+        bg: "from-green-100 to-green-50",
+        text: "text-green-600",
+        iconBg: "bg-green-500",
+      },
+      pending: {
+        bg: "from-yellow-100 to-yellow-50",
+        text: "text-yellow-600",
+        iconBg: "bg-yellow-500",
+      },
+      processing: {
+        bg: "from-yellow-100 to-yellow-50",
+        text: "text-yellow-600",
+        iconBg: "bg-yellow-500",
+      },
+      progress: {
+        bg: "from-yellow-100 to-yellow-50",
+        text: "text-yellow-600",
+        iconBg: "bg-yellow-500",
+      },
+      cancelled: {
+        bg: "from-red-100 to-red-50",
+        text: "text-red-600",
+        iconBg: "bg-red-500",
+      },
+      failed: {
+        bg: "from-red-100 to-red-50",
+        text: "text-red-600",
+        iconBg: "bg-red-500",
+      },
+      rejected: {
+        bg: "from-red-100 to-red-50",
+        text: "text-red-600",
+        iconBg: "bg-red-500",
+      },
     };
 
-    // Find the first matching color scheme
     const matchedScheme = Object.entries(colorSchemes).find(([key]) =>
       safeTitle.includes(key)
     );
 
     return matchedScheme
       ? matchedScheme[1]
-      : { bg: "from-gray-100 to-slate-100", text: "text-gray-600" };
+      : {
+          bg: "from-gray-100 to-gray-50",
+          text: "text-gray-600",
+          iconBg: "bg-gray-500",
+        };
   };
 
   const colorScheme = getColorScheme();
+  const IconComponent = getIconComponent();
 
   // Format period for display
   const formatPeriod = (period) => {
     if (!period) return "";
 
     const periodMap = {
-      day: "Today",
+      today: "Today",
       yesterday: "Yesterday",
       week: "This Week",
       lastWeek: "Last Week",
@@ -151,7 +334,7 @@ const MiniCard = ({
       lastMonth: "Last Month",
       year: "This Year",
       lastYear: "Last Year",
-      all: "All Time", // Added "all" option
+      all: "All Time",
     };
 
     return periodMap[period] || period;
@@ -162,7 +345,7 @@ const MiniCard = ({
     if (!comparisonPeriod) return "vs previous period";
 
     const comparisonMap = {
-      day: "vs yesterday",
+      today: "vs yesterday",
       yesterday: "vs day before",
       week: "vs last week",
       lastWeek: "vs two weeks ago",
@@ -170,7 +353,7 @@ const MiniCard = ({
       lastMonth: "vs two months ago",
       year: "vs last year",
       lastYear: "vs two years ago",
-      all: "vs previous period", // Added "all" option
+      all: "vs previous period",
     };
 
     return comparisonMap[comparisonPeriod] || "vs previous period";
@@ -178,15 +361,14 @@ const MiniCard = ({
 
   // Validate props and provide defaults
   const safeTitle = title || "Metric";
-  const safeIcon = icon || "📊";
   const safeNumber = number ?? 0;
   const safeFooterText = footerText || getComparisonText();
   const safePeriod = formatPeriod(period);
 
   return (
     <div
-      className={`bg-white/80 backdrop-blur-xl text-gray-900 py-4 px-5 rounded-2xl w-full shadow-lg hover:shadow-xl transition-all duration-300 border border-gray-200 hover:scale-105 ${
-        onClick ? "cursor-pointer hover:border-blue-300" : ""
+      className={`bg-white/80 backdrop-blur-sm text-gray-900 py-4 px-5 rounded-xl w-full shadow-sm hover:shadow-md transition-all duration-200 border border-gray-200/50 ${
+        onClick ? "cursor-pointer hover:border-blue-300 hover:scale-[1.02]" : ""
       }`}
       onClick={onClick}
     >
@@ -200,9 +382,9 @@ const MiniCard = ({
           )}
         </div>
         <div
-          className={`bg-gradient-to-r ${colorScheme.bg} p-3 rounded-xl ${colorScheme.text} text-lg transition-all duration-300 flex items-center justify-center min-w-[2.5rem] shadow-md ml-2 flex-shrink-0`}
+          className={`${colorScheme.iconBg} text-white p-3 rounded-lg transition-all duration-200 flex items-center justify-center min-w-[2.5rem] shadow-sm ml-2 flex-shrink-0`}
         >
-          {safeIcon}
+          {IconComponent}
         </div>
       </div>
 
@@ -230,7 +412,7 @@ const MiniCard = ({
 
       {/* Loading skeleton */}
       {loading && (
-        <div className="absolute inset-0 bg-white/50 backdrop-blur-sm rounded-2xl flex items-center justify-center">
+        <div className="absolute inset-0 bg-white/50 backdrop-blur-sm rounded-xl flex items-center justify-center">
           <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-500"></div>
         </div>
       )}
@@ -241,7 +423,7 @@ const MiniCard = ({
 // Add prop validation
 MiniCard.propTypes = {
   title: PropTypes.string,
-  icon: PropTypes.node,
+  icon: PropTypes.oneOfType([PropTypes.string, PropTypes.node]),
   number: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   footerNum: PropTypes.oneOfType([PropTypes.number, PropTypes.string]),
   footerText: PropTypes.string,
@@ -250,11 +432,20 @@ MiniCard.propTypes = {
   onClick: PropTypes.func,
   period: PropTypes.string,
   comparisonPeriod: PropTypes.string,
+  variant: PropTypes.oneOf([
+    "default",
+    "primary",
+    "secondary",
+    "success",
+    "warning",
+    "danger",
+    "info",
+  ]),
 };
 
 MiniCard.defaultProps = {
   title: "Metric",
-  icon: "📊",
+  icon: "default",
   number: 0,
   footerNum: 0,
   footerText: "vs previous period",
@@ -263,6 +454,7 @@ MiniCard.defaultProps = {
   onClick: undefined,
   period: "",
   comparisonPeriod: "",
+  variant: "default",
 };
 
 export default MiniCard;

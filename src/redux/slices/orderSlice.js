@@ -72,24 +72,23 @@ const orderSlice = createSlice({
       }
     },
 
-    // Mark order as "completing" instead of immediately removing it
-    completeOrder: (state, action) => {
+    // Mark order as "processing" when payment starts
+    processOrder: (state, action) => {
       const orderId = action.payload;
       const orderIndex = state.orders.findIndex(
         (order) => order.id === orderId && order.status === "active"
       );
 
       if (orderIndex !== -1) {
-        // Only mark as completing, don't remove yet
-        state.orders[orderIndex].status = "completing";
+        state.orders[orderIndex].status = "processing";
       }
     },
 
-    // Actually remove the order after successful placement
-    removeCompletedOrder: (state, action) => {
+    // Mark order as completed when payment is successful
+    completeOrder: (state, action) => {
       const orderId = action.payload;
       const orderIndex = state.orders.findIndex(
-        (order) => order.id === orderId && order.status === "completing"
+        (order) => order.id === orderId
       );
 
       if (orderIndex !== -1) {
@@ -100,7 +99,7 @@ const orderSlice = createSlice({
         };
 
         // Add to completed orders
-        state.completedOrders.push(completedOrder);
+        state.completedOrders.unshift(completedOrder); // Add to beginning for newest first
 
         // Remove from active orders
         state.orders.splice(orderIndex, 1);
@@ -121,6 +120,20 @@ const orderSlice = createSlice({
         } else {
           state.activeOrderId = null;
         }
+      }
+    },
+
+    // Reset order status if payment fails
+    resetOrderStatus: (state, action) => {
+      const orderId = action.payload;
+      const orderIndex = state.orders.findIndex(
+        (order) => order.id === orderId
+      );
+      if (
+        orderIndex !== -1 &&
+        state.orders[orderIndex].status === "processing"
+      ) {
+        state.orders[orderIndex].status = "active";
       }
     },
 
@@ -317,16 +330,7 @@ const orderSlice = createSlice({
       state.completedOrders = [];
     },
 
-    // Reset order status if placement fails
-    resetOrderStatus: (state, action) => {
-      const orderId = action.payload;
-      const order = state.orders.find((order) => order.id === orderId);
-      if (order && order.status === "completing") {
-        order.status = "active";
-      }
-    },
-
-    // NEW: Directly add item without checking for duplicates (for debugging)
+    // Directly add item without checking for duplicates
     addItemDirectly: (state, action) => {
       const { orderId, item } = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
@@ -352,11 +356,11 @@ export const {
   createNewOrder,
   switchOrder,
   closeOrder,
-  completeOrder,
-  removeCompletedOrder,
+  processOrder, // Changed from completeOrder for processing state
+  completeOrder, // Now only for final completion
   addItemsToOrder,
   addMultipleItemsToOrder,
-  addItemDirectly, // NEW export
+  addItemDirectly,
   removeItemFromOrder,
   removeAllItemsFromOrder,
   incrementQuantityInOrder,

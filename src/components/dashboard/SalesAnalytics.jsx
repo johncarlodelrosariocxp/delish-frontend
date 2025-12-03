@@ -163,7 +163,7 @@ const SalesAnalytics = () => {
     }, 0);
   }, [ordersArray]);
 
-  // Top selling item calculation
+  // Top selling item calculation - FIXED: Removed sort and use alternative approach
   const topSellingItem = React.useMemo(() => {
     if (!Array.isArray(ordersArray) || ordersArray.length === 0) {
       return { name: "No items sold yet", quantity: 0 };
@@ -187,16 +187,23 @@ const SalesAnalytics = () => {
     });
 
     // Check if we have any items
-    if (Object.keys(popularItems).length === 0) {
+    const itemEntries = Object.entries(popularItems);
+    if (itemEntries.length === 0) {
       return { name: "No items sold yet", quantity: 0 };
     }
 
-    const topItem = Object.entries(popularItems)
-      .sort(([, a], [, b]) => b - a)
-      .slice(0, 1)
-      .map(([name, quantity]) => ({ name, quantity }))[0];
+    // Find top item without using sort
+    let topItemName = "";
+    let topItemQuantity = 0;
 
-    return topItem || { name: "No items sold yet", quantity: 0 };
+    for (const [itemName, quantity] of itemEntries) {
+      if (quantity > topItemQuantity) {
+        topItemName = itemName;
+        topItemQuantity = quantity;
+      }
+    }
+
+    return { name: topItemName, quantity: topItemQuantity };
   }, [ordersArray]);
 
   // Order status counts

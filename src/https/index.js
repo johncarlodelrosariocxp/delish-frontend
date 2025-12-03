@@ -1,4 +1,5 @@
-import { axiosWrapper } from "./axiosWrapper";
+// This file should be in your `src/https/index.js`
+import axiosWrapper from "./axiosWrapper";
 
 // =============================
 // ✅ AUTH ENDPOINTS
@@ -79,13 +80,28 @@ export const getLowStockItems = () =>
   axiosWrapper.get("/api/inventory/low-stock");
 
 // =============================
-// ✅ EMERGENCY ENDPOINTS (Development only)
+// ✅ TEST CONNECTION
 // =============================
-export const forceCreateUser = (data) =>
-  axiosWrapper.post("/api/force-create-user", data);
-export const nukeUsers = () => axiosWrapper.delete("/api/nuke-users");
-export const debugUsers = () => axiosWrapper.get("/api/debug-users");
+export const testConnection = async () => {
+  try {
+    const response = await axiosWrapper.get("/");
+    return {
+      success: true,
+      message: "Connected to backend successfully",
+      data: response.data,
+    };
+  } catch (error) {
+    return {
+      success: false,
+      message: error.message,
+      error: error,
+    };
+  }
+};
 
+// =============================
+// ✅ DEFAULT EXPORT (Object with all endpoints)
+// =============================
 export default {
   // Auth
   login,
@@ -134,8 +150,9 @@ export default {
   deleteInventoryItem,
   getLowStockItems,
 
-  // Emergency
-  forceCreateUser,
-  nukeUsers,
-  debugUsers,
+  // Test
+  testConnection,
+
+  // Axios instance
+  axiosWrapper,
 };

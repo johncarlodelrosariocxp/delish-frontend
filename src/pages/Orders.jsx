@@ -4,43 +4,29 @@ import {
   FaSearch,
   FaUser,
   FaReceipt,
-  FaClock,
   FaCheckCircle,
-  FaTimesCircle,
-  FaExclamationCircle,
-  FaSpinner,
-  FaCheck,
   FaArrowUp,
   FaPrint,
   FaCalendar,
   FaTachometerAlt,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
-import {
-  keepPreviousData,
-  useQuery,
-  useMutation,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { getOrders, getAdminOrders, updateOrderStatus } from "../https/index";
+import { getOrders, getAdminOrders } from "../https/index";
 import BottomNav from "../components/shared/BottomNav";
 import BackButton from "../components/shared/BackButton";
 import Invoice from "../components/invoice/Invoice";
 
 const Orders = () => {
-  const [status, setStatus] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [totalSales, setTotalSales] = useState(0);
-  const [inProgressCount, setInProgressCount] = useState(0);
-  const [updatingOrders, setUpdatingOrders] = useState(new Set());
   const [dateFilter, setDateFilter] = useState("today");
   const scrollRef = useRef(null);
 
-  const queryClient = useQueryClient();
   const user = useSelector((state) => state.user);
   const navigate = useNavigate();
 
@@ -87,150 +73,39 @@ const Orders = () => {
     placeholderData: keepPreviousData,
   });
 
-  // Status update mutation - FIXED VERSION
-  const statusUpdateMutation = useMutation({
-    mutationFn: async ({ orderId, orderStatus }) => {
-      console.log("🔄 Updating order status:", { orderId, orderStatus });
-
-      try {
-        const response = await updateOrderStatus({
-          orderId,
-          orderStatus,
-        });
-
-        console.log("✅ Status update response:", response);
-        debugAPI(response, "Status Update Success");
-        return response;
-      } catch (error) {
-        console.error("❌ Status update error:", error);
-        debugAPI(error, "Status Update Error");
-        throw error;
-      }
-    },
-    onSuccess: (data, variables) => {
-      console.log("🎉 Status update successful:", variables);
-      enqueueSnackbar(`Order status updated to ${variables.orderStatus}`, {
-        variant: "success",
-      });
-
-      // Invalidate and refetch orders
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-    },
-    onError: (error, variables) => {
-      console.error("💥 Status update failed:", error, variables);
-
-      let errorMessage = "Failed to update order status!";
-
-      if (error?.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error?.message) {
-        errorMessage = error.message;
-      }
-
-      enqueueSnackbar(errorMessage, { variant: "error" });
-
-      // Revert optimistic update by refetching
-      queryClient.invalidateQueries({ queryKey: ["orders"] });
-    },
-  });
-
-  // Status configuration
-  const getStatusConfig = (status) => {
-    const statusLower = status?.toLowerCase();
-    switch (statusLower) {
-      case "completed":
-      case "delivered":
-        return {
-          icon: FaCheckCircle,
-          color: "text-green-500",
-          bgColor: "bg-green-50",
-          borderColor: "border-green-200",
-          text: "Completed",
-        };
-      case "in progress":
-      case "processing":
-        return {
-          icon: FaSpinner,
-          color: "text-blue-500",
-          bgColor: "bg-blue-50",
-          borderColor: "border-blue-200",
-          text: "In Progress",
-        };
-      case "cancelled":
-      case "failed":
-        return {
-          icon: FaTimesCircle,
-          color: "text-red-500",
-          bgColor: "bg-red-50",
-          borderColor: "border-red-200",
-          text: "Cancelled",
-        };
-      default:
-        return {
-          icon: FaExclamationCircle,
-          color: "text-gray-500",
-          bgColor: "bg-gray-50",
-          borderColor: "border-gray-200",
-          text: "Unknown",
-        };
-    }
+  // Status configuration - All orders are completed
+  const getStatusConfig = () => {
+    return {
+      icon: FaCheckCircle,
+      color: "text-green-500",
+      bgColor: "bg-green-50",
+      borderColor: "border-green-200",
+      text: "Completed",
+    };
   };
 
-  // ✅ FIXED: No filtering needed - backend handles it
+  // ✅ FIXED: Handle data safely
   const orders = React.useMemo(() => {
-    const ordersData = resData?.data?.data || [];
-    console.log("📦 Orders data:", ordersData);
-    return ordersData;
-  }, [resData]);
-
-  // FIXED: Handle status update with proper mutation
-  const handleStatusUpdate = async (order, newStatus) => {
-    if (!order?._id) {
-      console.error("❌ No order ID provided");
-      enqueueSnackbar("Invalid order data", { variant: "error" });
-      return;
-    }
-
-    console.log("🔄 Starting status update:", {
-      orderId: order._id,
-      currentStatus: order.orderStatus,
-      newStatus,
-    });
-
-    setUpdatingOrders((prev) => new Set(prev).add(order._id));
-
     try {
-      // Optimistically update the UI
-      queryClient.setQueryData(["orders", user.role], (old) => {
-        if (!old?.data?.data) return old;
-
-        return {
-          ...old,
-          data: {
-            ...old.data,
-            data: old.data.data.map((o) =>
-              o._id === order._id ? { ...o, orderStatus: newStatus } : o
-            ),
-          },
-        };
-      });
-
-      // Use the mutation to update the status
-      await statusUpdateMutation.mutateAsync({
-        orderId: order._id,
-        orderStatus: newStatus,
-      });
+      const ordersData = resData?.data?.data;
+      if (Array.isArray(ordersData)) {
+        console.log("📦 Orders data (array):", ordersData.length);
+        return ordersData;
+      } else if (ordersData && typeof ordersData === "object") {
+        // Handle case where data might be an object with orders property
+        const ordersArray = ordersData.orders || ordersData.data || [];
+        if (Array.isArray(ordersArray)) {
+          console.log("📦 Orders data (from object):", ordersArray.length);
+          return ordersArray;
+        }
+      }
+      console.log("📦 No valid orders data found, returning empty array");
+      return [];
     } catch (error) {
-      console.error("Status update failed:", error);
-      // Error handling is done in the mutation onError
-    } finally {
-      setUpdatingOrders((prev) => {
-        const newSet = new Set(prev);
-        newSet.delete(order._id);
-        return newSet;
-      });
+      console.error("❌ Error processing orders data:", error);
+      return [];
     }
-  };
+  }, [resData]);
 
   useEffect(() => {
     if (isError) {
@@ -240,23 +115,17 @@ const Orders = () => {
     }
   }, [isError]);
 
-  // Sort orders by latest first (newest to oldest)
-  const sortedOrders = React.useMemo(() => {
-    const sorted = [...orders].sort((a, b) => {
-      const dateA = new Date(a.createdAt || a.orderDate || a.date || 0);
-      const dateB = new Date(b.createdAt || b.orderDate || b.date || 0);
-      return dateB - dateA;
-    });
-    console.log("📊 Sorted orders:", sorted.length);
-    return sorted;
-  }, [orders]);
-
   // Filter orders by date range
   const filterByDateRange = (order, range) => {
-    if (range === "all") return true;
+    if (range === "all" || !order) return true;
 
-    const orderDate = new Date(order.createdAt || order.orderDate);
+    const orderDate = new Date(
+      order.createdAt || order.orderDate || order.date
+    );
     const today = new Date();
+
+    // Handle invalid dates
+    if (isNaN(orderDate.getTime())) return true;
 
     switch (range) {
       case "today":
@@ -302,72 +171,67 @@ const Orders = () => {
 
   // Calculate metrics based on date filter
   useEffect(() => {
-    const filteredByDate = sortedOrders.filter((order) =>
+    const filteredByDate = orders.filter((order) =>
       filterByDateRange(order, dateFilter)
     );
 
-    const completedOrders = filteredByDate.filter(
-      (o) =>
-        o.orderStatus?.toLowerCase() === "completed" ||
-        o.orderStatus?.toLowerCase() === "delivered"
-    );
-    const total = completedOrders.reduce(
-      (sum, o) => sum + (o.bills?.totalWithTax || o.totalAmount || 0),
-      0
-    );
+    // All orders are considered completed for sales calculation
+    const total = filteredByDate.reduce((sum, order) => {
+      if (!order) return sum;
+      const amount = order.bills?.totalWithTax || order.totalAmount || 0;
+      return sum + (Number(amount) || 0);
+    }, 0);
     setTotalSales(total);
+  }, [orders, dateFilter]);
 
-    const inProgressOrders = filteredByDate.filter(
-      (o) =>
-        o.orderStatus?.toLowerCase() === "in progress" ||
-        o.orderStatus?.toLowerCase() === "processing"
-    );
-    setInProgressCount(inProgressOrders.length);
-  }, [sortedOrders, dateFilter]);
-
-  // Filter orders based on status, search query, and date filter
+  // Filter orders based on search query and date filter
   const filteredOrders = React.useMemo(() => {
-    const filtered = sortedOrders.filter((order) => {
-      const dateMatch = filterByDateRange(order, dateFilter);
+    try {
+      if (!Array.isArray(orders)) {
+        console.log("❌ Orders is not an array:", orders);
+        return [];
+      }
 
-      const statusMatch =
-        status === "all" ||
-        (status === "progress" &&
-          (order.orderStatus?.toLowerCase() === "in progress" ||
-            order.orderStatus?.toLowerCase() === "processing")) ||
-        (status === "completed" &&
-          (order.orderStatus?.toLowerCase() === "completed" ||
-            order.orderStatus?.toLowerCase() === "delivered"));
+      const filtered = orders.filter((order) => {
+        if (!order) return false;
 
-      const searchMatch =
-        order.customerDetails?.name
-          ?.toLowerCase()
-          .includes(searchQuery.toLowerCase()) ||
-        order._id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase());
+        const dateMatch = filterByDateRange(order, dateFilter);
 
-      return dateMatch && statusMatch && searchMatch;
-    });
+        const searchMatch =
+          (order.customerDetails?.name || "")
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase()) ||
+          (order._id || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+          "completed".includes(searchQuery.toLowerCase()); // Search for "completed" status
 
-    console.log("🔍 Filtered orders:", filtered.length);
-    return filtered;
-  }, [sortedOrders, status, searchQuery, dateFilter]);
+        return dateMatch && searchMatch;
+      });
+
+      console.log("🔍 Filtered orders:", filtered.length);
+      return filtered;
+    } catch (error) {
+      console.error("❌ Error filtering orders:", error);
+      return [];
+    }
+  }, [orders, searchQuery, dateFilter]);
 
   // Calculate and format total amount
   const calculateTotalAmount = (order) => {
+    if (!order) return 0;
+
     if (order.totalAmount !== undefined && order.totalAmount !== null) {
-      return order.totalAmount;
+      return Number(order.totalAmount) || 0;
     }
     if (
       order.bills?.totalWithTax !== undefined &&
       order.bills.totalWithTax !== null
     ) {
-      return order.bills.totalWithTax;
+      return Number(order.bills.totalWithTax) || 0;
     }
     if (order.items && Array.isArray(order.items)) {
       return order.items.reduce((total, item) => {
-        const price = item.price || item.unitPrice || 0;
-        const quantity = item.quantity || 1;
+        const price = Number(item.price || item.unitPrice || 0);
+        const quantity = Number(item.quantity || 1);
         return total + price * quantity;
       }, 0);
     }
@@ -390,7 +254,10 @@ const Orders = () => {
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     try {
-      return new Date(dateString).toLocaleDateString("en-US", {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "Invalid Date";
+
+      return date.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -404,17 +271,21 @@ const Orders = () => {
 
   // Get items count
   const getItemsCount = (order) => {
+    if (!order) return 0;
+
     if (order.items && Array.isArray(order.items)) {
       return order.items.reduce(
-        (total, item) => total + (item.quantity || 1),
+        (total, item) => total + (Number(item.quantity) || 1),
         0
       );
     }
-    return order.itemsCount || order.quantity || 0;
+    return Number(order.itemsCount || order.quantity || 0);
   };
 
   // Get items preview text
   const getItemsPreview = (order) => {
+    if (!order) return "No items";
+
     if (!order.items || !Array.isArray(order.items)) {
       return "No items";
     }
@@ -431,36 +302,13 @@ const Orders = () => {
     const totalItems = getItemsCount(order);
     const shownItems = order.items
       .slice(0, 3)
-      .reduce((total, item) => total + (item.quantity || 1), 0);
+      .reduce((total, item) => total + (Number(item.quantity) || 1), 0);
 
     if (totalItems > shownItems) {
       return `${itemsText} +${totalItems - shownItems} more`;
     }
 
     return itemsText;
-  };
-
-  // Check if action buttons should be shown for an order
-  const shouldShowActions = (order) => {
-    const status = order.orderStatus?.toLowerCase();
-    return status === "in progress" || status === "processing";
-  };
-
-  // Get available actions for an order
-  const getAvailableActions = (order) => {
-    const status = order.orderStatus?.toLowerCase();
-    const actions = [];
-
-    if (status === "in progress" || status === "processing") {
-      actions.push({
-        label: "Mark Complete",
-        status: "completed",
-        variant: "success",
-        icon: FaCheck,
-      });
-    }
-
-    return actions;
   };
 
   const handleViewReceipt = (order) => {
@@ -488,14 +336,13 @@ const Orders = () => {
 
   // Order Card Component
   const OrderCard = ({ order, onViewReceipt }) => {
-    const statusConfig = getStatusConfig(order.orderStatus);
+    if (!order) return null;
+
+    const statusConfig = getStatusConfig();
     const StatusIcon = statusConfig.icon;
     const totalAmount = calculateTotalAmount(order);
     const itemsCount = getItemsCount(order);
     const itemsPreview = getItemsPreview(order);
-    const isUpdating = updatingOrders.has(order._id);
-    const showActions = shouldShowActions(order);
-    const availableActions = getAvailableActions(order);
 
     return (
       <div className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-all duration-200 w-full h-full flex flex-col">
@@ -508,21 +355,11 @@ const Orders = () => {
             </span>
           </div>
           <div className="flex items-center gap-1">
-            {isUpdating ? (
-              <FaSpinner className="text-blue-500 text-xs animate-spin" />
-            ) : (
-              <StatusIcon
-                className={`text-xs ${statusConfig.color} ${
-                  order.orderStatus?.toLowerCase() === "in progress"
-                    ? "animate-spin"
-                    : ""
-                }`}
-              />
-            )}
+            <StatusIcon className={`text-xs ${statusConfig.color}`} />
             <span
               className={`text-xs font-medium capitalize ${statusConfig.color}`}
             >
-              {isUpdating ? "Updating..." : statusConfig.text}
+              {statusConfig.text}
             </span>
           </div>
         </div>
@@ -561,7 +398,7 @@ const Orders = () => {
         </div>
 
         {/* Items Preview */}
-        {(order.items && order.items.length > 0) || itemsCount > 0 ? (
+        {((order.items && order.items.length > 0) || itemsCount > 0) && (
           <div className="mt-2 pt-2 border-t border-gray-200 mb-3">
             <div className="text-xs text-gray-600 mb-1">
               Items {itemsCount > 0 && `(${itemsCount})`}
@@ -570,49 +407,7 @@ const Orders = () => {
               {itemsPreview}
             </div>
           </div>
-        ) : null}
-
-        {/* Action Buttons */}
-        {showActions && availableActions.length > 0 && (
-          <div className="flex gap-2 pt-2 border-t border-gray-200 mb-3">
-            {availableActions.map((action) => {
-              const ActionIcon = action.icon;
-              return (
-                <button
-                  key={action.status}
-                  onClick={() => handleStatusUpdate(order, action.status)}
-                  disabled={isUpdating}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
-                    action.variant === "primary"
-                      ? "bg-blue-500 hover:bg-blue-600 text-white"
-                      : "bg-green-500 hover:bg-green-600 text-white"
-                  } disabled:opacity-50 disabled:cursor-not-allowed flex-1`}
-                >
-                  {isUpdating ? (
-                    <FaSpinner className="animate-spin text-[8px]" />
-                  ) : (
-                    <ActionIcon className="text-[8px]" />
-                  )}
-                  <span className="truncate">{action.label}</span>
-                </button>
-              );
-            })}
-          </div>
         )}
-
-        {/* Status Dropdown */}
-        <div className="flex gap-2 pt-2 border-t border-gray-200 mb-3">
-          <select
-            value={order.orderStatus}
-            onChange={(e) => handleStatusUpdate(order, e.target.value)}
-            disabled={isUpdating}
-            className={`flex-1 px-2 py-1 rounded text-xs font-medium border ${statusConfig.bgColor} ${statusConfig.color} ${statusConfig.borderColor} disabled:opacity-50`}
-          >
-            <option value="in progress">In Progress</option>
-            <option value="completed">Completed</option>
-            <option value="cancelled">Cancelled</option>
-          </select>
-        </div>
 
         {/* Receipt Button */}
         <div className="flex gap-2 pt-2 border-t border-gray-200 mt-auto">
@@ -665,23 +460,6 @@ const Orders = () => {
               Dashboard
             </button>
 
-            {/* Status filters */}
-            {["all", "progress", "completed"].map((type) => (
-              <button
-                key={type}
-                onClick={() => setStatus(type)}
-                className={`text-[#555555] text-xs sm:text-sm ${
-                  status === type ? "bg-[#eaeaea]" : "bg-transparent"
-                } rounded-lg px-3 py-2 font-semibold transition`}
-              >
-                {type === "all"
-                  ? "All"
-                  : type === "progress"
-                  ? "In Progress"
-                  : "Completed"}
-              </button>
-            ))}
-
             {/* Date Filter */}
             <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border">
               <FaCalendar className="text-gray-600 text-xs" />
@@ -705,9 +483,6 @@ const Orders = () => {
               <span className="text-xs sm:text-sm font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">
                 Sales: {formatCurrency(totalSales)}
               </span>
-              <span className="text-xs sm:text-sm font-semibold text-blue-700 bg-blue-50 px-3 py-1 rounded-full">
-                In Progress: {inProgressCount}
-              </span>
             </div>
           </div>
         </div>
@@ -717,7 +492,7 @@ const Orders = () => {
           <FaSearch className="text-gray-600 text-xs sm:text-sm" />
           <input
             type="text"
-            placeholder="Search by name, order ID, or status..."
+            placeholder="Search by name or order ID..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="bg-transparent outline-none text-black w-full text-xs sm:text-sm placeholder-gray-500"
@@ -735,14 +510,14 @@ const Orders = () => {
           {isLoading ? (
             <div className="col-span-full flex justify-center items-center py-8">
               <div className="text-center bg-white rounded-lg p-6">
-                <FaSpinner className="mx-auto text-gray-400 text-2xl mb-2 animate-spin" />
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto mb-2"></div>
                 <p className="text-gray-500 text-sm">Loading orders...</p>
               </div>
             </div>
           ) : filteredOrders.length > 0 ? (
             filteredOrders.map((order) => (
               <OrderCard
-                key={order._id}
+                key={order._id || Math.random().toString()}
                 order={order}
                 onViewReceipt={handleViewReceipt}
               />
@@ -752,19 +527,16 @@ const Orders = () => {
               <div className="text-center bg-white rounded-lg p-6">
                 <FaReceipt className="mx-auto text-gray-400 text-2xl mb-2" />
                 <p className="text-gray-500 text-sm">
-                  {searchQuery || status !== "all" || dateFilter !== "today"
+                  {searchQuery || dateFilter !== "today"
                     ? "No orders found matching your criteria"
                     : user.role?.toLowerCase() === "admin"
                     ? "No orders available"
                     : "You haven't placed any orders yet"}
                 </p>
-                {(searchQuery ||
-                  status !== "all" ||
-                  dateFilter !== "today") && (
+                {(searchQuery || dateFilter !== "today") && (
                   <button
                     onClick={() => {
                       setSearchQuery("");
-                      setStatus("all");
                       setDateFilter("today");
                     }}
                     className="text-[#025cca] text-xs mt-1 hover:underline"

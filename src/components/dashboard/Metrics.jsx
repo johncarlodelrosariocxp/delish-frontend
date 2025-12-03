@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useCallback, useMemo, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
 import { getOrders, getAdminOrders } from "../../https/index";
@@ -18,7 +18,14 @@ import {
 } from "react-icons/fa";
 import PropTypes from "prop-types";
 
-// Premium color palette
+// ============= CONSTANTS AND CONFIGURATION =============
+const PERIOD_OPTIONS = [
+  { value: "Day", label: "Last 1 Day" },
+  { value: "Week", label: "Last 1 Week" },
+  { value: "Month", label: "Last 1 Month" },
+  { value: "Year", label: "Last 1 Year" },
+];
+
 const COLORS = {
   primary: {
     blue: "linear-gradient(135deg, #667eea 0%, #764ba2 100%)",
@@ -26,9 +33,47 @@ const COLORS = {
     purple: "linear-gradient(135deg, #a8c0ff 0%, #3f2b96 100%)",
     orange: "linear-gradient(135deg, #ff9a9e 0%, #fecfef 100%)",
   },
+  status: {
+    completed: "bg-green-100 text-green-800",
+    ready: "bg-blue-100 text-blue-800",
+    "in progress": "bg-yellow-100 text-yellow-800",
+    default: "bg-gray-100 text-gray-800",
+  },
 };
 
-// Date filtering utilities - matching RecentOrders
+const STATUS_ICONS = {
+  completed: FaCheckCircle,
+  ready: FaClock,
+  "in progress": FaClock,
+  default: FaBox,
+};
+
+const STATUS_COLORS = {
+  completed: "text-green-500",
+  ready: "text-blue-500",
+  "in progress": "text-yellow-500",
+  default: "text-gray-500",
+};
+
+// ============= UTILITY FUNCTIONS =============
+const safeNumber = (value, defaultValue = 0) => {
+  if (typeof value === "number" && !isNaN(value)) return value;
+  const num = parseFloat(value);
+  return isNaN(num) ? defaultValue : num;
+};
+
+const formatCurrency = (amount) => {
+  return `₱${safeNumber(amount).toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
+};
+
+const formatPercentage = (value) => {
+  return `${safeNumber(value).toFixed(1)}%`;
+};
+
+// ============= DATE UTILITIES =============
 const getDateRange = (period) => {
   const now = new Date();
   const start = new Date();
@@ -52,12 +97,34 @@ const getDateRange = (period) => {
   return { start, end: now };
 };
 
+const formatDate = (dateString, options = {}) => {
+  if (!dateString) return "No Date";
+
+  try {
+    const date = new Date(dateString);
+    const defaultOptions = {
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    };
+
+    return date.toLocaleDateString("en-US", { ...defaultOptions, ...options });
+  } catch {
+    return "Invalid Date";
+  }
+};
+
+// ============= ORDER FILTERING =============
 const filterOrdersByPeriod = (orders, period) => {
-  if (!orders || !Array.isArray(orders) || orders.length === 0) return [];
+  const safeOrders = Array.isArray(orders) ? orders : [];
+  if (safeOrders.length === 0) return [];
 
   const { start, end } = getDateRange(period);
-  return orders.filter((order) => {
+
+  return safeOrders.filter((order) => {
     try {
+      if (!order) return false;
       const orderDate = new Date(
         order.orderDate || order.createdAt || Date.now()
       );
@@ -69,7 +136,8 @@ const filterOrdersByPeriod = (orders, period) => {
 };
 
 const getPreviousPeriodData = (orders, currentPeriod) => {
-  if (!orders || !Array.isArray(orders) || orders.length === 0) {
+  const safeOrders = Array.isArray(orders) ? orders : [];
+  if (safeOrders.length === 0) {
     return { orders: [], metrics: null };
   }
 
@@ -99,7 +167,7 @@ const getPreviousPeriodData = (orders, currentPeriod) => {
       prevEnd.setDate(now.getDate() - 7);
   }
 
-  const previousOrders = orders.filter((order) => {
+  const previousOrders = safeOrders.filter((order) => {
     try {
       const orderDate = new Date(
         order.orderDate || order.createdAt || Date.now()
@@ -118,7 +186,128 @@ const getPreviousPeriodData = (orders, currentPeriod) => {
   };
 };
 
-// Skeleton loader component
+// ============= CALCULATION UTILITIES =============
+const calculateTrend = (current, previous, isPositive = true) => {
+  if (previous === undefined || previous === null || previous === 0) {
+    return { percentage: null, isIncrease: true };
+  }
+
+  const percentage = ((current - previous) / previous) * 100;
+  const isIncrease = isPositive ? percentage >= 0 : percentage <= 0;
+
+  return {
+    percentage: Math.abs(percentage).toFixed(1),
+    isIncrease,
+  };
+};
+
+// Memoized metrics calculation
+const calculateMetrics = (orders, period) => {
+  const safeOrders = Array.isArray(orders) ? orders : [];
+
+  const defaultMetrics = {
+    totalOrders: 0,
+    totalSales: 0,
+    averageOrderValue: 0,
+    uniqueCustomers: 0,
+    topSellingItem: "N/A",
+    completionRate: 0,
+    inProgressOrders: 0,
+    readyOrders: 0,
+    completedOrders: 0,
+  };
+
+  if (safeOrders.length === 0) {
+    return defaultMetrics;
+  }
+
+  try {
+    // Calculate total sales
+    const totalSales = safeOrders.reduce((sum, order) => {
+      if (!order) return sum;
+      const orderTotal = order.bills?.totalWithTax || order.totalAmount || 0;
+      return sum + safeNumber(orderTotal);
+    }, 0);
+
+    const ordersCount = safeOrders.length;
+    const averageOrderValue = ordersCount > 0 ? totalSales / ordersCount : 0;
+
+    // Calculate unique customers
+    const customerSet = new Set();
+    safeOrders.forEach((order) => {
+      if (!order) return;
+      const customerName =
+        order.customerDetails?.name || order.customerName || "Guest";
+      if (customerName && customerName !== "Guest") {
+        customerSet.add(customerName);
+      }
+    });
+    const uniqueCustomers = customerSet.size;
+
+    // Find top selling item
+    const itemCounts = {};
+    safeOrders.forEach((order) => {
+      if (order?.items && Array.isArray(order.items)) {
+        order.items.forEach((item) => {
+          if (!item) return;
+          const itemName = item.name || item.productName || "Unknown Item";
+          const quantity = safeNumber(item.quantity, 1);
+          if (itemName) {
+            itemCounts[itemName] = (itemCounts[itemName] || 0) + quantity;
+          }
+        });
+      }
+    });
+
+    let topSellingItem = "N/A";
+    let maxQuantity = 0;
+    for (const [itemName, quantity] of Object.entries(itemCounts)) {
+      if (quantity > maxQuantity) {
+        topSellingItem = itemName;
+        maxQuantity = quantity;
+      }
+    }
+
+    // Calculate order status metrics
+    const completedOrders = safeOrders.filter((order) => {
+      if (!order) return false;
+      const status = (order.orderStatus || "").toLowerCase();
+      return status === "completed";
+    }).length;
+
+    const inProgressOrders = safeOrders.filter((order) => {
+      if (!order) return false;
+      const status = (order.orderStatus || "").toLowerCase();
+      return status === "in progress";
+    }).length;
+
+    const readyOrders = safeOrders.filter((order) => {
+      if (!order) return false;
+      const status = (order.orderStatus || "").toLowerCase();
+      return status === "ready";
+    }).length;
+
+    const completionRate =
+      ordersCount > 0 ? (completedOrders / ordersCount) * 100 : 0;
+
+    return {
+      totalOrders: ordersCount,
+      totalSales,
+      averageOrderValue,
+      uniqueCustomers,
+      topSellingItem,
+      completionRate,
+      inProgressOrders,
+      readyOrders,
+      completedOrders,
+    };
+  } catch (error) {
+    console.error("Error calculating metrics:", error);
+    return defaultMetrics;
+  }
+};
+
+// ============= COMPONENTS =============
 const MetricSkeleton = () => (
   <div className="animate-pulse">
     <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
@@ -139,7 +328,6 @@ const MetricSkeleton = () => (
   </div>
 );
 
-// Error state component
 const ErrorState = ({ message, onRetry }) => (
   <div className="text-center py-12 px-6 rounded-2xl bg-red-50 border border-red-100">
     <FaExclamationTriangle className="mx-auto text-red-500 text-3xl mb-4" />
@@ -158,7 +346,6 @@ const ErrorState = ({ message, onRetry }) => (
   </div>
 );
 
-// Empty state component
 const EmptyState = ({ title, message }) => (
   <div className="text-center py-12 px-6 rounded-2xl bg-gray-50 border border-gray-200">
     <FaChartLine className="mx-auto text-gray-400 text-3xl mb-4" />
@@ -167,126 +354,103 @@ const EmptyState = ({ title, message }) => (
   </div>
 );
 
-// Utility functions for calculations
-const safeNumber = (value, defaultValue = 0) => {
-  if (typeof value === "number" && !isNaN(value)) return value;
-  const num = parseFloat(value);
-  return isNaN(num) ? defaultValue : num;
+// Simple Order Item Component (without react-window)
+const OrderItem = ({ order, index }) => {
+  if (!order) return null;
+
+  const orderNumber = order._id
+    ? `#${order._id.slice(-6)}`
+    : `Order #${index + 1}`;
+  const customerName =
+    order.customerDetails?.name || order.customerName || "Guest";
+  const orderDate = order.orderDate || order.createdAt;
+  const totalAmount = order.bills?.totalWithTax || order.totalAmount || 0;
+  const orderStatus = order.orderStatus?.toLowerCase() || "unknown";
+
+  const IconComponent = STATUS_ICONS[orderStatus] || STATUS_ICONS.default;
+  const statusColorClass = COLORS.status[orderStatus] || COLORS.status.default;
+  const iconColorClass = STATUS_COLORS[orderStatus] || STATUS_COLORS.default;
+
+  return (
+    <div className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200">
+      <div className="flex items-center space-x-4">
+        <div className="flex-shrink-0">
+          <IconComponent className={iconColorClass} />
+        </div>
+        <div>
+          <p className="font-semibold text-gray-900">{orderNumber}</p>
+          <p className="text-sm text-gray-500">{customerName}</p>
+          <p className="text-xs text-gray-400">{formatDate(orderDate)}</p>
+        </div>
+      </div>
+
+      <div className="text-right">
+        <p className="font-bold text-gray-900">{formatCurrency(totalAmount)}</p>
+        <span className={`text-xs px-2 py-1 rounded-full ${statusColorClass}`}>
+          {orderStatus}
+        </span>
+      </div>
+    </div>
+  );
 };
 
-const calculateMetrics = (orders, period) => {
-  // Return safe default values if no orders
-  const defaultMetrics = {
-    totalOrders: 0,
-    totalSales: 0,
-    averageOrderValue: 0,
-    uniqueCustomers: 0,
-    topSellingItem: "N/A",
-    completionRate: 0,
-    inProgressOrders: 0,
-    readyOrders: 0,
-    completedOrders: 0,
-  };
+// Simple Virtual List (custom implementation without react-window)
+const SimpleVirtualList = ({
+  items,
+  itemHeight = 80,
+  visibleItems = 5,
+  renderItem,
+}) => {
+  const [scrollTop, setScrollTop] = useState(0);
+  const containerHeight = visibleItems * itemHeight;
 
-  if (!orders || !Array.isArray(orders) || orders.length === 0) {
-    return defaultMetrics;
-  }
+  const handleScroll = useCallback((e) => {
+    setScrollTop(e.target.scrollTop);
+  }, []);
 
-  try {
-    // Calculate total sales using the same structure as RecentOrders
-    const totalSales = orders.reduce((sum, order) => {
-      const orderTotal = order.bills?.totalWithTax || order.totalAmount || 0;
-      return sum + safeNumber(orderTotal);
-    }, 0);
+  const totalHeight = items.length * itemHeight;
+  const startIndex = Math.floor(scrollTop / itemHeight);
+  const endIndex = Math.min(items.length - 1, startIndex + visibleItems);
 
-    const ordersCount = orders.length;
-    const averageOrderValue = ordersCount > 0 ? totalSales / ordersCount : 0;
+  const visibleItemsData = items.slice(startIndex, endIndex + 1);
 
-    // Calculate unique customers - matching RecentOrders structure
-    const customerSet = new Set();
-    orders.forEach((order) => {
-      const customerName =
-        order.customerDetails?.name || order.customerName || "Guest";
-      if (customerName && customerName !== "Guest") {
-        customerSet.add(customerName);
-      }
-    });
-    const uniqueCustomers = customerSet.size;
-
-    // Find top selling item - using items array structure
-    const itemCounts = {};
-    orders.forEach((order) => {
-      if (order.items && Array.isArray(order.items)) {
-        order.items.forEach((item) => {
-          const itemName = item.name || item.productName || "Unknown Item";
-          const quantity = safeNumber(item.quantity, 1);
-          if (itemName) {
-            itemCounts[itemName] = (itemCounts[itemName] || 0) + quantity;
-          }
-        });
-      }
-    });
-
-    const topSellingItem =
-      Object.keys(itemCounts).length > 0
-        ? Object.keys(itemCounts).reduce((a, b) =>
-            itemCounts[a] > itemCounts[b] ? a : b
-          )
-        : "N/A";
-
-    // Calculate order status metrics - matching RecentOrders statuses
-    const completedOrders = orders.filter((order) => {
-      const status = (order.orderStatus || "").toLowerCase();
-      return status === "completed";
-    }).length;
-
-    const inProgressOrders = orders.filter((order) => {
-      const status = (order.orderStatus || "").toLowerCase();
-      return status === "in progress";
-    }).length;
-
-    const readyOrders = orders.filter((order) => {
-      const status = (order.orderStatus || "").toLowerCase();
-      return status === "ready";
-    }).length;
-
-    const completionRate =
-      ordersCount > 0 ? (completedOrders / ordersCount) * 100 : 0;
-
-    return {
-      totalOrders: ordersCount,
-      totalSales,
-      averageOrderValue,
-      uniqueCustomers,
-      topSellingItem: topSellingItem || "N/A",
-      completionRate,
-      inProgressOrders,
-      readyOrders,
-      completedOrders,
-    };
-  } catch (error) {
-    console.error("Error calculating metrics:", error);
-    return defaultMetrics;
-  }
+  return (
+    <div
+      style={{ height: containerHeight, overflowY: "auto" }}
+      onScroll={handleScroll}
+      className="relative"
+    >
+      <div style={{ height: totalHeight, position: "relative" }}>
+        {visibleItemsData.map((item, index) => {
+          const actualIndex = startIndex + index;
+          return (
+            <div
+              key={item._id || actualIndex}
+              style={{
+                position: "absolute",
+                top: actualIndex * itemHeight,
+                left: 0,
+                right: 0,
+                height: itemHeight,
+              }}
+            >
+              {renderItem(item, actualIndex)}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 };
 
-const calculateTrend = (current, previous, isPositive = true) => {
-  if (previous === undefined || previous === null || previous === 0) {
-    return { percentage: null, isIncrease: true };
-  }
+// Recent Orders Component (without react-window dependency)
+const RecentOrders = ({ orders: rawOrders, maxItems = 5 }) => {
+  const safeOrders = useMemo(() => {
+    if (!rawOrders) return [];
+    return Array.isArray(rawOrders) ? rawOrders.slice(0, maxItems) : [];
+  }, [rawOrders, maxItems]);
 
-  const percentage = ((current - previous) / previous) * 100;
-  const isIncrease = isPositive ? percentage >= 0 : percentage <= 0;
-
-  return {
-    percentage: Math.abs(percentage).toFixed(1),
-    isIncrease,
-  };
-};
-
-// Recent Orders Component - Simplified version matching your structure
-const RecentOrders = ({ orders, maxItems = 5 }) => {
-  if (!orders || orders.length === 0) {
+  if (safeOrders.length === 0) {
     return (
       <div className="rounded-2xl p-6 bg-white border border-gray-100 shadow-lg">
         <h3 className="font-bold text-xl text-gray-900 mb-4">Recent Orders</h3>
@@ -298,107 +462,31 @@ const RecentOrders = ({ orders, maxItems = 5 }) => {
     );
   }
 
-  const getStatusIcon = (status) => {
-    const statusLower = status.toLowerCase();
-    if (statusLower === "completed") {
-      return <FaCheckCircle className="text-green-500" />;
-    } else if (statusLower === "ready") {
-      return <FaClock className="text-blue-500" />;
-    } else if (statusLower === "in progress") {
-      return <FaClock className="text-yellow-500" />;
-    } else {
-      return <FaBox className="text-gray-500" />;
-    }
-  };
-
-  const getStatusColor = (status) => {
-    const statusLower = status.toLowerCase();
-    if (statusLower === "completed") {
-      return "bg-green-100 text-green-800";
-    } else if (statusLower === "ready") {
-      return "bg-blue-100 text-blue-800";
-    } else if (statusLower === "in progress") {
-      return "bg-yellow-100 text-yellow-800";
-    } else {
-      return "bg-gray-100 text-gray-800";
-    }
-  };
-
-  const formatDate = (dateString) => {
-    try {
-      const date = new Date(dateString);
-      return date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch {
-      return "Invalid Date";
-    }
-  };
-
-  const recentOrders = orders
-    .sort((a, b) => new Date(b.orderDate) - new Date(a.orderDate))
-    .slice(0, maxItems);
-
   return (
     <div className="rounded-2xl p-6 bg-white border border-gray-100 shadow-lg">
       <div className="flex justify-between items-center mb-6">
         <h3 className="font-bold text-xl text-gray-900">Recent Orders</h3>
         <span className="text-sm text-gray-500 bg-gray-100 px-3 py-1 rounded-full">
-          {recentOrders.length} orders
+          {safeOrders.length} orders
         </span>
       </div>
 
-      <div className="space-y-4">
-        {recentOrders.map((order, index) => (
-          <div
-            key={order._id || index}
-            className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:bg-gray-50 transition-colors duration-200"
-          >
-            <div className="flex items-center space-x-4">
-              <div className="flex-shrink-0">
-                {getStatusIcon(order.orderStatus)}
-              </div>
-              <div>
-                <p className="font-semibold text-gray-900">
-                  Order #
-                  {Math.floor(new Date(order.orderDate).getTime())
-                    .toString()
-                    .slice(-6)}
-                </p>
-                <p className="text-sm text-gray-500">
-                  {order.customerDetails?.name || "Guest"}
-                </p>
-                <p className="text-xs text-gray-400">
-                  {formatDate(order.orderDate)}
-                </p>
-              </div>
-            </div>
-
-            <div className="text-right">
-              <p className="font-bold text-gray-900">
-                ₱
-                {safeNumber(order.bills?.totalWithTax || 0).toLocaleString(
-                  undefined,
-                  {
-                    minimumFractionDigits: 2,
-                    maximumFractionDigits: 2,
-                  }
-                )}
-              </p>
-              <span
-                className={`text-xs px-2 py-1 rounded-full ${getStatusColor(
-                  order.orderStatus
-                )}`}
-              >
-                {order.orderStatus || "Unknown"}
-              </span>
-            </div>
-          </div>
-        ))}
-      </div>
+      {safeOrders.length > 10 ? (
+        <SimpleVirtualList
+          items={safeOrders}
+          itemHeight={80}
+          visibleItems={5}
+          renderItem={(order, index) => (
+            <OrderItem order={order} index={index} />
+          )}
+        />
+      ) : (
+        <div className="space-y-4">
+          {safeOrders.map((order, index) => (
+            <OrderItem key={order._id || index} order={order} index={index} />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -408,7 +496,7 @@ RecentOrders.propTypes = {
   maxItems: PropTypes.number,
 };
 
-// MAIN METRICS COMPONENT - Using the same data fetching as RecentOrders
+// ============= MAIN METRICS COMPONENT =============
 const Metrics = ({
   rawMetricsData = null,
   title = "Business Performance",
@@ -421,7 +509,7 @@ const Metrics = ({
   const [period, setPeriod] = useState("Week");
   const user = useSelector((state) => state.user);
 
-  // Using the same query structure as RecentOrders
+  // Data fetching
   const {
     data: resData,
     isLoading,
@@ -430,31 +518,25 @@ const Metrics = ({
     refetch,
     isFetching,
   } = useQuery({
-    queryKey: ["orders", user.role],
+    queryKey: ["orders", user?.role],
     queryFn: async () => {
-      // Same logic as RecentOrders
-      if (user.role?.toLowerCase() === "admin") {
-        console.log("📋 Fetching all orders (admin)...");
+      if (user?.role?.toLowerCase() === "admin") {
         return await getAdminOrders();
       } else {
-        console.log("📋 Fetching user orders...");
         return await getOrders();
       }
     },
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    gcTime: 10 * 60 * 1000, // 10 minutes
   });
 
-  // Data extraction matching RecentOrders structure - FIXED
+  // Extract and memoize orders data
   const ordersData = useMemo(() => {
     try {
-      console.log("📦 Raw API Response:", resData);
-
-      // If rawMetricsData is provided, use it
-      if (rawMetricsData && Array.isArray(rawMetricsData)) {
-        console.log("📊 Using rawMetricsData:", rawMetricsData.length);
-        return rawMetricsData;
+      if (rawMetricsData) {
+        return Array.isArray(rawMetricsData) ? rawMetricsData : [];
       }
 
-      // Extract orders using the same structure as RecentOrders - FIXED
       let orders = [];
 
       if (resData?.data?.data && Array.isArray(resData.data.data)) {
@@ -463,160 +545,160 @@ const Metrics = ({
         orders = resData.data;
       } else if (Array.isArray(resData)) {
         orders = resData;
+      } else if (resData?.orders && Array.isArray(resData.orders)) {
+        orders = resData.orders;
       }
 
-      console.log("🎯 Extracted orders:", orders.length);
-      return orders || [];
+      return Array.isArray(orders) ? orders : [];
     } catch (error) {
-      console.error("❌ Data extraction error:", error);
+      console.error("Data extraction error:", error);
       return [];
     }
   }, [resData, rawMetricsData]);
 
-  // Process metrics data - FIXED with safe defaults
+  // Memoized metrics calculation
   const { metricsData, itemsData, filteredOrders } = useMemo(() => {
-    console.log("🔄 Processing metrics for period:", period);
+    try {
+      // Get current period orders
+      const currentPeriodOrders = filterOrdersByPeriod(ordersData, period);
+      const currentMetrics = calculateMetrics(currentPeriodOrders, period);
+      const previousData = getPreviousPeriodData(ordersData, period);
 
-    const currentPeriodOrders = filterOrdersByPeriod(ordersData, period);
-    const currentMetrics = calculateMetrics(currentPeriodOrders, period);
-    const previousData = getPreviousPeriodData(ordersData, period);
+      // Calculate trends
+      const orderTrend = calculateTrend(
+        currentMetrics.totalOrders || 0,
+        previousData.metrics?.totalOrders || 0
+      );
 
-    console.log("📈 Current Metrics:", currentMetrics);
-    console.log("📊 Orders in period:", currentPeriodOrders.length);
+      const revenueTrend = calculateTrend(
+        currentMetrics.totalSales || 0,
+        previousData.metrics?.totalSales || 0
+      );
 
-    // Calculate trends with safe defaults
-    const orderTrend = calculateTrend(
-      currentMetrics.totalOrders || 0,
-      previousData.metrics?.totalOrders || 0
-    );
+      const aovTrend = calculateTrend(
+        currentMetrics.averageOrderValue || 0,
+        previousData.metrics?.averageOrderValue || 0
+      );
 
-    const revenueTrend = calculateTrend(
-      currentMetrics.totalSales || 0,
-      previousData.metrics?.totalSales || 0
-    );
+      const completionTrend = calculateTrend(
+        currentMetrics.completionRate || 0,
+        previousData.metrics?.completionRate || 0
+      );
 
-    const aovTrend = calculateTrend(
-      currentMetrics.averageOrderValue || 0,
-      previousData.metrics?.averageOrderValue || 0
-    );
+      const customerTrend = calculateTrend(
+        currentMetrics.uniqueCustomers || 0,
+        previousData.metrics?.uniqueCustomers || 0
+      );
 
-    const completionTrend = calculateTrend(
-      currentMetrics.completionRate || 0,
-      previousData.metrics?.completionRate || 0
-    );
+      const inProgressTrend = calculateTrend(
+        currentMetrics.inProgressOrders || 0,
+        previousData.metrics?.inProgressOrders || 0
+      );
 
-    const customerTrend = calculateTrend(
-      currentMetrics.uniqueCustomers || 0,
-      previousData.metrics?.uniqueCustomers || 0
-    );
+      const readyTrend = calculateTrend(
+        currentMetrics.readyOrders || 0,
+        previousData.metrics?.readyOrders || 0
+      );
 
-    const inProgressTrend = calculateTrend(
-      currentMetrics.inProgressOrders || 0,
-      previousData.metrics?.inProgressOrders || 0
-    );
+      // Main metrics cards
+      const premiumMetrics = [
+        {
+          title: "Total Orders",
+          value: (currentMetrics.totalOrders || 0).toLocaleString(),
+          subtitle: `Completed transactions (${period.toLowerCase()})`,
+          percentage: orderTrend.percentage,
+          isIncrease: orderTrend.isIncrease,
+          color: COLORS.primary.blue,
+          icon: FaShoppingCart,
+        },
+        {
+          title: "Total Revenue",
+          value: formatCurrency(currentMetrics.totalSales || 0),
+          subtitle: `Gross sales (${period.toLowerCase()})`,
+          percentage: revenueTrend.percentage,
+          isIncrease: revenueTrend.isIncrease,
+          color: COLORS.primary.green,
+          icon: FaMoneyBillWave,
+        },
+        {
+          title: "Avg Order Value",
+          value: formatCurrency(currentMetrics.averageOrderValue || 0),
+          subtitle: "Average per transaction",
+          percentage: aovTrend.percentage,
+          isIncrease: aovTrend.isIncrease,
+          color: COLORS.primary.purple,
+          icon: FaChartLine,
+        },
+      ];
 
-    const readyTrend = calculateTrend(
-      currentMetrics.readyOrders || 0,
-      previousData.metrics?.readyOrders || 0
-    );
+      // Additional insights
+      const premiumItems = [
+        {
+          title: "Completion Rate",
+          value: formatPercentage(currentMetrics.completionRate || 0),
+          subtitle: "Successful orders",
+          percentage: completionTrend.percentage,
+          isIncrease: completionTrend.isIncrease,
+          color: COLORS.primary.orange,
+          icon: FaStar,
+        },
+        {
+          title: "Unique Customers",
+          value: (currentMetrics.uniqueCustomers || 0).toLocaleString(),
+          subtitle: "Total customers",
+          percentage: customerTrend.percentage,
+          isIncrease: customerTrend.isIncrease,
+          color: COLORS.primary.green,
+          icon: FaUsers,
+        },
+        {
+          title: "In Progress",
+          value: (currentMetrics.inProgressOrders || 0).toLocaleString(),
+          subtitle: "Active orders",
+          percentage: inProgressTrend.percentage,
+          isIncrease: inProgressTrend.isIncrease,
+          color: COLORS.primary.purple,
+          icon: FaClock,
+        },
+        {
+          title: "Ready Orders",
+          value: (currentMetrics.readyOrders || 0).toLocaleString(),
+          subtitle: "Ready for pickup",
+          percentage: readyTrend.percentage,
+          isIncrease: readyTrend.isIncrease,
+          color: COLORS.primary.blue,
+          icon: FaBox,
+        },
+      ];
 
-    // Main metrics cards - FIXED with safe value access
-    const premiumMetrics = [
-      {
-        title: "Total Orders",
-        value: (currentMetrics.totalOrders || 0).toLocaleString(),
-        subtitle: `Completed transactions (${period.toLowerCase()})`,
-        percentage: orderTrend.percentage,
-        isIncrease: orderTrend.isIncrease,
-        color: COLORS.primary.blue,
-        icon: FaShoppingCart,
-      },
-      {
-        title: "Total Revenue",
-        value: `₱${(currentMetrics.totalSales || 0).toLocaleString(undefined, {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        })}`,
-        subtitle: `Gross sales (${period.toLowerCase()})`,
-        percentage: revenueTrend.percentage,
-        isIncrease: revenueTrend.isIncrease,
-        color: COLORS.primary.green,
-        icon: FaMoneyBillWave,
-      },
-      {
-        title: "Avg Order Value",
-        value: `₱${(currentMetrics.averageOrderValue || 0).toLocaleString(
-          undefined,
-          {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          }
-        )}`,
-        subtitle: "Average per transaction",
-        percentage: aovTrend.percentage,
-        isIncrease: aovTrend.isIncrease,
-        color: COLORS.primary.purple,
-        icon: FaChartLine,
-      },
-    ];
-
-    // Additional insights - FIXED with safe value access
-    const premiumItems = [
-      {
-        title: "Completion Rate",
-        value: `${(currentMetrics.completionRate || 0).toFixed(1)}%`,
-        subtitle: "Successful orders",
-        percentage: completionTrend.percentage,
-        isIncrease: completionTrend.isIncrease,
-        color: COLORS.primary.orange,
-        icon: FaStar,
-      },
-      {
-        title: "Unique Customers",
-        value: (currentMetrics.uniqueCustomers || 0).toLocaleString(),
-        subtitle: "Total customers",
-        percentage: customerTrend.percentage,
-        isIncrease: customerTrend.isIncrease,
-        color: COLORS.primary.green,
-        icon: FaUsers,
-      },
-      {
-        title: "In Progress",
-        value: (currentMetrics.inProgressOrders || 0).toLocaleString(),
-        subtitle: "Active orders",
-        percentage: inProgressTrend.percentage,
-        isIncrease: inProgressTrend.isIncrease,
-        color: COLORS.primary.purple,
-        icon: FaClock,
-      },
-      {
-        title: "Ready Orders",
-        value: (currentMetrics.readyOrders || 0).toLocaleString(),
-        subtitle: "Ready for pickup",
-        percentage: readyTrend.percentage,
-        isIncrease: readyTrend.isIncrease,
-        color: COLORS.primary.blue,
-        icon: FaBox,
-      },
-    ];
-
-    return {
-      metricsData: premiumMetrics,
-      itemsData: premiumItems,
-      filteredOrders: currentPeriodOrders,
-    };
+      return {
+        metricsData: premiumMetrics,
+        itemsData: premiumItems,
+        filteredOrders: currentPeriodOrders,
+      };
+    } catch (error) {
+      console.error("Error processing metrics:", error);
+      return {
+        metricsData: [],
+        itemsData: [],
+        filteredOrders: [],
+      };
+    }
   }, [ordersData, period]);
 
-  const handlePeriodChange = (newPeriod) => {
-    setPeriod(newPeriod);
-    onPeriodChange?.(newPeriod);
-  };
+  const handlePeriodChange = useCallback(
+    (newPeriod) => {
+      setPeriod(newPeriod);
+      onPeriodChange?.(newPeriod);
+    },
+    [onPeriodChange]
+  );
 
   // Role-based display
   const displayTitle =
-    user.role === "admin" ? "Admin Dashboard - All Sales" : "Your Performance";
+    user?.role === "admin" ? "Admin Dashboard - All Sales" : "Your Performance";
   const displaySubtitle =
-    user.role === "admin"
+    user?.role === "admin"
       ? "Complete overview of all business sales and performance"
       : "Overview of your sales and orders";
 
@@ -676,12 +758,12 @@ const Metrics = ({
               </span>
               <span
                 className={`px-2 py-1 rounded-full text-xs ${
-                  user.role === "admin"
+                  user?.role === "admin"
                     ? "bg-purple-100 text-purple-800"
                     : "bg-blue-100 text-blue-800"
                 }`}
               >
-                {user.role === "admin" ? "All Sales Data" : "Your Data Only"}
+                {user?.role === "admin" ? "All Sales Data" : "Your Data Only"}
               </span>
             </div>
           </div>
@@ -697,10 +779,11 @@ const Metrics = ({
               onChange={(e) => handlePeriodChange(e.target.value)}
               className="bg-white border border-gray-300 rounded-xl px-4 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200 shadow-sm hover:shadow-md"
             >
-              <option value="Day">Last 1 Day</option>
-              <option value="Week">Last 1 Week</option>
-              <option value="Month">Last 1 Month</option>
-              <option value="Year">Last 1 Year</option>
+              {PERIOD_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </div>
         </div>
@@ -845,7 +928,7 @@ const Metrics = ({
           <p>
             Data filtered for {period.toLowerCase()} • {filteredOrders.length}{" "}
             orders displayed •{" "}
-            {user.role === "admin" ? "All Sales Data" : "Your orders only"}
+            {user?.role === "admin" ? "All Sales Data" : "Your orders only"}
           </p>
         </div>
       </div>
@@ -861,6 +944,11 @@ Metrics.propTypes = {
   itemSubtitle: PropTypes.string,
   onPeriodChange: PropTypes.func,
   className: PropTypes.string,
+};
+
+OrderItem.propTypes = {
+  order: PropTypes.object.isRequired,
+  index: PropTypes.number.isRequired,
 };
 
 export default Metrics;

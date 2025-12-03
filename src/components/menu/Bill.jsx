@@ -7,6 +7,8 @@ import {
   redeemItemInOrder,
   removeRedemptionFromOrder,
   completeOrder,
+  processOrder,
+  resetOrderStatus,
 } from "../../redux/slices/orderSlice";
 import {
   addOrder,
@@ -37,6 +39,10 @@ const Bill = ({ orderId }) => {
   const orders = useSelector((state) => state.order.orders);
   const activeOrderId = useSelector((state) => state.order.activeOrderId);
 
+  // FIXED: Safe access to user data from auth state
+  const userState = useSelector((state) => state.auth);
+  const user = userState?.user || userState?.data?.user || { name: "Admin" };
+
   const currentOrder =
     orders.find((order) => order.id === orderId) ||
     orders.find((order) => order.id === activeOrderId);
@@ -59,6 +65,11 @@ const Bill = ({ orderId }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [pwdSssDiscountItems, setPwdSssDiscountItems] = useState([]);
   const [showPwdSssSelection, setShowPwdSssSelection] = useState(false);
+  const [pwdSssDetails, setPwdSssDetails] = useState({
+    name: "",
+    idNumber: "",
+    type: "PWD", // or "SSS"
+  });
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -280,6 +291,27 @@ const Bill = ({ orderId }) => {
     return safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
   };
 
+  // Calculate discount amount for an item
+  const calculateItemDiscountAmount = (item) => {
+    if (item.isRedeemed) {
+      return safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
+    }
+
+    // Check if this item is selected for PWD/SSS discount
+    const isDiscounted = pwdSssDiscountItems.some(
+      (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
+    );
+
+    if (isDiscounted) {
+      // Calculate 20% discount amount
+      const originalTotal =
+        safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
+      return originalTotal * pwdSssDiscountRate;
+    }
+
+    return 0;
+  };
+
   // Generate unique key for each cart item
   const getUniqueKey = (item, index) => {
     return `${item.id}-${index}-${item.quantity}-${item.pricePerQuantity}-${item.isRedeemed}`;
@@ -344,21 +376,38 @@ const Bill = ({ orderId }) => {
       info = "PWD/SSS Discount (20% – 1 food)";
     }
 
-    const selectedValue = totals.discountedItemsTotal.toFixed(2);
-    return `${info} (₱${selectedValue})`;
+    const discountAmount = totals.pwdSssDiscountAmount.toFixed(2);
+    return `${info} (-₱${discountAmount})`;
   };
 
   const discountedItemsInfo = getDiscountedItemsInfo();
 
+  // Get eligible items count for PWD/SSS discount
+  const getEligibleItemsCount = () => {
+    const drinks = combinedCart.filter((item) => isDrinkItem(item));
+    const foods = combinedCart.filter((item) => isFoodItem(item));
+    const totalEligible = drinks.length + foods.length;
+
+    return {
+      drinks,
+      foods,
+      totalEligible,
+      maxDrinks: Math.min(drinks.length, 1), // Can select up to 1 drink
+      maxFoods: Math.min(foods.length, 2), // Can select up to 2 foods
+      maxTotal: Math.min(totalEligible, 3), // Can select up to 3 items total
+    };
+  };
+
   // Handle PWD/SSS discount - open selection modal
   const handlePwdSssDiscount = () => {
     if (!pwdSssDiscountApplied) {
-      // Open selection modal
+      // Open selection modal with PWD/SSS details form
       setShowPwdSssSelection(true);
     } else {
       // Turn off discount
       setPwdSssDiscountApplied(false);
       setPwdSssDiscountItems([]);
+      setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
       setEmployeeDiscountApplied(false);
       setShareholderDiscountApplied(false);
       enqueueSnackbar("PWD/SSS discount removed", { variant: "info" });
@@ -369,6 +418,7 @@ const Bill = ({ orderId }) => {
     setEmployeeDiscountApplied(!employeeDiscountApplied);
     setPwdSssDiscountApplied(false);
     setPwdSssDiscountItems([]);
+    setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
     setShareholderDiscountApplied(false);
   };
 
@@ -376,6 +426,7 @@ const Bill = ({ orderId }) => {
     setShareholderDiscountApplied(!shareholderDiscountApplied);
     setPwdSssDiscountApplied(false);
     setPwdSssDiscountItems([]);
+    setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
     setEmployeeDiscountApplied(false);
   };
 
@@ -435,16 +486,30 @@ const Bill = ({ orderId }) => {
     }
   };
 
-  // Apply the selection
+  // Apply the selection with PWD/SSS details
   const handleApplyPwdSssSelection = () => {
-    // Check if we have exactly 3 items selected
-    if (pwdSssDiscountItems.length !== 3) {
-      enqueueSnackbar(
-        "Please select exactly 3 items (1 drink + 2 food) for PWD/SSS discount",
-        {
-          variant: "warning",
-        }
-      );
+    const eligible = getEligibleItemsCount();
+
+    // Check if we have at least 1 item selected
+    if (pwdSssDiscountItems.length === 0) {
+      enqueueSnackbar("Please select at least 1 item for PWD/SSS discount", {
+        variant: "warning",
+      });
+      return;
+    }
+
+    // Check PWD/SSS details
+    if (!pwdSssDetails.name.trim()) {
+      enqueueSnackbar("Please enter PWD/SSS holder name", {
+        variant: "warning",
+      });
+      return;
+    }
+
+    if (!pwdSssDetails.idNumber.trim()) {
+      enqueueSnackbar("Please enter PWD/SSS ID number", {
+        variant: "warning",
+      });
       return;
     }
 
@@ -452,9 +517,20 @@ const Bill = ({ orderId }) => {
     const drinks = pwdSssDiscountItems.filter((item) => isDrinkItem(item));
     const foods = pwdSssDiscountItems.filter((item) => isFoodItem(item));
 
-    if (drinks.length !== 1 || foods.length !== 2) {
+    // Validate selection based on available items
+    if (drinks.length > eligible.maxDrinks) {
       enqueueSnackbar(
-        "Please select exactly 1 drink and 2 food items for PWD/SSS discount",
+        `Cannot select more than ${eligible.maxDrinks} drink(s)`,
+        {
+          variant: "warning",
+        }
+      );
+      return;
+    }
+
+    if (foods.length > eligible.maxFoods) {
+      enqueueSnackbar(
+        `Cannot select more than ${eligible.maxFoods} food item(s)`,
         {
           variant: "warning",
         }
@@ -473,14 +549,40 @@ const Bill = ({ orderId }) => {
       0
     );
 
-    enqueueSnackbar(
-      `PWD/SSS discount applied to 1 drink and 2 food items (₱${selectedValue.toFixed(
+    const discountAmount = selectedValue * pwdSssDiscountRate;
+
+    // Create message based on selection
+    let message = `PWD/SSS discount applied to ${
+      pwdSssDiscountItems.length
+    } item(s) (-₱${discountAmount.toFixed(2)})`;
+
+    if (drinks.length === 1 && foods.length === 2) {
+      message = `PWD/SSS discount applied to 1 drink and 2 food items (-₱${discountAmount.toFixed(
         2
-      )})`,
-      {
-        variant: "success",
-      }
-    );
+      )})`;
+    } else if (drinks.length === 1 && foods.length === 1) {
+      message = `PWD/SSS discount applied to 1 drink and 1 food item (-₱${discountAmount.toFixed(
+        2
+      )})`;
+    } else if (drinks.length === 1) {
+      message = `PWD/SSS discount applied to 1 drink (-₱${discountAmount.toFixed(
+        2
+      )})`;
+    } else if (foods.length === 2) {
+      message = `PWD/SSS discount applied to 2 food items (-₱${discountAmount.toFixed(
+        2
+      )})`;
+    } else if (foods.length === 1) {
+      message = `PWD/SSS discount applied to 1 food item (-₱${discountAmount.toFixed(
+        2
+      )})`;
+    }
+
+    message += ` for ${pwdSssDetails.type}: ${pwdSssDetails.name}`;
+
+    enqueueSnackbar(message, {
+      variant: "success",
+    });
   };
 
   // Cancel selection
@@ -493,9 +595,19 @@ const Bill = ({ orderId }) => {
   const clearPwdSssDiscount = () => {
     setPwdSssDiscountApplied(false);
     setPwdSssDiscountItems([]);
+    setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
     enqueueSnackbar("PWD/SSS discount removed", {
       variant: "info",
     });
+  };
+
+  // Handle PWD/SSS details change
+  const handlePwdSssDetailsChange = (e) => {
+    const { name, value } = e.target;
+    setPwdSssDetails((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
   };
 
   // Print to Bluetooth Thermal Printer
@@ -504,7 +616,7 @@ const Bill = ({ orderId }) => {
       // Create receipt text
       const receiptText = generateReceiptText(orderData);
 
-      // Try Web Bluetooth API
+      // Try Web Bluetooth API for mobile/tablet
       if (navigator.bluetooth) {
         try {
           const device = await navigator.bluetooth.requestDevice({
@@ -522,19 +634,19 @@ const Bill = ({ orderId }) => {
           await sendToPrinter(receiptText);
         } catch (error) {
           console.warn("Bluetooth printing failed:", error);
-          // Fallback to regular printing
-          fallbackPrint(receiptText);
+          // Fallback to mobile printing
+          mobilePrint(receiptText);
         }
       } else {
-        // Web Bluetooth not supported, use fallback
-        fallbackPrint(receiptText);
+        // Web Bluetooth not supported, use mobile printing
+        mobilePrint(receiptText);
       }
     } catch (error) {
       console.error("Printing error:", error);
       enqueueSnackbar("Printing failed", { variant: "error" });
-      // Still try fallback
+      // Still try mobile print fallback
       const receiptText = generateReceiptText(orderData);
-      fallbackPrint(receiptText);
+      mobilePrint(receiptText);
     }
   };
 
@@ -551,7 +663,21 @@ const Bill = ({ orderId }) => {
     receipt += "      DELISH RESTAURANT" + lineBreak;
     receipt += doubleLine + lineBreak;
     receipt += `Order: #${orderData._id?.slice(-8) || "N/A"}` + lineBreak;
-    receipt += `Date: ${new Date().toLocaleString()}` + lineBreak;
+    
+    // FIXED: Proper date formatting with locale
+    const currentDate = new Date();
+    const dateOptions = { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: true
+    };
+    
+    // Use English-US locale for consistent formatting
+    receipt += `Date: ${currentDate.toLocaleString('en-US', dateOptions)}` + lineBreak;
     receipt +=
       `Customer: ${orderData.customerDetails?.name || "Walk-in"}` + lineBreak;
     receipt +=
@@ -579,15 +705,18 @@ const Bill = ({ orderId }) => {
       const originalPrice = safeNumber(item.pricePerQuantity);
       const quantity = item.quantity;
       const originalTotal = originalPrice * quantity;
+      const discountAmount = isDiscounted
+        ? originalTotal * pwdSssDiscountRate
+        : 0;
+      const finalPrice = originalTotal - discountAmount;
 
       let priceText;
       if (item.isRedeemed) {
         priceText = "FREE";
       } else if (isDiscounted) {
-        const discountedTotal = originalTotal * (1 - pwdSssDiscountRate);
-        priceText = `₱${discountedTotal.toFixed(
+        priceText = `₱${finalPrice.toFixed(2)} (was ₱${originalTotal.toFixed(
           2
-        )} (was ₱${originalTotal.toFixed(2)})`;
+        )})`;
       } else {
         priceText = `₱${originalTotal.toFixed(2)}`;
       }
@@ -596,7 +725,8 @@ const Bill = ({ orderId }) => {
       receipt += `  ${quantity}x ₱${originalPrice.toFixed(2)}` + lineBreak;
 
       if (isDiscounted) {
-        receipt += `  PWD/SSS 20% Discount Applied` + lineBreak;
+        receipt +=
+          `  PWD/SSS 20% Discount: -₱${discountAmount.toFixed(2)}` + lineBreak;
       }
 
       receipt +=
@@ -605,6 +735,15 @@ const Bill = ({ orderId }) => {
     });
 
     receipt += dashedLine + lineBreak;
+
+    // PWD/SSS Details
+    if (pwdSssDiscountApplied) {
+      receipt += "PWD/SSS DETAILS:" + lineBreak;
+      receipt += `  Type: ${pwdSssDetails.type}` + lineBreak;
+      receipt += `  Name: ${pwdSssDetails.name}` + lineBreak;
+      receipt += `  ID: ${pwdSssDetails.idNumber}` + lineBreak;
+      receipt += dashedLine + lineBreak;
+    }
 
     // Show PWD/SSS discounted items if any
     if (pwdSssDiscountItems.length > 0) {
@@ -616,7 +755,8 @@ const Bill = ({ orderId }) => {
             : item.name;
         const itemType = isDrinkItem(item) ? "Drink" : "Food";
         const originalTotal = calculateItemTotalPrice(item);
-        const discountedTotal = originalTotal * (1 - pwdSssDiscountRate);
+        const discountAmount = originalTotal * pwdSssDiscountRate;
+        const discountedTotal = originalTotal - discountAmount;
 
         receipt += `  ${idx + 1}. ${itemName} (${itemType})` + lineBreak;
         receipt +=
@@ -625,6 +765,8 @@ const Bill = ({ orderId }) => {
           )}` + lineBreak;
         receipt +=
           `     Was: ₱${originalTotal.toFixed(
+            2
+          )}, Discount: -₱${discountAmount.toFixed(
             2
           )}, Now: ₱${discountedTotal.toFixed(2)}` + lineBreak;
       });
@@ -672,6 +814,10 @@ const Bill = ({ orderId }) => {
       "TOTAL:" + padLeft(`₱${totals.total.toFixed(2)}`, 24) + lineBreak;
     receipt += doubleLine + lineBreak;
 
+    // Cashier info - FIXED: using user.name with fallback
+    const cashierName =
+      user?.name || user?.username || user?.fullName || "Admin";
+    receipt += `Cashier: ${cashierName}` + lineBreak;
     receipt += `Payment: ${paymentMethod}` + lineBreak;
     receipt += lineBreak;
     receipt += "Thank you for dining with us!" + lineBreak;
@@ -693,33 +839,170 @@ const Bill = ({ orderId }) => {
     // This is a simplified version
     // Actual implementation would use printer-specific Bluetooth protocols
     console.log("Sending to printer:", receiptText);
-    enqueueSnackbar("Receipt sent to Bluetooth printer", {
-      variant: "success",
-    });
+    
+    // Try to print using thermal printer commands
+    try {
+      // Open serial port connection (for thermal printers)
+      // Note: This requires a printer that supports Web Bluetooth or serial over Bluetooth
+      if (navigator.serial) {
+        // Web Serial API for Chrome-based browsers
+        const port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+        const encoder = new TextEncoder();
+        const writer = port.writable.getWriter();
+        await writer.write(encoder.encode(receiptText));
+        writer.releaseLock();
+        await port.close();
+        
+        enqueueSnackbar("Receipt printed successfully", {
+          variant: "success",
+        });
+      } else {
+        // Fallback to mobile printing
+        mobilePrint(receiptText);
+      }
+    } catch (error) {
+      console.warn("Direct printing failed:", error);
+      mobilePrint(receiptText);
+    }
   };
 
-  // Fallback printing method
-  const fallbackPrint = (receiptText) => {
-    // Create a hidden textarea with the receipt content
-    const textArea = document.createElement("textarea");
-    textArea.value = receiptText;
-    textArea.style.position = "fixed";
-    textArea.style.left = "-9999px";
-    textArea.style.top = "0";
-    document.body.appendChild(textArea);
-    textArea.select();
-
+  // Mobile/Tablet printing method
+  const mobilePrint = (receiptText) => {
     try {
-      // Try to print using browser print
-      window.print();
-      enqueueSnackbar("Receipt ready for printing", { variant: "success" });
-    } catch (error) {
-      // Copy to clipboard as last resort
-      document.execCommand("copy");
-      enqueueSnackbar("Receipt copied to clipboard", { variant: "info" });
-    }
+      // Create a printable HTML content for mobile
+      const printContent = `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <title>Delish Restaurant Receipt</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            @media print {
+              body { margin: 0; padding: 0; font-family: monospace; }
+              .receipt { width: 80mm; margin: 0 auto; padding: 10px; }
+              .line { white-space: pre-line; line-height: 1.2; }
+              .center { text-align: center; }
+              .right { text-align: right; }
+              .bold { font-weight: bold; }
+              .double-line { border-top: 2px solid #000; }
+              .dashed-line { border-top: 1px dashed #666; }
+              @page { margin: 0; }
+            }
+            body { font-family: monospace; }
+            .receipt { width: 80mm; margin: 0 auto; padding: 10px; }
+          </style>
+        </head>
+        <body>
+          <div class="receipt">
+            ${receiptText.split('\n').map(line => {
+              if (line.includes('======')) {
+                return `<div class="line double-line">${line}</div>`;
+              } else if (line.includes('---')) {
+                return `<div class="line dashed-line">${line}</div>`;
+              } else if (line.includes('DELISH RESTAURANT') || line.includes('TOTAL:')) {
+                return `<div class="line bold center">${line}</div>`;
+              } else {
+                return `<div class="line">${line}</div>`;
+              }
+            }).join('')}
+          </div>
+          <script>
+            // Auto-print on mobile/tablet
+            window.onload = function() {
+              setTimeout(function() {
+                if (window.print) {
+                  window.print();
+                }
+                // Close window after printing (if in new window)
+                setTimeout(function() {
+                  window.close();
+                }, 1000);
+              }, 500);
+            };
+          </script>
+        </body>
+        </html>
+      `;
 
-    document.body.removeChild(textArea);
+      // For mobile/tablet, open in new window and auto-print
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.open();
+        printWindow.document.write(printContent);
+        printWindow.document.close();
+        
+        enqueueSnackbar("Opening print dialog...", { variant: "info" });
+      } else {
+        // Fallback to iframe printing
+        fallbackPrint(receiptText);
+      }
+    } catch (error) {
+      console.error("Mobile printing failed:", error);
+      // Ultimate fallback
+      fallbackPrint(receiptText);
+    }
+  };
+
+  // Ultimate fallback printing method
+  const fallbackPrint = (receiptText) => {
+    try {
+      // Try to use browser's print functionality
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(`
+          <html>
+            <head>
+              <title>Delish Restaurant Receipt</title>
+              <style>
+                body { font-family: monospace; white-space: pre; margin: 20px; }
+              </style>
+            </head>
+            <body>${receiptText}</body>
+          </html>
+        `);
+        printWindow.document.close();
+        printWindow.focus();
+        
+        // Try to print
+        setTimeout(() => {
+          if (printWindow.print) {
+            printWindow.print();
+          }
+        }, 500);
+        
+        enqueueSnackbar("Receipt opened for printing", { variant: "success" });
+      } else {
+        // Last resort - copy to clipboard
+        navigator.clipboard.writeText(receiptText).then(() => {
+          enqueueSnackbar("Receipt copied to clipboard", { variant: "info" });
+        }).catch(() => {
+          // Create textarea for manual copy
+          const textArea = document.createElement("textarea");
+          textArea.value = receiptText;
+          textArea.style.position = "fixed";
+          textArea.style.left = "-9999px";
+          textArea.style.top = "0";
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand("copy");
+          document.body.removeChild(textArea);
+          enqueueSnackbar("Receipt copied to clipboard", { variant: "info" });
+        });
+      }
+    } catch (error) {
+      console.error("Fallback printing failed:", error);
+      enqueueSnackbar("Printing failed. Receipt copied to clipboard.", { 
+        variant: "error" 
+      });
+      
+      // Final attempt to copy to clipboard
+      try {
+        navigator.clipboard.writeText(receiptText);
+      } catch (e) {
+        console.error("Could not copy to clipboard:", e);
+      }
+    }
   };
 
   // Open cash drawer
@@ -777,6 +1060,8 @@ const Bill = ({ orderId }) => {
         },
         paymentMethod: paymentMethod,
         orderDate: new Date().toISOString(),
+        cashier: user?.name || user?.username || user?.fullName || "Admin", // Add cashier info
+        pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null, // Add PWD/SSS details
       };
 
       setOrderInfo(invoiceOrderInfo);
@@ -799,7 +1084,7 @@ const Bill = ({ orderId }) => {
         });
       }
 
-      // MARK ORDER AS COMPLETED
+      // MARK ORDER AS COMPLETED IN REDUX
       if (currentOrder) {
         console.log("Dispatching completeOrder for:", currentOrder.id);
         dispatch(completeOrder(currentOrder.id));
@@ -809,7 +1094,7 @@ const Bill = ({ orderId }) => {
 
       // AUTO PRINT RECEIPT AND OPEN CASH DRAWER
       setTimeout(() => {
-        // Print receipt to Bluetooth printer
+        // Print receipt - will automatically print on mobile/tablet
         printToBluetoothPrinter(data);
 
         // Open cash drawer for cash payments
@@ -820,6 +1105,12 @@ const Bill = ({ orderId }) => {
         // Show invoice
         setShowInvoice(true);
         setIsProcessing(false);
+
+        // Force navigation to menu after 3 seconds
+        setTimeout(() => {
+          setShowInvoice(false);
+          navigate("/menu");
+        }, 3000);
       }, 500);
     },
     onError: (error) => {
@@ -831,6 +1122,11 @@ const Bill = ({ orderId }) => {
 
       enqueueSnackbar(errorMessage, { variant: "error" });
       setIsProcessing(false);
+
+      // Reset order status on error - change back to active
+      if (currentOrder) {
+        dispatch(resetOrderStatus(currentOrder.id));
+      }
     },
   });
 
@@ -861,10 +1157,10 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    // Validate PWD/SSS discount selection
-    if (pwdSssDiscountApplied && pwdSssDiscountItems.length !== 3) {
+    // Validate PWD/SSS discount selection - now allows 1-3 items
+    if (pwdSssDiscountApplied && pwdSssDiscountItems.length === 0) {
       enqueueSnackbar(
-        "PWD/SSS discount requires exactly 3 items (1 drink + 2 food) to be selected",
+        "PWD/SSS discount requires at least 1 item to be selected",
         {
           variant: "error",
         }
@@ -872,7 +1168,29 @@ const Bill = ({ orderId }) => {
       return;
     }
 
+    // Validate PWD/SSS details if discount is applied
+    if (pwdSssDiscountApplied) {
+      if (!pwdSssDetails.name.trim()) {
+        enqueueSnackbar("Please enter PWD/SSS holder name", {
+          variant: "error",
+        });
+        return;
+      }
+      if (!pwdSssDetails.idNumber.trim()) {
+        enqueueSnackbar("Please enter PWD/SSS ID number", {
+          variant: "error",
+        });
+        return;
+      }
+    }
+
     setIsProcessing(true);
+
+    // MARK ORDER AS PROCESSING FIRST
+    if (currentOrder) {
+      console.log("Dispatching processOrder for:", currentOrder.id);
+      dispatch(processOrder(currentOrder.id)); // This changes status from "active" to "processing"
+    }
 
     const tableId =
       customerData.tables?.[0]?.tableId ||
@@ -913,6 +1231,10 @@ const Bill = ({ orderId }) => {
       };
     });
 
+    // Get cashier name with multiple fallback options
+    const cashierName =
+      user?.name || user?.username || user?.fullName || "Admin";
+
     // Prepare order data
     const orderData = {
       customerDetails: {
@@ -920,18 +1242,20 @@ const Bill = ({ orderId }) => {
         phone: customerData.customerPhone || "Not provided",
         guests: safeNumber(customerData.guests) || 1,
       },
-      orderStatus: "In Progress",
+      orderStatus: "Completed",
       bills,
       items,
       table: tableId,
       paymentMethod,
       pwdSssDiscountApplied: pwdSssDiscountApplied,
+      pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null,
       pwdSssSelectedItems: pwdSssDiscountItems.map((item) => ({
         name: item.name,
         quantity: item.quantity,
         pricePerQuantity: item.pricePerQuantity,
         type: isDrinkItem(item) ? "drink" : "food",
       })),
+      cashier: cashierName, // Add cashier info to order data
     };
 
     console.log("Sending order data:", orderData);
@@ -947,6 +1271,10 @@ const Bill = ({ orderId }) => {
         if (!loaded) {
           enqueueSnackbar("Razorpay SDK failed to load!", { variant: "error" });
           setIsProcessing(false);
+          // Reset order status on error
+          if (currentOrder) {
+            dispatch(resetOrderStatus(currentOrder.id));
+          }
           return;
         }
 
@@ -995,6 +1323,10 @@ const Bill = ({ orderId }) => {
                 variant: "error",
               });
               setIsProcessing(false);
+              // Reset order status on error
+              if (currentOrder) {
+                dispatch(resetOrderStatus(currentOrder.id));
+              }
             }
           },
           prefill: {
@@ -1007,6 +1339,10 @@ const Bill = ({ orderId }) => {
             ondismiss: function () {
               enqueueSnackbar("Payment cancelled", { variant: "info" });
               setIsProcessing(false);
+              // Reset order status on cancellation
+              if (currentOrder) {
+                dispatch(resetOrderStatus(currentOrder.id));
+              }
             },
           },
         };
@@ -1020,6 +1356,10 @@ const Bill = ({ orderId }) => {
           { variant: "error" }
         );
         setIsProcessing(false);
+        // Reset order status on error
+        if (currentOrder) {
+          dispatch(resetOrderStatus(currentOrder.id));
+        }
       }
     } else {
       // Cash payment - directly submit order
@@ -1030,14 +1370,8 @@ const Bill = ({ orderId }) => {
 
   const handleCloseInvoice = () => {
     setShowInvoice(false);
-    // Clear the current order from Redux store
-    if (currentOrder) {
-      dispatch(completeOrder(currentOrder.id));
-    }
-    // Navigate to menu after a short delay
-    setTimeout(() => {
-      navigate("/menu");
-    }, 500);
+    // Navigate to menu immediately
+    navigate("/menu");
   };
 
   // Handle redeem button click - show redeem options
@@ -1074,21 +1408,81 @@ const Bill = ({ orderId }) => {
 
   return (
     <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
-      {/* PWD/SSS Selection Modal */}
+      {/* PWD/SSS Selection Modal with Name/ID Fields */}
       {showPwdSssSelection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[80vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-2 text-gray-900">
-              Select Items for PWD/SSS Discount
+          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+              PWD/SSS Discount Application
             </h3>
-            <p className="text-sm text-gray-600 mb-1">
-              Please select exactly{" "}
-              <span className="font-semibold">1 drink</span> and{" "}
-              <span className="font-semibold">2 food items</span>
-            </p>
-            <p className="text-xs text-gray-500 mb-4">
-              20% discount will be applied only to the selected items
-            </p>
+
+            {/* PWD/SSS Details Form */}
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <h4 className="text-sm font-semibold text-blue-800 mb-3">
+                PWD/SSS Holder Information
+              </h4>
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Discount Type
+                  </label>
+                  <div className="flex gap-3">
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="type"
+                        value="PWD"
+                        checked={pwdSssDetails.type === "PWD"}
+                        onChange={handlePwdSssDetailsChange}
+                        className="mr-2"
+                      />
+                      <span className="text-sm">PWD</span>
+                    </label>
+                    <label className="flex items-center">
+                      <input
+                        type="radio"
+                        name="type"
+                        value="SSS"
+                        checked={pwdSssDetails.type === "SSS"}
+                        onChange={handlePwdSssDetailsChange}
+                        className="mr-2"
+                      />
+                      <span className="text-sm">SSS</span>
+                    </label>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Full Name *
+                  </label>
+                  <input
+                    type="text"
+                    name="name"
+                    value={pwdSssDetails.name}
+                    onChange={handlePwdSssDetailsChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    placeholder="Enter PWD/SSS holder name"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    ID Number *
+                  </label>
+                  <input
+                    type="text"
+                    name="idNumber"
+                    value={pwdSssDetails.idNumber}
+                    onChange={handlePwdSssDetailsChange}
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    placeholder="Enter PWD/SSS ID number"
+                    required
+                  />
+                </div>
+              </div>
+            </div>
 
             <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
               <div className="flex justify-between items-center mb-2">
@@ -1120,6 +1514,9 @@ const Bill = ({ orderId }) => {
             </div>
 
             <div className="space-y-3 mb-6 max-h-[300px] overflow-y-auto">
+              <p className="text-sm font-medium text-gray-700 mb-2">
+                Select items for 20% discount:
+              </p>
               {combinedCart.map((item, index) => {
                 const itemKey = getItemKey(item);
                 const isSelected = pwdSssDiscountItems.some(
@@ -1133,7 +1530,8 @@ const Bill = ({ orderId }) => {
 
                 const itemType = isDrink ? "Drink" : "Food";
                 const itemValue = calculateItemTotalPrice(item);
-                const discountedValue = itemValue * (1 - pwdSssDiscountRate);
+                const discountAmount = itemValue * pwdSssDiscountRate;
+                const discountedValue = itemValue - discountAmount;
 
                 return (
                   <div
@@ -1172,7 +1570,8 @@ const Bill = ({ orderId }) => {
                         </div>
                         {isSelected && (
                           <p className="text-xs text-green-600 mt-1">
-                            After 20% discount: ₱{discountedValue.toFixed(2)}
+                            After 20% discount (-₱{discountAmount.toFixed(2)}):
+                            ₱{discountedValue.toFixed(2)}
                           </p>
                         )}
                       </div>
@@ -1202,12 +1601,20 @@ const Bill = ({ orderId }) => {
                     .toFixed(2)}
                 </p>
                 <p className="text-xs text-gray-600">
-                  After 20% discount: ₱
+                  After 20% discount (-₱
                   {(
                     pwdSssDiscountItems.reduce(
                       (sum, item) => sum + calculateItemTotalPrice(item),
                       0
-                    ) * 0.8
+                    ) * pwdSssDiscountRate
+                  ).toFixed(2)}
+                  ): ₱
+                  {(
+                    pwdSssDiscountItems.reduce(
+                      (sum, item) => sum + calculateItemTotalPrice(item),
+                      0
+                    ) *
+                    (1 - pwdSssDiscountRate)
                   ).toFixed(2)}
                 </p>
               </div>
@@ -1221,7 +1628,7 @@ const Bill = ({ orderId }) => {
                 <button
                   onClick={handleApplyPwdSssSelection}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={pwdSssDiscountItems.length !== 3}
+                  disabled={pwdSssDiscountItems.length === 0}
                 >
                   Apply Discount
                 </button>
@@ -1251,6 +1658,7 @@ const Bill = ({ orderId }) => {
 
               const originalTotal = calculateItemTotalPrice(item);
               const displayedTotal = calculateItemTotal(item);
+              const discountAmount = calculateItemDiscountAmount(item);
 
               return (
                 <div
@@ -1289,9 +1697,17 @@ const Bill = ({ orderId }) => {
                         <>
                           {" "}
                           = ₱{originalTotal.toFixed(2)} → ₱
-                          {displayedTotal.toFixed(2)}
-                          <span className="ml-2 text-green-600">
-                            (20% discount applied)
+                          {displayedTotal.toFixed(2)}{" "}
+                          <span className="text-green-600">
+                            (-₱{discountAmount.toFixed(2)})
+                          </span>
+                        </>
+                      ) : item.isRedeemed ? (
+                        <>
+                          {" "}
+                          = ₱{originalTotal.toFixed(2)} → FREE{" "}
+                          <span className="text-blue-600">
+                            (-₱{discountAmount.toFixed(2)})
                           </span>
                         </>
                       ) : (
@@ -1375,6 +1791,7 @@ const Bill = ({ orderId }) => {
               <div className="flex items-center">
                 <p className="text-xs font-medium mr-2">
                   {discountedItemsInfo}
+                  {pwdSssDetails.name && ` (${pwdSssDetails.name})`}
                 </p>
                 <button
                   onClick={clearPwdSssDiscount}
@@ -1451,12 +1868,14 @@ const Bill = ({ orderId }) => {
             {pwdSssDiscountApplied ? (
               <span className="flex items-center justify-center gap-1">
                 <span>✓ PWD/SSS Applied</span>
-                <span className="text-xs">
-                  ({pwdSssDiscountItems.length}/3 items)
-                </span>
+                {pwdSssDetails.name && (
+                  <span className="text-xs truncate">
+                    ({pwdSssDetails.name})
+                  </span>
+                )}
               </span>
             ) : (
-              "PWD/SSS (20% - Select 1 drink & 2 food)"
+              "PWD/SSS (20% - Select 1-3 items)"
             )}
           </button>
 

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { menus } from "../../constants";
+import { menus, bentoItems, cheesecakeFlavorOptions } from "../../constants";
 import { GrRadialSelected } from "react-icons/gr";
 import { useDispatch } from "react-redux";
 import { addItemsToOrder } from "../../redux/slices/orderSlice";
@@ -8,9 +8,19 @@ const MenuContainer = ({ orderId }) => {
   const [selected, setSelected] = useState(menus[0]);
   const [selectedSlice, setSelectedSlice] = useState(null);
   const [showKetoFlavors, setShowKetoFlavors] = useState(false);
+  const [showBentoFlavors, setShowBentoFlavors] = useState(false);
+  const [selectedBentoItem, setSelectedBentoItem] = useState(null);
+  const [selectedBentoBase, setSelectedBentoBase] = useState(null);
+  const [availableFlavors, setAvailableFlavors] = useState([]);
+
+  // New state for Keto Slice
+  const [selectedKetoItem, setSelectedKetoItem] = useState(null);
+  const [selectedKetoBase, setSelectedKetoBase] = useState(null);
+  const [availableKetoFlavors, setAvailableKetoFlavors] = useState([]);
+
   const dispatch = useDispatch();
 
-  // FIXED: Changed payload to item
+  // Handle regular item add to cart
   const handleAddToCart = (item, variant) => {
     const newObj = {
       id: `${item.id}-${variant.label}`,
@@ -20,12 +30,11 @@ const MenuContainer = ({ orderId }) => {
       price: variant.price,
     };
 
-    console.log("Adding to cart:", { orderId, item: newObj }); // Debug log
-
-    // FIXED: Changed from payload: newObj to item: newObj
+    console.log("Adding to cart:", { orderId, item: newObj });
     dispatch(addItemsToOrder({ orderId, item: newObj }));
   };
 
+  // Handle Regular Cheesecake Slice selection
   const handleSelectSlice = (item, variant) => {
     setSelectedSlice({
       item,
@@ -34,29 +43,129 @@ const MenuContainer = ({ orderId }) => {
     });
   };
 
-  const handleKetoSliceClick = (item) => {
-    setShowKetoFlavors(!showKetoFlavors);
+  // Handle Keto Cheesecake Base selection (with flavor option)
+  const handleKetoBaseClick = (item, baseVariant) => {
+    setSelectedKetoItem(item);
+    setSelectedKetoBase(baseVariant);
+
+    // Get all flavor options for Keto items
+    const allFlavors = cheesecakeFlavorOptions.map((flavor) => ({
+      ...flavor,
+      basePrice: baseVariant.price,
+      description: `${item.name} (${baseVariant.label}) with ${flavor.label} flavor`,
+      totalPrice: baseVariant.price + (flavor.price - 220),
+    }));
+
+    setAvailableKetoFlavors(allFlavors);
+    setShowKetoFlavors(true);
   };
 
-  const handleKetoFlavorSelect = (item, variant) => {
+  const handleKetoFlavorSelect = (flavor) => {
+    if (!selectedKetoItem || !selectedKetoBase) return;
+
     const newObj = {
-      id: `${item.id}-${variant.label}`,
-      name: `${item.name} - ${variant.label}`,
-      pricePerQuantity: variant.price,
+      id: `${selectedKetoItem.id}-${selectedKetoBase.label}-${flavor.label}`,
+      name: `${selectedKetoItem.name} (${selectedKetoBase.label}) with ${flavor.label}`,
+      pricePerQuantity: flavor.totalPrice || flavor.price,
       quantity: 1,
-      price: variant.price,
+      price: flavor.totalPrice || flavor.price,
     };
 
-    console.log("Adding keto flavor:", { orderId, item: newObj }); // Debug log
-
-    // FIXED: Changed from payload: newObj to item: newObj
+    console.log("Adding keto with flavor:", { orderId, item: newObj });
     dispatch(addItemsToOrder({ orderId, item: newObj }));
     setShowKetoFlavors(false);
+    setSelectedKetoItem(null);
+    setSelectedKetoBase(null);
+  };
+
+  const handleKetoBaseOnly = (item, baseVariant) => {
+    const newObj = {
+      id: `${item.id}-${baseVariant.label}`,
+      name: `${item.name} (${baseVariant.label})`,
+      pricePerQuantity: baseVariant.price,
+      quantity: 1,
+      price: baseVariant.price,
+    };
+
+    console.log("Adding keto base only:", { orderId, item: newObj });
+    dispatch(addItemsToOrder({ orderId, item: newObj }));
+  };
+
+  // Handle Bento flavor selection
+  const handleBentoFlavorClick = (item, baseVariant) => {
+    setSelectedBentoItem(item);
+    setSelectedBentoBase(baseVariant);
+
+    // Get all flavor options for Bento items
+    const allFlavors = cheesecakeFlavorOptions.map((flavor) => ({
+      ...flavor,
+      basePrice: baseVariant.price,
+      description: `${item.name} (${baseVariant.label}) with ${flavor.label} flavor`,
+      totalPrice: baseVariant.price + (flavor.price - 220),
+    }));
+
+    setAvailableFlavors(allFlavors);
+    setShowBentoFlavors(true);
+  };
+
+  const handleBentoFlavorSelect = (flavor) => {
+    if (!selectedBentoItem || !selectedBentoBase) return;
+
+    const newObj = {
+      id: `${selectedBentoItem.id}-${selectedBentoBase.label}-${flavor.label}`,
+      name: `${selectedBentoItem.name} (${selectedBentoBase.label}) with ${flavor.label}`,
+      pricePerQuantity: flavor.totalPrice || flavor.price,
+      quantity: 1,
+      price: flavor.totalPrice || flavor.price,
+    };
+
+    console.log("Adding bento with flavor:", { orderId, item: newObj });
+    dispatch(addItemsToOrder({ orderId, item: newObj }));
+    setShowBentoFlavors(false);
+    setSelectedBentoItem(null);
+    setSelectedBentoBase(null);
+  };
+
+  const handleBentoBaseOnly = (item, baseVariant) => {
+    const newObj = {
+      id: `${item.id}-${baseVariant.label}`,
+      name: `${item.name} (${baseVariant.label})`,
+      pricePerQuantity: baseVariant.price,
+      quantity: 1,
+      price: baseVariant.price,
+    };
+
+    console.log("Adding bento base only:", { orderId, item: newObj });
+    dispatch(addItemsToOrder({ orderId, item: newObj }));
   };
 
   const isRegularCheesecakes = selected.name === "Regular Cheesecakes";
   const isKetoCheesecakes = selected.name === "Keto Cheesecakes";
+  const isBentoMini = selected.name === "Bento & Mini";
   const isSliceItem = (item) => item.name.includes("Slice");
+
+  // Check if item is a Bento item
+  const isBentoItem = (item) => {
+    return item.category === "Bento" || item.category === "Bento & Mini";
+  };
+
+  // Check if item is a Keto Slice item
+  const isKetoSliceItem = (item) => {
+    return isKetoCheesecakes && item.name === "Keto Cheesecake - Slice";
+  };
+
+  // Get base options for Bento items
+  const getBentoBaseOptions = (item) => {
+    return item.variants.filter((variant) => variant.type === "base");
+  };
+
+  // Get base options for Keto items
+  const getKetoBaseOptions = (item) => {
+    if (isKetoSliceItem(item)) {
+      return item.variants.filter((variant) => variant.type === "base");
+    }
+    return item.variants;
+  };
 
   return (
     <div className="w-full h-[calc(100vh-8rem)] flex bg-gray-50">
@@ -70,6 +179,11 @@ const MenuContainer = ({ orderId }) => {
                 setSelected(menu);
                 setSelectedSlice(null);
                 setShowKetoFlavors(false);
+                setShowBentoFlavors(false);
+                setSelectedBentoItem(null);
+                setSelectedBentoBase(null);
+                setSelectedKetoItem(null);
+                setSelectedKetoBase(null);
               }}
               className={`flex flex-col items-center justify-center p-3 rounded-lg cursor-pointer transition-all duration-200 hover:scale-105 min-h-[80px] ${
                 selected.id === menu.id
@@ -112,6 +226,8 @@ const MenuContainer = ({ orderId }) => {
               </h1>
               <p className="text-gray-500 text-sm">
                 {selected.items.length} items available
+                {isBentoMini && " - All customizable with flavors!"}
+                {isKetoCheesecakes && " - Slices customizable with flavors!"}
               </p>
             </div>
           </div>
@@ -150,57 +266,202 @@ const MenuContainer = ({ orderId }) => {
         )}
 
         {/* Keto Cheesecake Flavors Modal */}
-        {showKetoFlavors && (
+        {showKetoFlavors && selectedKetoItem && selectedKetoBase && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
             <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-900">
-                  Select Keto Cheesecake Flavor
+                  Customize {selectedKetoItem.name}
                 </h2>
                 <button
-                  onClick={() => setShowKetoFlavors(false)}
+                  onClick={() => {
+                    setShowKetoFlavors(false);
+                    setSelectedKetoItem(null);
+                    setSelectedKetoBase(null);
+                  }}
                   className="text-gray-500 hover:text-gray-700 text-2xl"
                 >
                   ×
                 </button>
               </div>
 
+              <div className="mb-6 p-4 bg-purple-50 rounded-lg border border-purple-200">
+                <h3 className="font-semibold text-gray-900 mb-2">
+                  Selected Base: {selectedKetoBase.label}
+                </h3>
+                <p className="text-gray-600">
+                  Base Price: ₱{selectedKetoBase.price.toLocaleString()}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Choose a flavor or add the base as-is
+                </p>
+              </div>
+
+              {/* Add Base Only Option */}
+              <div
+                className="border border-gray-200 rounded-lg p-4 mb-4 hover:border-green-400 transition-colors cursor-pointer bg-green-50"
+                onClick={() => {
+                  handleKetoBaseOnly(selectedKetoItem, selectedKetoBase);
+                  setShowKetoFlavors(false);
+                }}
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">
+                      Original (No Flavor)
+                    </h3>
+                    <p className="text-gray-600 text-sm">
+                      Add {selectedKetoItem.name} with original flavor
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-green-600">
+                      ₱{selectedKetoBase.price.toLocaleString()}
+                    </p>
+                    <button className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600 transition-colors mt-1">
+                      Add as-is
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <h3 className="font-semibold text-gray-900 mb-3">
+                Choose a Flavor:
+              </h3>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {selected?.items
-                  .find((item) => item.name === "Keto Cheesecake - Slice")
-                  ?.variants.map((variant) => (
-                    <div
-                      key={variant.label}
-                      className="border border-gray-200 rounded-lg p-4 hover:border-purple-400 transition-colors cursor-pointer"
-                      onClick={() =>
-                        handleKetoFlavorSelect(
-                          selected.items.find(
-                            (item) => item.name === "Keto Cheesecake - Slice"
-                          ),
-                          variant
-                        )
-                      }
-                    >
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <h3 className="font-semibold text-gray-900">
-                            {variant.label}
-                          </h3>
-                          <p className="text-gray-600 text-sm">
-                            Keto Cheesecake Slice
-                          </p>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-bold text-purple-600">
-                            ₱{variant.price.toLocaleString()}
-                          </p>
-                          <button className="bg-purple-500 text-white px-3 py-1 rounded text-sm hover:bg-purple-600 transition-colors mt-1">
-                            Add to Cart
-                          </button>
-                        </div>
+                {availableKetoFlavors.map((flavor) => (
+                  <div
+                    key={flavor.label}
+                    className="border border-gray-200 rounded-lg p-4 hover:border-purple-400 transition-colors cursor-pointer"
+                    onClick={() => handleKetoFlavorSelect(flavor)}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">
+                          {flavor.label}
+                        </h3>
+                        <p className="text-gray-600 text-sm">
+                          {selectedKetoItem.name} ({selectedKetoBase.label})
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-purple-600">
+                          ₱
+                          {(flavor.totalPrice || flavor.price).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Base: ₱{selectedKetoBase.price.toLocaleString()} +
+                          Flavor: ₱{(flavor.price - 220).toLocaleString()}
+                        </p>
+                        <button className="bg-purple-500 text-white px-3 py-1 rounded text-sm hover:bg-purple-600 transition-colors mt-1">
+                          Add with Flavor
+                        </button>
                       </div>
                     </div>
-                  ))}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Bento & Mini Flavors Modal */}
+        {showBentoFlavors && selectedBentoItem && selectedBentoBase && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[80vh] overflow-y-auto">
+              <div className="flex justify-between items-center mb-4">
+                <h2 className="text-xl font-bold text-gray-900">
+                  Customize {selectedBentoItem.name}
+                </h2>
+                <button
+                  onClick={() => {
+                    setShowBentoFlavors(false);
+                    setSelectedBentoItem(null);
+                    setSelectedBentoBase(null);
+                  }}
+                  className="text-gray-500 hover:text-gray-700 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+
+              <div className="mb-6 p-4 bg-orange-50 rounded-lg border border-orange-200">
+                <h3 className="font-semibold text-gray-900 mb-2">
+                  Selected Base: {selectedBentoBase.label}
+                </h3>
+                <p className="text-gray-600">
+                  Base Price: ₱{selectedBentoBase.price.toLocaleString()}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">
+                  Choose a flavor or add the base as-is
+                </p>
+              </div>
+
+              {/* Add Base Only Option */}
+              <div
+                className="border border-gray-200 rounded-lg p-4 mb-4 hover:border-green-400 transition-colors cursor-pointer bg-green-50"
+                onClick={() => {
+                  handleBentoBaseOnly(selectedBentoItem, selectedBentoBase);
+                  setShowBentoFlavors(false);
+                }}
+              >
+                <div className="flex justify-between items-center">
+                  <div>
+                    <h3 className="font-semibold text-gray-900">
+                      Original (No Flavor)
+                    </h3>
+                    <p className="text-gray-600 text-sm">
+                      Add {selectedBentoItem.name} with original flavor
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold text-green-600">
+                      ₱{selectedBentoBase.price.toLocaleString()}
+                    </p>
+                    <button className="bg-green-500 text-white px-3 py-1 rounded text-sm hover:bg-green-600 transition-colors mt-1">
+                      Add as-is
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <h3 className="font-semibold text-gray-900 mb-3">
+                Choose a Flavor:
+              </h3>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {availableFlavors.map((flavor) => (
+                  <div
+                    key={flavor.label}
+                    className="border border-gray-200 rounded-lg p-4 hover:border-orange-400 transition-colors cursor-pointer"
+                    onClick={() => handleBentoFlavorSelect(flavor)}
+                  >
+                    <div className="flex justify-between items-center">
+                      <div>
+                        <h3 className="font-semibold text-gray-900">
+                          {flavor.label}
+                        </h3>
+                        <p className="text-gray-600 text-sm">
+                          {selectedBentoItem.name} ({selectedBentoBase.label})
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-orange-600">
+                          ₱
+                          {(flavor.totalPrice || flavor.price).toLocaleString()}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          Base: ₱{selectedBentoBase.price.toLocaleString()} +
+                          Flavor: ₱{(flavor.price - 220).toLocaleString()}
+                        </p>
+                        <button className="bg-orange-500 text-white px-3 py-1 rounded text-sm hover:bg-orange-600 transition-colors mt-1">
+                          Add with Flavor
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           </div>
@@ -219,8 +480,12 @@ const MenuContainer = ({ orderId }) => {
                     ? "border-2 border-yellow-400 bg-yellow-50"
                     : "border-gray-100 hover:border-yellow-200"
                 } ${
-                  isKetoCheesecakes && isSliceItem(item) && showKetoFlavors
-                    ? "border-2 border-purple-400 bg-purple-50"
+                  isKetoSliceItem(item)
+                    ? "border-purple-100 hover:border-purple-300"
+                    : ""
+                } ${
+                  isBentoMini && isBentoItem(item)
+                    ? "border-orange-100 hover:border-orange-300"
                     : ""
                 }`}
               >
@@ -228,53 +493,131 @@ const MenuContainer = ({ orderId }) => {
                 <div className="flex justify-between items-start gap-2">
                   <h1 className="text-gray-900 text-sm sm:text-[0.9rem] font-bold leading-tight flex-1 line-clamp-2">
                     {item.name}
+                    {isBentoMini && (
+                      <span className="inline-block ml-2 text-xs bg-orange-100 text-orange-800 px-2 py-0.5 rounded-full">
+                        Customizable
+                      </span>
+                    )}
+                    {isKetoSliceItem(item) && (
+                      <span className="inline-block ml-2 text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">
+                        Customizable
+                      </span>
+                    )}
                   </h1>
                 </div>
 
                 {/* 💵 Variants */}
                 <div className="space-y-2">
-                  {item.variants.map((variant) => (
-                    <div key={variant.label} className="flex flex-col gap-2">
-                      <p className="text-gray-700 text-xs sm:text-[0.8rem] font-medium leading-tight">
-                        ₱{variant.price.toLocaleString()} / {variant.label}
-                      </p>
+                  {isBentoMini && isBentoItem(item)
+                    ? // Bento & Mini items - Show base options
+                      getBentoBaseOptions(item).map((variant) => (
+                        <div
+                          key={variant.label}
+                          className="flex flex-col gap-2"
+                        >
+                          <div className="flex justify-between items-center">
+                            <p className="text-gray-700 text-xs sm:text-[0.8rem] font-medium leading-tight">
+                              ₱{variant.price.toLocaleString()} /{" "}
+                              {variant.label}
+                            </p>
+                            <span className="text-xs text-orange-600 font-semibold">
+                              + Flavors
+                            </span>
+                          </div>
 
-                      {/* Special handling for Regular Cheesecake Slice */}
-                      {isRegularCheesecakes &&
-                      isSliceItem(item) &&
-                      variant.label === "Slice" ? (
-                        <button
-                          onClick={() => handleSelectSlice(item, variant)}
-                          className={`py-2 rounded-lg shadow font-semibold text-sm w-full transition-colors ${
-                            selectedSlice?.item?.id === item.id
-                              ? "bg-green-500 text-white hover:bg-green-600"
-                              : "bg-yellow-400 text-gray-900 hover:bg-yellow-500"
-                          }`}
+                          <div className="flex gap-2">
+                            {/* Add Base Only Button */}
+                            <button
+                              onClick={() => handleBentoBaseOnly(item, variant)}
+                              className="flex-1 bg-green-500 text-white py-2 rounded-lg shadow hover:bg-green-600 transition-colors font-semibold text-sm"
+                            >
+                              Add Base
+                            </button>
+
+                            {/* Choose Flavor Button */}
+                            <button
+                              onClick={() =>
+                                handleBentoFlavorClick(item, variant)
+                              }
+                              className="flex-1 bg-orange-500 text-white py-2 rounded-lg shadow hover:bg-orange-600 transition-colors font-semibold text-sm"
+                            >
+                              Add Flavor
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    : isKetoSliceItem(item)
+                    ? // Keto Cheesecake Slice - Show base options
+                      getKetoBaseOptions(item).map((variant) => (
+                        <div
+                          key={variant.label}
+                          className="flex flex-col gap-2"
                         >
-                          {selectedSlice?.item?.id === item.id
-                            ? "Selected"
-                            : "Select"}
-                        </button>
-                      ) : /* Special handling for Keto Cheesecake Slice */
-                      isKetoCheesecakes &&
-                        isSliceItem(item) &&
-                        variant.label === "Slice" ? (
-                        <button
-                          onClick={() => handleKetoSliceClick(item)}
-                          className="bg-purple-500 text-white py-2 rounded-lg shadow hover:bg-purple-600 transition-colors font-semibold text-sm w-full"
+                          <div className="flex justify-between items-center">
+                            <p className="text-gray-700 text-xs sm:text-[0.8rem] font-medium leading-tight">
+                              ₱{variant.price.toLocaleString()} /{" "}
+                              {variant.label}
+                            </p>
+                            <span className="text-xs text-purple-600 font-semibold">
+                              + Flavors
+                            </span>
+                          </div>
+
+                          <div className="flex gap-2">
+                            {/* Add Base Only Button */}
+                            <button
+                              onClick={() => handleKetoBaseOnly(item, variant)}
+                              className="flex-1 bg-green-500 text-white py-2 rounded-lg shadow hover:bg-green-600 transition-colors font-semibold text-sm"
+                            >
+                              Add Base
+                            </button>
+
+                            {/* Choose Flavor Button */}
+                            <button
+                              onClick={() => handleKetoBaseClick(item, variant)}
+                              className="flex-1 bg-purple-500 text-white py-2 rounded-lg shadow hover:bg-purple-600 transition-colors font-semibold text-sm"
+                            >
+                              Add Flavor
+                            </button>
+                          </div>
+                        </div>
+                      ))
+                    : // Regular items (non-Bento, non-Keto Slice)
+                      item.variants.map((variant) => (
+                        <div
+                          key={variant.label}
+                          className="flex flex-col gap-2"
                         >
-                          Choose Flavor
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleAddToCart(item, variant)}
-                          className="bg-yellow-400 text-gray-900 py-2 rounded-lg shadow hover:bg-yellow-500 active:scale-95 transition-colors font-semibold text-sm w-full"
-                        >
-                          Add
-                        </button>
-                      )}
-                    </div>
-                  ))}
+                          <p className="text-gray-700 text-xs sm:text-[0.8rem] font-medium leading-tight">
+                            ₱{variant.price.toLocaleString()} / {variant.label}
+                          </p>
+
+                          {/* Special handling for Regular Cheesecake Slice */}
+                          {isRegularCheesecakes &&
+                          isSliceItem(item) &&
+                          variant.label === "Slice" ? (
+                            <button
+                              onClick={() => handleSelectSlice(item, variant)}
+                              className={`py-2 rounded-lg shadow font-semibold text-sm w-full transition-colors ${
+                                selectedSlice?.item?.id === item.id
+                                  ? "bg-green-500 text-white hover:bg-green-600"
+                                  : "bg-yellow-400 text-gray-900 hover:bg-yellow-500"
+                              }`}
+                            >
+                              {selectedSlice?.item?.id === item.id
+                                ? "Selected"
+                                : "Select"}
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleAddToCart(item, variant)}
+                              className="bg-yellow-400 text-gray-900 py-2 rounded-lg shadow hover:bg-yellow-500 active:scale-95 transition-colors font-semibold text-sm w-full"
+                            >
+                              Add
+                            </button>
+                          )}
+                        </div>
+                      ))}
                 </div>
               </div>
             ))}

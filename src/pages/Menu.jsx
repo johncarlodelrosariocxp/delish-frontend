@@ -5,6 +5,7 @@ import {
   MdAdd,
   MdClose,
   MdCheckCircle,
+  MdPrint,
 } from "react-icons/md";
 import MenuContainer from "../components/menu/MenuContainer";
 import CustomerInfo from "../components/menu/CustomerInfo";
@@ -27,11 +28,12 @@ const Menu = () => {
     (state) => state.order
   );
   const [activeTab, setActiveTab] = useState("active");
+  const [printingOrderId, setPrintingOrderId] = useState(null);
 
-  // Filter only active orders (status === "active") for display
+  // Filter orders correctly
   const activeOrders = orders.filter((order) => order.status === "active");
-  const completingOrders = orders.filter(
-    (order) => order.status === "completing"
+  const processingOrders = orders.filter(
+    (order) => order.status === "processing"
   );
 
   const handleAddNewOrder = () => {
@@ -40,7 +42,7 @@ const Menu = () => {
   };
 
   const handleSwitchOrder = (orderId) => {
-    // Only allow switching to active orders, not completing ones
+    // Only allow switching to active orders
     const order = orders.find((order) => order.id === orderId);
     if (order && order.status === "active") {
       dispatch(switchOrder(orderId));
@@ -54,6 +56,202 @@ const Menu = () => {
     if (activeOrders.length > 1) {
       dispatch(closeOrder(orderId));
     }
+  };
+
+  // Format currency using locale
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat("en-PH", {
+      style: "currency",
+      currency: "PHP",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  };
+
+  // Format date using locale
+  const formatDate = (date) => {
+    return new Date(date).toLocaleString("en-PH", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+      hour12: true,
+    });
+  };
+
+  // Print completed order receipt
+  const handlePrintOrder = async (order, event) => {
+    event.stopPropagation();
+    setPrintingOrderId(order.id);
+
+    try {
+      // Create receipt text
+      const receiptText = generateReceiptText(order);
+
+      // Create a hidden textarea with the receipt content
+      const textArea = document.createElement("textarea");
+      textArea.value = receiptText;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      textArea.style.top = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
+
+      try {
+        // Try to print using browser print
+        window.print();
+      } catch (error) {
+        // Copy to clipboard as last resort
+        document.execCommand("copy");
+        alert(
+          "Receipt copied to clipboard. Please paste into a text editor to print."
+        );
+      }
+
+      document.body.removeChild(textArea);
+    } catch (error) {
+      console.error("Printing error:", error);
+      alert("Failed to print receipt");
+    } finally {
+      setTimeout(() => setPrintingOrderId(null), 1000);
+    }
+  };
+
+  // Generate receipt text for completed orders
+  const generateReceiptText = (order) => {
+    const lineBreak = "\n";
+    const dashedLine = "--------------------------------";
+    const doubleLine = "===============================";
+
+    let receipt = "";
+
+    // Header
+    receipt += doubleLine + lineBreak;
+    receipt += "      DELISH RESTAURANT" + lineBreak;
+    receipt += doubleLine + lineBreak;
+    receipt += `Order: #${order.id?.slice(-8) || order.number}` + lineBreak;
+    receipt +=
+      `Date: ${formatDate(order.completedAt || Date.now())}` + lineBreak;
+    receipt +=
+      `Customer: ${order.customer?.customerName || "Walk-in"}` + lineBreak;
+    receipt += dashedLine + lineBreak;
+
+    // Items
+    receipt += "           ORDER ITEMS" + lineBreak;
+    receipt += dashedLine + lineBreak;
+
+    order.items?.forEach((item, index) => {
+      const itemName =
+        item.name.length > 20 ? item.name.substring(0, 17) + "..." : item.name;
+      const quantity = item.quantity || 1;
+      const pricePerQuantity = item.pricePerQuantity || item.price || 0;
+      const total = quantity * pricePerQuantity;
+
+      receipt += `${itemName}` + lineBreak;
+      receipt +=
+        `  ${quantity}x ${formatCurrency(pricePerQuantity)}` + lineBreak;
+      receipt +=
+        `  ${formatCurrency(total)}${item.isRedeemed ? " (REDEEMED)" : ""}` +
+        lineBreak;
+      if (item.isPwdSssDiscounted) {
+        receipt += `  PWD/SSS 20% Discount Applied` + lineBreak;
+      }
+      receipt += lineBreak;
+    });
+
+    receipt += dashedLine + lineBreak;
+
+    // Calculate totals
+    const subtotal =
+      order.items?.reduce((sum, item) => {
+        return (
+          sum +
+          (item.quantity || 1) * (item.pricePerQuantity || item.price || 0)
+        );
+      }, 0) || 0;
+
+    const vat = order.bills?.tax || subtotal * 0.12;
+    const total = order.bills?.total || subtotal + vat;
+
+    // Totals
+    receipt +=
+      "SUBTOTAL:" + `${formatCurrency(subtotal)}`.padStart(20) + lineBreak;
+
+    if (order.bills?.pwdSssDiscount > 0) {
+      receipt +=
+        "PWD/SSS DISC:" +
+        `-${formatCurrency(order.bills.pwdSssDiscount)}`.padStart(17) +
+        lineBreak;
+    }
+
+    if (order.bills?.redemptionDiscount > 0) {
+      receipt +=
+        "REDEMPTION:" +
+        `-${formatCurrency(order.bills.redemptionDiscount)}`.padStart(19) +
+        lineBreak;
+    }
+
+    if (order.bills?.employeeDiscount > 0) {
+      receipt +=
+        "EMP DISCOUNT:" +
+        `-${formatCurrency(order.bills.employeeDiscount)}`.padStart(17) +
+        lineBreak;
+    }
+
+    if (order.bills?.shareholderDiscount > 0) {
+      receipt +=
+        "SH DISCOUNT:" +
+        `-${formatCurrency(order.bills.shareholderDiscount)}`.padStart(18) +
+        lineBreak;
+    }
+
+    receipt += "VAT (12%):" + `${formatCurrency(vat)}`.padStart(20) + lineBreak;
+    receipt += doubleLine + lineBreak;
+    receipt += "TOTAL:" + `${formatCurrency(total)}`.padStart(24) + lineBreak;
+    receipt += doubleLine + lineBreak;
+
+    receipt += `Payment: ${order.paymentMethod || "Cash"}` + lineBreak;
+    receipt += "Status: COMPLETED" + lineBreak;
+    receipt += lineBreak;
+    receipt += "Thank you for dining with us!" + lineBreak;
+    receipt += "Visit us again soon!" + lineBreak;
+    receipt += lineBreak;
+    receipt += lineBreak;
+    receipt += lineBreak; // Extra lines for paper cut
+
+    return receipt;
+  };
+
+  // Calculate total amount for display
+  const calculateTotalAmount = (order) => {
+    if (order.bills?.total) {
+      return formatCurrency(order.bills.total);
+    }
+
+    const total =
+      order.items?.reduce((sum, item) => {
+        return (
+          sum +
+          (item.quantity || 1) * (item.pricePerQuantity || item.price || 0)
+        );
+      }, 0) || 0;
+
+    return formatCurrency(total);
+  };
+
+  // Calculate item total for display
+  const calculateItemTotal = (item) => {
+    const total =
+      (item.quantity || 1) * (item.pricePerQuantity || item.price || 0);
+    return formatCurrency(total);
+  };
+
+  // Calculate item price per quantity for display
+  const calculateItemPrice = (item) => {
+    const price = item.pricePerQuantity || item.price || 0;
+    return formatCurrency(price);
   };
 
   return (
@@ -83,13 +281,14 @@ const Menu = () => {
         </button>
       </div>
 
-      {/* Warning for completing orders */}
-      {completingOrders.length > 0 && (
+      {/* Warning for processing orders */}
+      {processingOrders.length > 0 && (
         <div className="bg-yellow-50 border-b border-yellow-200 px-3 py-2">
-          <div className="max-w-7xl mx-auto">
-            <p className="text-yellow-700 text-sm font-medium text-center">
-              ⏳ {completingOrders.length} order
-              {completingOrders.length > 1 ? "s" : ""} being processed...
+          <div className="max-w-7xl mx-auto flex items-center justify-center gap-2">
+            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600"></div>
+            <p className="text-yellow-700 text-sm font-medium">
+              ⏳ {processingOrders.length} order
+              {processingOrders.length > 1 ? "s" : ""} being processed...
             </p>
           </div>
         </div>
@@ -133,11 +332,11 @@ const Menu = () => {
             </div>
           ))}
 
-          {/* Show completing orders with different styling */}
-          {completingOrders.map((order) => (
+          {/* Show processing orders with different styling */}
+          {processingOrders.map((order) => (
             <div
               key={order.id}
-              className="flex items-center gap-2 px-3 py-2 rounded-t-lg min-w-0 flex-shrink-0 bg-yellow-100 border-t border-l border-r border-yellow-200 opacity-75 cursor-not-allowed"
+              className="flex items-center gap-2 px-3 py-2 rounded-t-lg min-w-0 flex-shrink-0 bg-yellow-100 border-t border-l border-r border-yellow-200 cursor-not-allowed"
             >
               <span className="text-sm font-medium whitespace-nowrap text-yellow-700">
                 Order {order.number}
@@ -150,9 +349,10 @@ const Menu = () => {
                   )}
                 </span>
               )}
-              <span className="text-yellow-600 text-xs italic">
-                Processing...
-              </span>
+              <div className="flex items-center gap-1">
+                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-600"></div>
+                <span className="text-yellow-600 text-xs">Processing...</span>
+              </div>
             </div>
           ))}
 
@@ -170,7 +370,7 @@ const Menu = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col md:flex-col lg:flex-row gap-3 p-3 pb-20 lg:pb-3">
         {activeTab === "active" ? (
-          activeOrders.length === 0 && completingOrders.length === 0 ? (
+          activeOrders.length === 0 && processingOrders.length === 0 ? (
             // No active orders state
             <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 rounded-lg p-8">
               <div className="text-center">
@@ -189,8 +389,8 @@ const Menu = () => {
                 </button>
               </div>
             </div>
-          ) : activeOrders.length === 0 && completingOrders.length > 0 ? (
-            // Only completing orders, no active ones
+          ) : activeOrders.length === 0 && processingOrders.length > 0 ? (
+            // Only processing orders, no active ones
             <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 rounded-lg p-8">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mx-auto mb-4"></div>
@@ -201,7 +401,7 @@ const Menu = () => {
                   Your orders are being completed. Please wait...
                 </p>
                 <div className="space-y-2 max-w-md mx-auto">
-                  {completingOrders.map((order) => (
+                  {processingOrders.map((order) => (
                     <div
                       key={order.id}
                       className="bg-yellow-50 border border-yellow-200 rounded-lg p-3"
@@ -307,10 +507,26 @@ const Menu = () => {
                         </p>
                         <p className="text-green-600 text-sm mt-1">
                           Completed:{" "}
-                          {new Date(order.completedAt).toLocaleString()}
+                          {order.completedAt
+                            ? formatDate(order.completedAt)
+                            : "N/A"}
                         </p>
                       </div>
-                      <MdCheckCircle className="text-green-500 text-2xl flex-shrink-0 ml-2" />
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={(e) => handlePrintOrder(order, e)}
+                          disabled={printingOrderId === order.id}
+                          className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          title="Print Receipt"
+                        >
+                          {printingOrderId === order.id ? (
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          ) : (
+                            <MdPrint size={20} />
+                          )}
+                        </button>
+                        <MdCheckCircle className="text-green-500 text-2xl flex-shrink-0" />
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 gap-4 text-green-700 text-sm">
@@ -321,16 +537,15 @@ const Menu = () => {
                       <div>
                         <p className="font-medium">Total Amount</p>
                         <p className="font-bold">
-                          ₱
-                          {order.items
-                            ?.reduce(
-                              (sum, item) =>
-                                sum + item.quantity * item.pricePerQuantity,
-                              0
-                            )
-                            .toFixed(2)}
+                          {calculateTotalAmount(order)}
                         </p>
                       </div>
+                      {order.paymentMethod && (
+                        <div className="col-span-2">
+                          <p className="font-medium">Payment Method</p>
+                          <p className="font-bold">{order.paymentMethod}</p>
+                        </div>
+                      )}
                     </div>
 
                     {order.items && order.items.length > 0 && (
@@ -346,19 +561,71 @@ const Menu = () => {
                             >
                               <span>
                                 {item.quantity}x {item.name}
+                                {item.isRedeemed && (
+                                  <span className="ml-1 text-blue-600">
+                                    (Redeemed)
+                                  </span>
+                                )}
+                                {item.isPwdSssDiscounted && (
+                                  <span className="ml-1 text-green-600">
+                                    (PWD/SSS 20% off)
+                                  </span>
+                                )}
                               </span>
-                              <span>
-                                ₱
-                                {(
-                                  item.quantity * item.pricePerQuantity
-                                ).toFixed(2)}
-                              </span>
+                              <span>{calculateItemTotal(item)}</span>
                             </div>
                           ))}
                           {order.items.length > 3 && (
                             <p className="text-green-600 text-xs">
                               +{order.items.length - 3} more items
                             </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Show discounts if available */}
+                    {order.bills && (
+                      <div className="mt-3 pt-3 border-t border-green-200">
+                        <p className="text-green-600 text-sm font-medium mb-2">
+                          Discounts Applied:
+                        </p>
+                        <div className="space-y-1 text-green-700 text-xs">
+                          {order.bills.pwdSssDiscount > 0 && (
+                            <div className="flex justify-between">
+                              <span>PWD/SSS Discount:</span>
+                              <span className="text-red-600">
+                                -{formatCurrency(order.bills.pwdSssDiscount)}
+                              </span>
+                            </div>
+                          )}
+                          {order.bills.redemptionDiscount > 0 && (
+                            <div className="flex justify-between">
+                              <span>Redemption Discount:</span>
+                              <span className="text-red-600">
+                                -
+                                {formatCurrency(order.bills.redemptionDiscount)}
+                              </span>
+                            </div>
+                          )}
+                          {order.bills.employeeDiscount > 0 && (
+                            <div className="flex justify-between">
+                              <span>Employee Discount:</span>
+                              <span className="text-red-600">
+                                -{formatCurrency(order.bills.employeeDiscount)}
+                              </span>
+                            </div>
+                          )}
+                          {order.bills.shareholderDiscount > 0 && (
+                            <div className="flex justify-between">
+                              <span>Shareholder Discount:</span>
+                              <span className="text-red-600">
+                                -
+                                {formatCurrency(
+                                  order.bills.shareholderDiscount
+                                )}
+                              </span>
+                            </div>
                           )}
                         </div>
                       </div>

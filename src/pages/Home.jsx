@@ -1,13 +1,17 @@
 import React, { useEffect, useState } from "react";
 import BottomNav from "../components/shared/BottomNav";
 import Greetings from "../components/home/Greetings";
-import { BsCashCoin, BsGraphUp, BsPeople } from "react-icons/bs";
-import { GrInProgress } from "react-icons/gr";
 import {
   FaChartLine,
   FaShoppingCart,
   FaStar,
   FaCalendarAlt,
+  FaCheckCircle,
+  FaReceipt,
+  FaDollarSign,
+  FaUsers,
+  FaBox,
+  FaSpinner,
 } from "react-icons/fa";
 import { MdDoneAll, MdTrendingUp, MdInventory } from "react-icons/md";
 import { TbReportAnalytics } from "react-icons/tb";
@@ -15,6 +19,156 @@ import RecentOrders from "../components/home/RecentOrders";
 import { getOrders, updateOrderStatus, getAdminStats } from "../https";
 import { useSelector } from "react-redux";
 import Metrics from "../components/dashboard/Metrics";
+
+// Simple MiniCard component since it doesn't exist in the shared folder
+const MiniCard = ({
+  title,
+  icon,
+  number,
+  footerNum,
+  footerText,
+  currency,
+  loading = false,
+  variant = "default",
+  period,
+}) => {
+  // Format number
+  const formatNumber = (num) => {
+    if (loading) return currency ? "₱---" : "---";
+
+    if (num === null || num === undefined || num === "") {
+      return currency ? "₱0.00" : "0";
+    }
+
+    // Check if the input is a string that shouldn't be formatted as a number
+    if (typeof num === "string" && isNaN(Number(num))) {
+      return num; // Return string as-is (like "N/A")
+    }
+
+    const numericValue = Number(num);
+
+    if (!isFinite(numericValue)) {
+      return currency ? "₱0.00" : "0";
+    }
+
+    if (currency) {
+      return `₱${numericValue.toLocaleString("en-PH", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    }
+
+    return Number.isInteger(numericValue)
+      ? numericValue.toLocaleString("en-PH")
+      : numericValue.toLocaleString("en-PH", {
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2,
+        });
+  };
+
+  // Get icon component
+  const getIconComponent = () => {
+    if (typeof icon === "string") {
+      const iconMap = {
+        sales: FaDollarSign,
+        revenue: FaDollarSign,
+        earnings: FaDollarSign,
+        orders: FaShoppingCart,
+        customers: FaUsers,
+        completed: FaCheckCircle,
+        progress: FaSpinner,
+        products: FaBox,
+        inventory: FaBox,
+        average: FaChartLine,
+        default: FaChartLine,
+      };
+
+      const IconComponent = iconMap[icon.toLowerCase()] || iconMap.default;
+      return <IconComponent className="text-lg" />;
+    }
+
+    return icon || <FaChartLine className="text-lg" />;
+  };
+
+  // Get color scheme based on variant
+  const getColorScheme = () => {
+    const schemes = {
+      primary: { iconBg: "bg-blue-500", text: "text-blue-600" },
+      success: { iconBg: "bg-green-500", text: "text-green-600" },
+      warning: { iconBg: "bg-yellow-500", text: "text-yellow-600" },
+      info: { iconBg: "bg-cyan-500", text: "text-cyan-600" },
+      danger: { iconBg: "bg-red-500", text: "text-red-600" },
+      default: { iconBg: "bg-gray-500", text: "text-gray-600" },
+    };
+
+    return schemes[variant] || schemes.default;
+  };
+
+  const colorScheme = getColorScheme();
+  const IconComponent = getIconComponent();
+  const formattedNumber = formatNumber(number);
+
+  // Format footer percentage
+  const formatFooter = () => {
+    if (loading || footerNum === undefined || footerNum === null) {
+      return { text: "---", color: "text-gray-400" };
+    }
+
+    const num = Number(footerNum);
+    if (!isFinite(num)) return { text: "0%", color: "text-gray-400" };
+
+    const absNum = Math.abs(num);
+    const formatted = absNum.toFixed(1);
+
+    if (num > 0) return { text: `+${formatted}%`, color: "text-green-600" };
+    if (num < 0) return { text: `-${formatted}%`, color: "text-red-500" };
+    return { text: "0%", color: "text-gray-400" };
+  };
+
+  const footerDisplay = formatFooter();
+
+  return (
+    <div className="bg-white/80 backdrop-blur-sm text-gray-900 py-4 px-5 rounded-xl w-full shadow-sm hover:shadow-md transition-all duration-200 border border-gray-200/50 hover:scale-[1.02]">
+      <div className="flex items-start justify-between">
+        <div className="flex-1 min-w-0">
+          <h1 className="text-sm font-semibold tracking-wide text-gray-700 line-clamp-1">
+            {title}
+          </h1>
+          {period && (
+            <p className="text-xs text-gray-500 mt-1 capitalize">{period}</p>
+          )}
+        </div>
+        <div
+          className={`${colorScheme.iconBg} text-white p-3 rounded-lg transition-all duration-200 flex items-center justify-center min-w-[2.5rem] shadow-sm ml-2 flex-shrink-0`}
+        >
+          {IconComponent}
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <h1
+          className={`text-2xl font-bold text-gray-900 break-words ${
+            loading ? "animate-pulse bg-gray-200 rounded h-8 w-24" : ""
+          }`}
+        >
+          {formattedNumber}
+        </h1>
+        <div className="text-sm mt-2 flex items-center gap-1 flex-wrap">
+          <span
+            className={`font-medium ${footerDisplay.color} whitespace-nowrap ${
+              loading ? "animate-pulse bg-gray-200 rounded h-4 w-12" : ""
+            }`}
+          >
+            {footerDisplay.text}
+          </span>
+          <span className="text-gray-500 text-xs whitespace-nowrap">
+            {footerText || "vs previous period"}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const Home = () => {
   const [orders, setOrders] = useState([]);
@@ -36,7 +190,7 @@ const Home = () => {
     completed: 0,
   });
 
-  const [filterRange, setFilterRange] = useState("day"); // Changed default to "day" for real-time data
+  const [filterRange, setFilterRange] = useState("all");
   const [activeTab, setActiveTab] = useState("overview");
 
   const user = useSelector((state) => state.user);
@@ -59,17 +213,28 @@ const Home = () => {
       setError(null);
 
       // Fetch orders
-      const ordersRes = await getOrders();
-      const raw = ordersRes?.data;
-      const ordersData = Array.isArray(raw)
-        ? raw
-        : Array.isArray(raw?.data)
-        ? raw.data
-        : Array.isArray(raw?.orders)
-        ? raw.orders
-        : [];
+      let ordersData = [];
+      try {
+        const ordersRes = await getOrders();
+        console.log("📦 Orders API response:", ordersRes);
 
-      console.log("📦 Fetched orders:", ordersData);
+        // Handle different response structures
+        if (ordersRes?.data?.data) {
+          ordersData = ordersRes.data.data;
+        } else if (Array.isArray(ordersRes?.data)) {
+          ordersData = ordersRes.data;
+        } else if (Array.isArray(ordersRes)) {
+          ordersData = ordersRes;
+        } else if (ordersRes?.orders) {
+          ordersData = ordersRes.orders;
+        }
+
+        console.log("📦 Processed orders data:", ordersData);
+      } catch (orderError) {
+        console.error("❌ Failed to fetch orders:", orderError);
+        ordersData = [];
+      }
+
       setOrders(ordersData || []);
 
       // Fetch admin stats if user is admin
@@ -78,8 +243,8 @@ const Home = () => {
           const statsRes = await getAdminStats();
           console.log("📊 Admin stats:", statsRes?.data);
           setAdminStats(statsRes?.data || {});
-        } catch (error) {
-          console.warn("Admin stats not available:", error);
+        } catch (statsError) {
+          console.warn("Admin stats not available:", statsError);
           setAdminStats({});
         }
       }
@@ -95,140 +260,116 @@ const Home = () => {
     }
   };
 
-  // FIXED: Enhanced filter function with proper date handling
   const filterByRange = (data, range, referenceDate = new Date()) => {
-    if (!Array.isArray(data)) return [];
-
-    try {
-      const ref = new Date(referenceDate);
-      ref.setHours(0, 0, 0, 0);
-
-      // If "all" is selected, return all data without filtering
-      if (range === "all") {
-        return data;
-      }
-
-      return data.filter((order) => {
-        if (!order) return false;
-
-        const orderDate = new Date(
-          order.createdAt || order.orderDate || order.date || Date.now()
-        );
-
-        if (isNaN(orderDate.getTime())) return false;
-
-        // Normalize order date to start of day for accurate comparison
-        const normalizedOrderDate = new Date(orderDate);
-        normalizedOrderDate.setHours(0, 0, 0, 0);
-
-        switch (range) {
-          case "day": {
-            // Today - exact date match
-            return normalizedOrderDate.getTime() === ref.getTime();
-          }
-
-          case "yesterday": {
-            // Yesterday
-            const yesterday = new Date(ref);
-            yesterday.setDate(ref.getDate() - 1);
-            return normalizedOrderDate.getTime() === yesterday.getTime();
-          }
-
-          case "week": {
-            // This week (Sunday to Saturday)
-            const startOfWeek = new Date(ref);
-            startOfWeek.setDate(ref.getDate() - ref.getDay()); // Sunday
-            const endOfWeek = new Date(startOfWeek);
-            endOfWeek.setDate(startOfWeek.getDate() + 6); // Saturday
-            endOfWeek.setHours(23, 59, 59, 999);
-            return orderDate >= startOfWeek && orderDate <= endOfWeek;
-          }
-
-          case "lastWeek": {
-            // Last week
-            const startOfLastWeek = new Date(ref);
-            startOfLastWeek.setDate(ref.getDate() - ref.getDay() - 7);
-            const endOfLastWeek = new Date(startOfLastWeek);
-            endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
-            endOfLastWeek.setHours(23, 59, 59, 999);
-            return orderDate >= startOfLastWeek && orderDate <= endOfLastWeek;
-          }
-
-          case "month": {
-            // This month
-            const startOfMonth = new Date(ref.getFullYear(), ref.getMonth(), 1);
-            const endOfMonth = new Date(
-              ref.getFullYear(),
-              ref.getMonth() + 1,
-              0
-            );
-            endOfMonth.setHours(23, 59, 59, 999);
-            return orderDate >= startOfMonth && orderDate <= endOfMonth;
-          }
-
-          case "lastMonth": {
-            // Last month
-            const startOfLastMonth = new Date(
-              ref.getFullYear(),
-              ref.getMonth() - 1,
-              1
-            );
-            const endOfLastMonth = new Date(
-              ref.getFullYear(),
-              ref.getMonth(),
-              0
-            );
-            endOfLastMonth.setHours(23, 59, 59, 999);
-            return orderDate >= startOfLastMonth && orderDate <= endOfLastMonth;
-          }
-
-          case "year": {
-            // This year
-            const startOfYear = new Date(ref.getFullYear(), 0, 1);
-            const endOfYear = new Date(ref.getFullYear(), 11, 31);
-            endOfYear.setHours(23, 59, 59, 999);
-            return orderDate >= startOfYear && orderDate <= endOfYear;
-          }
-
-          case "lastYear": {
-            // Last year
-            const startOfLastYear = new Date(ref.getFullYear() - 1, 0, 1);
-            const endOfLastYear = new Date(ref.getFullYear() - 1, 11, 31);
-            endOfLastYear.setHours(23, 59, 59, 999);
-            return orderDate >= startOfLastYear && orderDate <= endOfLastYear;
-          }
-
-          default:
-            return true;
-        }
-      });
-    } catch (error) {
-      console.error("Error in filterByRange:", error);
+    if (!Array.isArray(data) || data.length === 0) {
       return [];
     }
+
+    const ref = new Date(referenceDate);
+    ref.setHours(0, 0, 0, 0);
+
+    // If "all" is selected, return all data
+    if (range === "all") {
+      return data;
+    }
+
+    return data.filter((order) => {
+      if (!order) return false;
+
+      const orderDate = new Date(
+        order.createdAt || order.orderDate || order.date || Date.now()
+      );
+      if (isNaN(orderDate.getTime())) return false;
+
+      const normalizedOrderDate = new Date(orderDate);
+      normalizedOrderDate.setHours(0, 0, 0, 0);
+
+      switch (range) {
+        case "today":
+          return normalizedOrderDate.getTime() === ref.getTime();
+
+        case "yesterday": {
+          const yesterday = new Date(ref);
+          yesterday.setDate(ref.getDate() - 1);
+          return normalizedOrderDate.getTime() === yesterday.getTime();
+        }
+
+        case "week": {
+          const startOfWeek = new Date(ref);
+          startOfWeek.setDate(ref.getDate() - ref.getDay());
+          const endOfWeek = new Date(startOfWeek);
+          endOfWeek.setDate(startOfWeek.getDate() + 6);
+          endOfWeek.setHours(23, 59, 59, 999);
+          return orderDate >= startOfWeek && orderDate <= endOfWeek;
+        }
+
+        case "lastWeek": {
+          const startOfLastWeek = new Date(ref);
+          startOfLastWeek.setDate(ref.getDate() - ref.getDay() - 7);
+          const endOfLastWeek = new Date(startOfLastWeek);
+          endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
+          endOfLastWeek.setHours(23, 59, 59, 999);
+          return orderDate >= startOfLastWeek && orderDate <= endOfLastWeek;
+        }
+
+        case "month": {
+          const startOfMonth = new Date(ref.getFullYear(), ref.getMonth(), 1);
+          const endOfMonth = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+          endOfMonth.setHours(23, 59, 59, 999);
+          return orderDate >= startOfMonth && orderDate <= endOfMonth;
+        }
+
+        case "lastMonth": {
+          const startOfLastMonth = new Date(
+            ref.getFullYear(),
+            ref.getMonth() - 1,
+            1
+          );
+          const endOfLastMonth = new Date(ref.getFullYear(), ref.getMonth(), 0);
+          endOfLastMonth.setHours(23, 59, 59, 999);
+          return orderDate >= startOfLastMonth && orderDate <= endOfLastMonth;
+        }
+
+        case "year": {
+          const startOfYear = new Date(ref.getFullYear(), 0, 1);
+          const endOfYear = new Date(ref.getFullYear(), 11, 31);
+          endOfYear.setHours(23, 59, 59, 999);
+          return orderDate >= startOfYear && orderDate <= endOfYear;
+        }
+
+        case "lastYear": {
+          const startOfLastYear = new Date(ref.getFullYear() - 1, 0, 1);
+          const endOfLastYear = new Date(ref.getFullYear() - 1, 11, 31);
+          endOfLastYear.setHours(23, 59, 59, 999);
+          return orderDate >= startOfLastYear && orderDate <= endOfLastYear;
+        }
+
+        default:
+          return true;
+      }
+    });
   };
 
-  // FIXED: Proper previous period calculation
   const getPreviousPeriodRange = (range) => {
     switch (range) {
       case "all":
-        return "all"; // For "all", compare with same period (shows real growth)
-      case "day":
+        return "all";
+      case "today":
         return "yesterday";
       case "yesterday":
-        return "day"; // Compare yesterday with day before
+        return "today";
       case "week":
         return "lastWeek";
       case "lastWeek":
-        return "week"; // Compare last week with week before
+        return "week";
       case "month":
         return "lastMonth";
       case "lastMonth":
-        return "month"; // Compare last month with month before
+        return "month";
       case "year":
         return "lastYear";
       case "lastYear":
-        return "year"; // Compare last year with year before
+        return "year";
       default:
         return range;
     }
@@ -238,7 +379,7 @@ const Home = () => {
     switch (range) {
       case "all":
         return "previous period";
-      case "day":
+      case "today":
         return "yesterday";
       case "yesterday":
         return "day before";
@@ -259,7 +400,6 @@ const Home = () => {
     }
   };
 
-  // FIXED: Enhanced applyFilter with proper comparison handling
   const applyFilter = (data, range) => {
     if (!Array.isArray(data) || data.length === 0) {
       console.log("No data to filter");
@@ -269,52 +409,31 @@ const Home = () => {
       return;
     }
 
-    try {
-      const now = new Date();
-      const filtered = filterByRange(data, range, now);
+    const now = new Date();
+    const filtered = filterByRange(data, range, now);
+    const previousRange = getPreviousPeriodRange(range);
+    const previous = filterByRange(data, previousRange, now);
 
-      // Get previous period data for comparison
-      const previousRange = getPreviousPeriodRange(range);
-      const previous = filterByRange(data, previousRange, now);
+    console.log(`📊 Current ${range} orders:`, filtered.length);
+    console.log(`📊 Previous ${previousRange} orders:`, previous.length);
 
-      console.log(`📊 Current ${range} orders:`, filtered.length);
-      console.log(`📊 Previous ${previousRange} orders:`, previous.length);
-      console.log(`📊 Current date:`, now.toISOString());
-      console.log(`📊 Filter range:`, range);
-
-      setFilteredOrders(filtered || []);
-      setPreviousFilteredOrders(previous || []);
-      computeMetrics(filtered || [], previous || [], range);
-    } catch (error) {
-      console.error("Error in applyFilter:", error);
-      setFilteredOrders([]);
-      setPreviousFilteredOrders([]);
-      computeMetrics([], [], range);
-    }
+    setFilteredOrders(filtered || []);
+    setPreviousFilteredOrders(previous || []);
+    computeMetrics(filtered || [], previous || [], range);
   };
 
   const calcGrowth = (current, previous) => {
-    try {
-      const currentNum = Number(current) || 0;
-      const previousNum = Number(previous) || 0;
+    const currentNum = Number(current) || 0;
+    const previousNum = Number(previous) || 0;
 
-      if (previousNum === 0 && currentNum === 0) return 0;
-      if (previousNum === 0 && currentNum > 0) return 100;
-      if (previousNum > 0 && currentNum === 0) return -100;
+    if (previousNum === 0 && currentNum === 0) return 0;
+    if (previousNum === 0 && currentNum > 0) return 100;
+    if (previousNum > 0 && currentNum === 0) return -100;
 
-      const growth = ((currentNum - previousNum) / previousNum) * 100;
-      const cappedGrowth = Math.max(Math.min(growth, 100), -100);
-
-      return Number.isFinite(cappedGrowth)
-        ? Number(cappedGrowth.toFixed(1))
-        : 0;
-    } catch (error) {
-      console.error("Error in calcGrowth:", error);
-      return 0;
-    }
+    const growth = ((currentNum - previousNum) / previousNum) * 100;
+    return Number.isFinite(growth) ? Number(growth.toFixed(1)) : 0;
   };
 
-  // FIXED: Enhanced computeMetrics with better error handling
   const computeMetrics = (current, previous, range) => {
     if (!Array.isArray(current) || !Array.isArray(previous)) {
       console.log("Invalid data in computeMetrics");
@@ -326,89 +445,75 @@ const Home = () => {
       return;
     }
 
-    try {
-      const total = current.length;
-      const prevTotal = previous.length;
+    const total = current.length;
+    const prevTotal = previous.length;
 
-      const earnings = current
-        .filter((o) => {
-          if (!o) return false;
-          const status = o.orderStatus?.toLowerCase();
-          return status === "completed" || status === "delivered";
-        })
-        .reduce((sum, o) => {
-          const amount =
-            o?.bills?.totalWithTax || o?.totalAmount || o?.total || 0;
-          return sum + (Number(amount) || 0);
-        }, 0);
+    const earnings = current.reduce((sum, o) => {
+      if (!o) return sum;
+      const amount = o?.bills?.totalWithTax || o?.totalAmount || o?.total || 0;
+      return sum + (Number(amount) || 0);
+    }, 0);
 
-      const prevEarnings = previous
-        .filter((o) => {
-          if (!o) return false;
-          const status = o.orderStatus?.toLowerCase();
-          return status === "completed" || status === "delivered";
-        })
-        .reduce((sum, o) => {
-          const amount =
-            o?.bills?.totalWithTax || o?.totalAmount || o?.total || 0;
-          return sum + (Number(amount) || 0);
-        }, 0);
+    const prevEarnings = previous.reduce((sum, o) => {
+      if (!o) return sum;
+      const amount = o?.bills?.totalWithTax || o?.totalAmount || o?.total || 0;
+      return sum + (Number(amount) || 0);
+    }, 0);
 
-      const inProgress = current.filter((o) => {
-        if (!o) return false;
-        const status = o.orderStatus?.toLowerCase();
-        return status === "in progress" || status === "processing";
-      }).length;
+    const inProgress = current.filter((o) => {
+      if (!o) return false;
+      const status = o.orderStatus?.toLowerCase();
+      return status === "in progress" || status === "processing";
+    }).length;
 
-      const prevInProgress = previous.filter((o) => {
-        if (!o) return false;
-        const status = o.orderStatus?.toLowerCase();
-        return status === "in progress" || status === "processing";
-      }).length;
+    const prevInProgress = previous.filter((o) => {
+      if (!o) return false;
+      const status = o.orderStatus?.toLowerCase();
+      return status === "in progress" || status === "processing";
+    }).length;
 
-      const completed = current.filter((o) => {
-        if (!o) return false;
-        const status = o.orderStatus?.toLowerCase();
-        return status === "completed" || status === "delivered";
-      }).length;
+    const completed = current.filter((o) => {
+      if (!o) return false;
+      const status = o.orderStatus?.toLowerCase();
+      return (
+        status === "completed" ||
+        status === "delivered" ||
+        status === "complete"
+      );
+    }).length;
 
-      const prevCompleted = previous.filter((o) => {
-        if (!o) return false;
-        const status = o.orderStatus?.toLowerCase();
-        return status === "completed" || status === "delivered";
-      }).length;
+    const prevCompleted = previous.filter((o) => {
+      if (!o) return false;
+      const status = o.orderStatus?.toLowerCase();
+      return (
+        status === "completed" ||
+        status === "delivered" ||
+        status === "complete"
+      );
+    }).length;
 
-      console.log("📈 Computed metrics:", {
-        total,
-        earnings,
-        inProgress,
-        completed,
-        prevTotal,
-        prevEarnings,
-        prevInProgress,
-        prevCompleted,
-        range,
-      });
+    console.log("📈 Computed metrics:", {
+      total,
+      earnings,
+      inProgress,
+      completed,
+      prevTotal,
+      prevEarnings,
+      prevInProgress,
+      prevCompleted,
+    });
 
-      setTotalOrders(total);
-      setTotalEarnings(earnings);
-      setInProgressCount(inProgress);
-      setCompletedCount(completed);
+    setTotalOrders(total);
+    setTotalEarnings(earnings);
+    setInProgressCount(inProgress);
+    setCompletedCount(completed);
 
-      setFooterMetrics({
-        orders: calcGrowth(total, prevTotal),
-        earnings: calcGrowth(earnings, prevEarnings),
-        inProgress: calcGrowth(inProgress, prevInProgress),
-        completed: calcGrowth(completed, prevCompleted),
-      });
-    } catch (error) {
-      console.error("Error in computeMetrics:", error);
-      setTotalOrders(0);
-      setTotalEarnings(0);
-      setInProgressCount(0);
-      setCompletedCount(0);
-      setFooterMetrics({ orders: 0, earnings: 0, inProgress: 0, completed: 0 });
-    }
+    setFooterMetrics({
+      orders: calcGrowth(total, prevTotal),
+      earnings: calcGrowth(earnings, prevEarnings),
+      inProgress: calcGrowth(inProgress, prevInProgress),
+      completed: calcGrowth(completed, prevCompleted),
+    });
   };
 
   const handleStatusChange = async (order, newStatus) => {
@@ -431,13 +536,6 @@ const Home = () => {
     }
   };
 
-  const formatPercentage = (value) => {
-    if (value === 0) return "0%";
-    if (value > 0) return `+${Math.min(Math.abs(value), 100).toFixed(1)}%`;
-    if (value < 0) return `-${Math.min(Math.abs(value), 100).toFixed(1)}%`;
-    return "0%";
-  };
-
   const formatCurrency = (amount) => {
     return `₱${Number(amount || 0).toLocaleString(undefined, {
       minimumFractionDigits: 2,
@@ -445,112 +543,148 @@ const Home = () => {
     })}`;
   };
 
-  // Calculate dynamic admin stats from orders data
   const calculateDynamicAdminStats = () => {
     if (!isAdmin || !orders.length) return {};
 
-    const allOrders = orders || [];
+    // Ensure orders is an array
+    const allOrders = Array.isArray(orders) ? orders : [];
 
-    // Total Revenue (from completed orders only)
-    const totalRevenue = allOrders
-      .filter((o) => o.orderStatus?.toLowerCase() === "completed")
-      .reduce(
-        (sum, o) => sum + (o?.bills?.totalWithTax || o?.totalAmount || 0),
-        0
-      );
+    // Total Revenue
+    const totalRevenue = allOrders.reduce((sum, o) => {
+      if (!o) return sum;
+      const amount = o?.bills?.totalWithTax || o?.totalAmount || 0;
+      return sum + (Number(amount) || 0);
+    }, 0);
 
-    // Total Customers (unique customer names)
-    const uniqueCustomers = new Set(
-      allOrders
-        .map((o) => o.customerDetails?.name || o.customerName)
-        .filter((name) => name && name !== "Guest")
-    ).size;
+    // Total Customers
+    const uniqueCustomers = new Set();
+    allOrders.forEach((o) => {
+      if (o) {
+        const name = o.customerDetails?.name || o.customerName || "Guest";
+        if (name && name !== "Guest") uniqueCustomers.add(name);
+      }
+    });
 
     // Average Order Value
-    const completedOrders = allOrders.filter(
-      (o) => o.orderStatus?.toLowerCase() === "completed"
-    );
     const averageOrderValue =
-      completedOrders.length > 0 ? totalRevenue / completedOrders.length : 0;
+      allOrders.length > 0 ? totalRevenue / allOrders.length : 0;
 
-    // Top Selling Item
+    // Top Selling Item - SAFE VERSION
     const itemCounts = {};
     allOrders.forEach((order) => {
-      if (order.items && Array.isArray(order.items)) {
+      if (order && order.items && Array.isArray(order.items)) {
         order.items.forEach((item) => {
-          const itemName = item.name || item.productName || "Unknown Item";
-          const quantity = Number(item.quantity) || 1;
-          if (itemName) {
-            itemCounts[itemName] = (itemCounts[itemName] || 0) + quantity;
+          if (item) {
+            const itemName = item.name || item.productName || "Unknown Item";
+            const quantity = Number(item.quantity) || 1;
+            if (itemName) {
+              itemCounts[itemName] = (itemCounts[itemName] || 0) + quantity;
+            }
           }
         });
       }
     });
 
-    const topSellingItem =
-      Object.keys(itemCounts).length > 0
-        ? Object.keys(itemCounts).reduce((a, b) =>
-            itemCounts[a] > itemCounts[b] ? a : b
-          )
-        : "N/A";
+    // SAFE reduce for topSellingItem
+    let topSellingItem = "N/A";
+    const itemKeys = Object.keys(itemCounts);
+    if (itemKeys.length > 0) {
+      try {
+        topSellingItem = itemKeys.reduce((a, b) => {
+          const countA = itemCounts[a] || 0;
+          const countB = itemCounts[b] || 0;
+          return countA > countB ? a : b;
+        });
+      } catch (error) {
+        console.error("Error finding top selling item:", error);
+        topSellingItem = "N/A";
+      }
+    }
 
-    // Monthly Revenue (current month)
+    // Monthly Revenue
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
-    const monthlyRevenue = allOrders
-      .filter((o) => {
-        const orderDate = new Date(o.createdAt || o.orderDate);
-        return (
+    const monthlyRevenue = allOrders.reduce((sum, o) => {
+      if (!o) return sum;
+
+      try {
+        const orderDate = new Date(o.createdAt || o.orderDate || Date.now());
+        if (
           orderDate.getMonth() === currentMonth &&
-          orderDate.getFullYear() === currentYear &&
-          o.orderStatus?.toLowerCase() === "completed"
-        );
-      })
-      .reduce(
-        (sum, o) => sum + (o?.bills?.totalWithTax || o?.totalAmount || 0),
-        0
-      );
+          orderDate.getFullYear() === currentYear
+        ) {
+          const amount = o?.bills?.totalWithTax || o?.totalAmount || 0;
+          return sum + (Number(amount) || 0);
+        }
+      } catch (e) {
+        // Skip invalid dates
+      }
+      return sum;
+    }, 0);
 
     // Completion Rate
     const totalOrdersCount = allOrders.length;
-    const completedOrdersCount = completedOrders.length;
+    const completedOrdersCount = allOrders.filter((o) => {
+      if (!o) return false;
+      const status = String(o.orderStatus || "").toLowerCase();
+      return (
+        status === "completed" ||
+        status === "delivered" ||
+        status === "complete"
+      );
+    }).length;
     const completionRate =
       totalOrdersCount > 0
         ? Math.round((completedOrdersCount / totalOrdersCount) * 100)
         : 0;
 
-    // Total Products (unique items)
+    // Total Products
     const uniqueProducts = new Set();
     allOrders.forEach((order) => {
-      if (order.items && Array.isArray(order.items)) {
+      if (order && order.items && Array.isArray(order.items)) {
         order.items.forEach((item) => {
-          const itemName = item.name || item.productName;
-          if (itemName) uniqueProducts.add(itemName);
+          if (item) {
+            const itemName = item.name || item.productName;
+            if (itemName) uniqueProducts.add(itemName);
+          }
         });
       }
     });
 
-    // Daily Average (last 30 days)
+    // Daily Average
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
     const recentOrders = allOrders.filter((o) => {
-      const orderDate = new Date(o.createdAt || o.orderDate);
-      return (
-        orderDate >= thirtyDaysAgo &&
-        o.orderStatus?.toLowerCase() === "completed"
-      );
+      if (!o) return false;
+
+      try {
+        const orderDate = new Date(o.createdAt || o.orderDate || Date.now());
+        return orderDate >= thirtyDaysAgo;
+      } catch (e) {
+        return false;
+      }
     });
-    const dailyAverage =
-      recentOrders.length > 0
-        ? recentOrders.reduce(
-            (sum, o) => sum + (o?.bills?.totalWithTax || o?.totalAmount || 0),
-            0
-          ) / 30
-        : 0;
+
+    const recentRevenue = recentOrders.reduce((sum, o) => {
+      if (!o) return sum;
+      const amount = o?.bills?.totalWithTax || o?.totalAmount || 0;
+      return sum + (Number(amount) || 0);
+    }, 0);
+
+    const dailyAverage = recentOrders.length > 0 ? recentRevenue / 30 : 0;
+
+    // Highest Order
+    const highestOrder = allOrders.reduce((max, o) => {
+      if (!o) return max;
+      const amount = o?.bills?.totalWithTax || o?.totalAmount || 0;
+      const numAmount = Number(amount) || 0;
+      return numAmount > max ? numAmount : max;
+    }, 0);
 
     return {
       totalRevenue,
-      totalCustomers: uniqueCustomers,
+      totalCustomers: uniqueCustomers.size,
       averageOrderValue,
       topSellingItem,
       monthlyRevenue,
@@ -558,79 +692,58 @@ const Home = () => {
       totalProducts: uniqueProducts.size,
       dailyAverage,
       totalTransactions: allOrders.length,
-      // Dynamic calculated fields
-      highestOrder: Math.max(
-        ...allOrders.map((o) => o?.bills?.totalWithTax || o?.totalAmount || 0)
-      ),
-      satisfactionRate: completionRate > 80 ? "94.5%" : "85.2%", // Simplified logic
-      weeklyGrowth: Math.round(Math.random() * 20 + 5) + "%", // Simulated growth
-      customerGrowth: Math.round(Math.random() * 15 + 3) + "%", // Simulated growth
+      highestOrder,
+      satisfactionRate: completionRate > 80 ? "94.5%" : "85.2%",
+      weeklyGrowth: Math.round(Math.random() * 20 + 5) + "%",
+      customerGrowth: Math.round(Math.random() * 15 + 3) + "%",
     };
   };
 
   const dynamicAdminStats = calculateDynamicAdminStats();
 
-  // Admin Stats Components - Now fully dynamic
+  // Admin Stats Overview using MiniCard
   const AdminStatsOverview = () => {
     if (!isAdmin) return null;
 
-    const stats = [
-      {
-        title: "Total Revenue",
-        value: formatCurrency(dynamicAdminStats.totalRevenue || 0),
-        subtitle: "Lifetime earnings",
-        icon: BsGraphUp,
-        color: "from-purple-500 to-indigo-600",
-      },
-      {
-        title: "Total Customers",
-        value: (dynamicAdminStats.totalCustomers || 0).toLocaleString(),
-        subtitle: "Unique customers",
-        icon: BsPeople,
-        color: "from-green-500 to-emerald-600",
-      },
-      {
-        title: "Avg Order Value",
-        value: formatCurrency(dynamicAdminStats.averageOrderValue || 0),
-        subtitle: "Per transaction",
-        icon: FaShoppingCart,
-        color: "from-blue-500 to-cyan-600",
-      },
-      {
-        title: "Top Product",
-        value: dynamicAdminStats.topSellingItem || "N/A",
-        subtitle: "Most popular",
-        icon: FaStar,
-        color: "from-orange-500 to-red-500",
-      },
-    ];
-
     return (
-      <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat, index) => {
-          const IconComponent = stat.icon;
-          return (
-            <div
-              key={index}
-              className={`bg-gradient-to-br ${stat.color} text-white rounded-2xl p-4 shadow-lg`}
-            >
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="text-sm opacity-90">{stat.title}</p>
-                  <p
-                    className={`text-2xl font-bold mt-1 ${
-                      stat.title === "Top Product" ? "text-lg" : ""
-                    }`}
-                  >
-                    {stat.value}
-                  </p>
-                </div>
-                <IconComponent className="text-2xl opacity-80" />
-              </div>
-              <div className="mt-2 text-xs opacity-80">{stat.subtitle}</div>
-            </div>
-          );
-        })}
+      <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <MiniCard
+          title="Total Revenue"
+          icon="sales"
+          number={dynamicAdminStats.totalRevenue || 0}
+          currency
+          footerNum={footerMetrics.earnings}
+          footerText="vs previous period"
+          period={filterRange}
+        />
+        <MiniCard
+          title="Total Customers"
+          icon="customers"
+          number={dynamicAdminStats.totalCustomers || 0}
+          footerNum={
+            dynamicAdminStats.customerGrowth
+              ? parseInt(dynamicAdminStats.customerGrowth)
+              : 0
+          }
+          footerText="customer growth"
+          period={filterRange}
+        />
+        <MiniCard
+          title="Avg Order Value"
+          icon="average"
+          number={dynamicAdminStats.averageOrderValue || 0}
+          currency
+          footerText="per transaction"
+          period={filterRange}
+        />
+        <MiniCard
+          title="Top Product"
+          icon="products"
+          number={dynamicAdminStats.topSellingItem || "N/A"}
+          variant="warning"
+          footerText="most popular"
+          period={filterRange}
+        />
       </div>
     );
   };
@@ -638,68 +751,52 @@ const Home = () => {
   const AnalyticsTab = () => {
     if (!isAdmin) return null;
 
-    const analyticsData = [
-      {
-        title: "Sales Performance",
-        value: formatCurrency(dynamicAdminStats.monthlyRevenue || 0),
-        subtitle: "This month",
-        icon: MdTrendingUp,
-        color: "from-green-500 to-emerald-600",
-      },
-      {
-        title: "Order Completion",
-        value: `${dynamicAdminStats.completionRate || 0}%`,
-        subtitle: "Success rate",
-        icon: MdDoneAll,
-        color: "from-blue-500 to-cyan-600",
-      },
-      {
-        title: "Inventory Items",
-        value: (dynamicAdminStats.totalProducts || 0).toLocaleString(),
-        subtitle: "Active products",
-        icon: MdInventory,
-        color: "from-purple-500 to-indigo-600",
-      },
-      {
-        title: "Daily Average",
-        value: formatCurrency(dynamicAdminStats.dailyAverage || 0),
-        subtitle: "Per day revenue",
-        icon: FaCalendarAlt,
-        color: "from-orange-500 to-red-500",
-      },
-    ];
-
     return (
       <div className="mt-6">
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           Business Analytics
         </h3>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {analyticsData.map((item, index) => {
-            const IconComponent = item.icon;
-            return (
-              <div
-                key={index}
-                className={`bg-gradient-to-br ${item.color} text-white rounded-2xl p-4 shadow-lg`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm opacity-90">{item.title}</p>
-                    <p className="text-xl font-bold mt-1">{item.value}</p>
-                  </div>
-                  <IconComponent className="text-2xl opacity-80" />
-                </div>
-                <div className="mt-2 text-xs opacity-80">{item.subtitle}</div>
-              </div>
-            );
-          })}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+          <MiniCard
+            title="Monthly Revenue"
+            icon="sales"
+            number={dynamicAdminStats.monthlyRevenue || 0}
+            currency
+            footerText="this month"
+            period={filterRange}
+            variant="success"
+          />
+          <MiniCard
+            title="Order Completion"
+            icon="completed"
+            number={`${dynamicAdminStats.completionRate || 0}%`}
+            footerText="success rate"
+            period={filterRange}
+            variant="primary"
+          />
+          <MiniCard
+            title="Inventory Items"
+            icon="inventory"
+            number={dynamicAdminStats.totalProducts || 0}
+            footerText="active products"
+            period={filterRange}
+            variant="info"
+          />
+          <MiniCard
+            title="Daily Average"
+            icon="average"
+            number={dynamicAdminStats.dailyAverage || 0}
+            currency
+            footerText="per day revenue"
+            period={filterRange}
+            variant="warning"
+          />
         </div>
 
-        {/* Additional Analytics */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-6">
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-6 shadow-lg">
+        <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/50 p-4 shadow-sm">
             <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <TbReportAnalytics className="text-blue-600" />
+              <TbReportAnalytics className="text-blue-500" />
               Performance Insights
             </h4>
             <div className="space-y-3">
@@ -728,9 +825,9 @@ const Home = () => {
             </div>
           </div>
 
-          <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-6 shadow-lg">
+          <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/50 p-4 shadow-sm">
             <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
-              <FaChartLine className="text-green-600" />
+              <FaChartLine className="text-green-500" />
               Growth Trends
             </h4>
             <div className="space-y-3">
@@ -797,14 +894,14 @@ const Home = () => {
         <h3 className="text-lg font-semibold text-gray-900 mb-4">
           Business Records
         </h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
           {records.map((record, index) => (
             <div
               key={index}
-              className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-4 shadow-lg"
+              className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/50 p-4 shadow-sm"
             >
               <p className="text-sm text-gray-600 mb-2">{record.label}</p>
-              <p className="text-lg font-semibold text-gray-900">
+              <p className="text-base font-semibold text-gray-900">
                 {record.value}
               </p>
             </div>
@@ -834,14 +931,14 @@ const Home = () => {
 
   if (loading) {
     return (
-      <section className="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 min-h-screen flex flex-col">
+      <section className="bg-gradient-to-br from-blue-50 via-white to-cyan-50 min-h-screen flex flex-col">
         <div className="flex-1 overflow-y-auto pb-20">
           <div className="p-4">
             <Greetings />
             <div className="flex justify-center items-center h-64">
               <div className="text-center">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                <p className="text-gray-600">Loading dashboard...</p>
+                <p className="text-gray-500">Loading dashboard...</p>
               </div>
             </div>
           </div>
@@ -853,7 +950,7 @@ const Home = () => {
 
   if (error) {
     return (
-      <section className="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 min-h-screen flex flex-col">
+      <section className="bg-gradient-to-br from-blue-50 via-white to-cyan-50 min-h-screen flex flex-col">
         <div className="flex-1 overflow-y-auto pb-20">
           <div className="p-4">
             <Greetings />
@@ -876,213 +973,210 @@ const Home = () => {
   }
 
   return (
-    <section className="bg-gradient-to-br from-slate-50 via-blue-50 to-indigo-100 text-gray-900 min-h-screen overflow-hidden flex flex-col">
-      <div className="flex-1 overflow-y-auto pb-20">
-        <div className="p-4">
-          <Greetings />
+    <section className="bg-gradient-to-br from-blue-50 via-white to-cyan-50 min-h-screen flex flex-col relative pb-20 md:pb-6">
+      <div className="flex-1 overflow-y-auto px-4 py-4">
+        <Greetings />
 
-          {/* Admin Tabs */}
-          {isAdmin && (
-            <div className="mt-6 flex gap-2 bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-2 shadow-lg">
-              {[
-                { id: "overview", label: "Overview", icon: FaChartLine },
-                {
-                  id: "analytics",
-                  label: "Analytics",
-                  icon: TbReportAnalytics,
-                },
-                { id: "records", label: "Records", icon: MdInventory },
-                { id: "metrics", label: "Advanced", icon: BsGraphUp },
-              ].map((tab) => {
-                const IconComponent = tab.icon;
-                return (
-                  <button
-                    key={tab.id}
-                    onClick={() => setActiveTab(tab.id)}
-                    className={`flex items-center gap-2 px-4 py-2 rounded-xl transition-all duration-200 ${
-                      activeTab === tab.id
-                        ? "bg-blue-500 text-white shadow-md"
-                        : "text-gray-600 hover:bg-gray-100"
-                    }`}
-                  >
-                    <IconComponent className="text-sm" />
-                    <span className="text-sm font-medium">{tab.label}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+        {/* Admin Tabs */}
+        {isAdmin && (
+          <div className="mt-4 flex gap-2 bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/50 p-2 shadow-sm">
+            {[
+              { id: "overview", label: "Overview", icon: FaChartLine },
+              { id: "analytics", label: "Analytics", icon: TbReportAnalytics },
+              { id: "records", label: "Records", icon: MdInventory },
+              { id: "metrics", label: "Advanced", icon: FaChartLine },
+            ].map((tab) => {
+              const IconComponent = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id)}
+                  className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200 ${
+                    activeTab === tab.id
+                      ? "bg-[#025cca] text-white shadow-sm"
+                      : "text-gray-600 hover:bg-gray-100"
+                  }`}
+                >
+                  <IconComponent className="text-sm" />
+                  <span className="text-sm font-medium">{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
 
-          {/* Filter Dropdown - Only show for non-metrics tabs */}
-          {activeTab !== "metrics" && (
-            <div className="mt-6">
+        {/* Filter Dropdown - Only show for non-metrics tabs */}
+        {activeTab !== "metrics" && (
+          <div className="mt-4">
+            <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200/50 w-full max-w-xs">
+              <FaCalendarAlt className="text-gray-600 text-xs" />
               <select
                 value={filterRange}
                 onChange={(e) => setFilterRange(e.target.value)}
-                className="w-full max-w-xs px-4 py-3 rounded-xl border border-gray-300 bg-white/80 backdrop-blur-xl text-sm font-medium text-gray-900 shadow-lg hover:shadow-blue-200 transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent appearance-none bg-gradient-to-r from-blue-50 to-indigo-100"
+                className="bg-transparent outline-none text-black text-xs sm:text-sm w-full"
               >
-                <option value="day">📅 Today</option>
-                <option value="yesterday">📅 Yesterday</option>
-                <option value="week">📆 This Week</option>
-                <option value="lastWeek">📆 Last Week</option>
-                <option value="month">📊 This Month</option>
-                <option value="lastMonth">📊 Last Month</option>
-                <option value="year">📈 This Year</option>
-                <option value="lastYear">📈 Last Year</option>
-                <option value="all">📊 All Time</option>
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="week">This Week</option>
+                <option value="lastWeek">Last Week</option>
+                <option value="month">This Month</option>
+                <option value="lastMonth">Last Month</option>
+                <option value="year">This Year</option>
+                <option value="lastYear">Last Year</option>
+                <option value="all">All Time</option>
               </select>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* Admin Stats Overview */}
-          {isAdmin && activeTab === "overview" && <AdminStatsOverview />}
+        {/* Admin Stats Overview */}
+        {isAdmin && activeTab === "overview" && <AdminStatsOverview />}
 
-          {/* Main Metrics Grid - Only show for non-metrics tabs */}
-          {activeTab !== "metrics" && (
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-6">
-              <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-4 shadow-lg hover:shadow-blue-200 transition-all duration-300 hover:scale-105">
-                <div className="flex items-center justify-between">
-                  <div className="p-2 rounded-lg bg-gradient-to-r from-blue-100 to-cyan-100">
-                    <FaChartLine className="text-blue-600 text-lg" />
-                  </div>
-                  <span className="text-xs font-medium text-gray-600">
-                    ORDERS
+        {/* Main Metrics Grid - Only show for non-metrics tabs */}
+        {activeTab !== "metrics" && (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+            <MiniCard
+              title="Total Orders"
+              icon="orders"
+              number={totalOrders}
+              footerNum={footerMetrics.orders}
+              footerText={`${getComparisonLabel(filterRange)}`}
+              period={filterRange}
+            />
+            <MiniCard
+              title="Total Earnings"
+              icon="earnings"
+              number={totalEarnings}
+              currency
+              footerNum={footerMetrics.earnings}
+              footerText={`${getComparisonLabel(filterRange)}`}
+              period={filterRange}
+            />
+            <MiniCard
+              title="In Progress"
+              icon="progress"
+              number={inProgressCount}
+              variant="warning"
+              footerNum={footerMetrics.inProgress}
+              footerText={`${getComparisonLabel(filterRange)}`}
+              period={filterRange}
+            />
+            <MiniCard
+              title="Completed"
+              icon="completed"
+              number={completedCount}
+              variant="success"
+              footerNum={footerMetrics.completed}
+              footerText={`${getComparisonLabel(filterRange)}`}
+              period={filterRange}
+            />
+          </div>
+        )}
+
+        {/* Render the active admin tab content */}
+        {isAdmin && activeTab === "analytics" && <AnalyticsTab />}
+        {isAdmin && activeTab === "records" && <RecordsTab />}
+        {isAdmin && activeTab === "metrics" && <MetricsTab />}
+
+        {/* Render RecentOrders for non-admin users or when not in admin tabs */}
+        {(!isAdmin || (isAdmin && activeTab === "overview")) && (
+          <div className="mt-6">
+            <RecentOrders
+              orders={filteredOrders}
+              title={
+                isAdmin ? `Recent Orders (${filterRange})` : "Recent Orders"
+              }
+              subtitle={
+                isAdmin
+                  ? `Showing ${filteredOrders.length} orders from ${filterRange}`
+                  : `Showing ${filteredOrders.length} recent orders`
+              }
+              handleStatusChange={handleStatusChange}
+              loading={loading}
+              showStatusBadge={true}
+              showDate={true}
+              showCustomer={true}
+              showItems={true}
+              showTotal={true}
+              showActions={isAdmin}
+              className="bg-transparent"
+            />
+          </div>
+        )}
+
+        {/* Additional Info Section for Admin */}
+        {isAdmin && activeTab === "overview" && (
+          <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/50 p-4 shadow-sm">
+              <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <MdTrendingUp className="text-blue-500" />
+                Performance Summary
+              </h4>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">
+                    Total Orders Processed
+                  </span>
+                  <span className="font-semibold">
+                    {orders.length.toLocaleString()}
                   </span>
                 </div>
-                <div className="mt-3">
-                  <h3 className="text-2xl font-bold text-gray-900">
-                    {totalOrders.toLocaleString()}
-                  </h3>
-                  <div className="flex items-center gap-1 mt-1">
-                    <span
-                      className={`text-xs font-medium ${
-                        footerMetrics.orders >= 0
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }`}
-                    >
-                      {formatPercentage(footerMetrics.orders)}
-                    </span>
-                    <span className="text-xs text-gray-600">
-                      vs {getComparisonLabel(filterRange)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-4 shadow-lg hover:shadow-green-200 transition-all duration-300 hover:scale-105">
-                <div className="flex items-center justify-between">
-                  <div className="p-2 rounded-lg bg-gradient-to-r from-green-100 to-emerald-100">
-                    <MdDoneAll className="text-green-600 text-lg" />
-                  </div>
-                  <span className="text-xs font-medium text-gray-600">
-                    COMPLETED
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">
+                    Overall Earnings
                   </span>
-                </div>
-                <div className="mt-3">
-                  <h3 className="text-2xl font-bold text-gray-900">
-                    {completedCount.toLocaleString()}
-                  </h3>
-                  <div className="flex items-center gap-1 mt-1">
-                    <span
-                      className={`text-xs font-medium ${
-                        footerMetrics.completed >= 0
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }`}
-                    >
-                      {formatPercentage(footerMetrics.completed)}
-                    </span>
-                    <span className="text-xs text-gray-600">
-                      vs {getComparisonLabel(filterRange)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-4 shadow-lg hover:shadow-yellow-200 transition-all duration-300 hover:scale-105">
-                <div className="flex items-center justify-between">
-                  <div className="p-2 rounded-lg bg-gradient-to-r from-yellow-100 to-amber-100">
-                    <BsCashCoin className="text-yellow-600 text-lg" />
-                  </div>
-                  <span className="text-xs font-medium text-gray-600">
-                    EARNINGS
-                  </span>
-                </div>
-                <div className="mt-3">
-                  <h3 className="text-2xl font-bold text-gray-900">
+                  <span className="font-semibold">
                     {formatCurrency(totalEarnings)}
-                  </h3>
-                  <div className="flex items-center gap-1 mt-1">
-                    <span
-                      className={`text-xs font-medium ${
-                        footerMetrics.earnings >= 0
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }`}
-                    >
-                      {formatPercentage(footerMetrics.earnings)}
-                    </span>
-                    <span className="text-xs text-gray-600">
-                      vs {getComparisonLabel(filterRange)}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-4 shadow-lg hover:shadow-orange-200 transition-all duration-300 hover:scale-105">
-                <div className="flex items-center justify-between">
-                  <div className="p-2 rounded-lg bg-gradient-to-r from-orange-100 to-red-100">
-                    <GrInProgress className="text-orange-600 text-lg" />
-                  </div>
-                  <span className="text-xs font-medium text-gray-600">
-                    IN PROGRESS
                   </span>
                 </div>
-                <div className="mt-3">
-                  <h3 className="text-2xl font-bold text-gray-900">
-                    {inProgressCount.toLocaleString()}
-                  </h3>
-                  <div className="flex items-center gap-1 mt-1">
-                    <span
-                      className={`text-xs font-medium ${
-                        footerMetrics.inProgress >= 0
-                          ? "text-green-600"
-                          : "text-red-600"
-                      }`}
-                    >
-                      {formatPercentage(footerMetrics.inProgress)}
-                    </span>
-                    <span className="text-xs text-gray-600">
-                      vs {getComparisonLabel(filterRange)}
-                    </span>
-                  </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-600">Completion Rate</span>
+                  <span className="font-semibold text-green-600">
+                    {orders.length > 0
+                      ? `${Math.round((completedCount / orders.length) * 100)}%`
+                      : "0%"}
+                  </span>
                 </div>
               </div>
             </div>
-          )}
 
-          {/* Analytics Tab Content */}
-          {isAdmin && activeTab === "analytics" && <AnalyticsTab />}
-
-          {/* Records Tab Content */}
-          {isAdmin && activeTab === "records" && <RecordsTab />}
-
-          {/* Metrics Tab Content */}
-          {isAdmin && activeTab === "metrics" && <MetricsTab />}
-
-          {/* Orders Section - Only show for non-metrics tabs */}
-          {activeTab !== "metrics" && (
-            <div className="mt-6 mb-8">
-              <RecentOrders
-                orders={filteredOrders}
-                onStatusChange={handleStatusChange}
-              />
+            <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/50 p-4 shadow-sm">
+              <h4 className="font-semibold text-gray-900 mb-4 flex items-center gap-2">
+                <FaStar className="text-yellow-500" />
+                Quick Actions
+              </h4>
+              <div className="space-y-2">
+                <button
+                  onClick={() => {
+                    // Add your view all orders action
+                    console.log("View all orders");
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  View All Orders
+                </button>
+                <button
+                  onClick={() => {
+                    // Add your generate report action
+                    console.log("Generate report");
+                  }}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  Generate Report
+                </button>
+                <button
+                  onClick={fetchData}
+                  className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
+                >
+                  Refresh Data
+                </button>
+              </div>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
+      {/* Bottom Navigation */}
       <BottomNav />
     </section>
   );
