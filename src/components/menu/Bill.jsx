@@ -50,7 +50,6 @@ const Bill = ({ orderId }) => {
   const currentOrder =
     orders.find((order) => order.id === orderId) ||
     orders.find((order) => order.id === activeOrderId);
-  const customerData = currentOrder?.customer || {};
   const cartData = currentOrder?.items || [];
 
   const vatRate = 12;
@@ -924,11 +923,7 @@ const Bill = ({ orderId }) => {
       setOrderInfo(invoiceOrderInfo);
 
       // Update table status
-      const tableId =
-        customerData.tables?.[0]?.tableId ||
-        customerData.table?.tableId ||
-        customerData.tableId ||
-        null;
+      const tableId = null; // No table assignment needed
 
       if (tableId) {
         const tableData = {
@@ -1049,12 +1044,6 @@ const Bill = ({ orderId }) => {
       dispatch(processOrder(currentOrder.id));
     }
 
-    const tableId =
-      customerData.tables?.[0]?.tableId ||
-      customerData.table?.tableId ||
-      customerData.tableId ||
-      null;
-
     // Prepare bills data
     const bills = {
       total: Number(totals.baseGrossTotal.toFixed(2)),
@@ -1100,13 +1089,11 @@ const Bill = ({ orderId }) => {
           customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer",
         type: customerType,
         status: customerType === "walk-in" ? "Dine-in" : "Take-out",
-        phone: "",
-        guests: 1,
       },
       orderStatus: "Completed",
       bills: bills,
       items: items,
-      table: tableId,
+      table: null,
       paymentMethod: paymentMethod,
       customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
       pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
