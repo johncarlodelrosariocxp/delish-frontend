@@ -13,20 +13,19 @@ const Register = ({ setIsRegister }) => {
     email: "",
     phone: "",
     password: "",
-    role: "Cashier", // Set default role
+    role: "Cashier",
   });
 
   const [isMobile, setIsMobile] = useState(false);
   const [isProduction, setIsProduction] = useState(false);
   const [backendStatus, setBackendStatus] = useState("checking");
   const [backendUrl, setBackendUrl] = useState("");
+  const [backendError, setBackendError] = useState("");
 
   // Detect environment and device type
   useEffect(() => {
-    // Check if production
     setIsProduction(import.meta.env.PROD);
 
-    // Check if mobile device
     const checkMobile = () => {
       return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
         navigator.userAgent
@@ -34,12 +33,10 @@ const Register = ({ setIsRegister }) => {
     };
 
     setIsMobile(checkMobile());
-
-    // Check backend connection
     checkBackendConnection();
   }, []);
 
-  // Check if backend is running - FIXED VERSION
+  // Check if backend is running - IMPROVED VERSION
   const checkBackendConnection = async () => {
     try {
       // Use Render production URL
@@ -49,25 +46,65 @@ const Register = ({ setIsRegister }) => {
       // Try production URL first
       const apiUrl = RENDER_URL;
       setBackendUrl(apiUrl);
+      setBackendError("");
 
       console.log("🔗 Testing connection to:", apiUrl);
 
-      const response = await fetch(`${apiUrl}/api/health`, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        mode: "cors", // Add CORS mode
-      });
+      // Try multiple endpoints - the health endpoint might not exist
+      const endpoints = [
+        "/api/health",
+        "/health",
+        "/api/user/test",
+        "/",
+        "/api/test",
+      ];
 
-      if (response.ok) {
-        const data = await response.json();
-        console.log("✅ Backend connected! Status:", response.status);
-        console.log("📊 Health check response:", data);
-        setBackendStatus("connected");
-      } else {
-        console.log("⚠️ Backend returned non-OK status:", response.status);
+      let connected = false;
+      let errorDetails = {};
+
+      for (const endpoint of endpoints) {
+        try {
+          console.log(`🔄 Trying endpoint: ${apiUrl}${endpoint}`);
+          const response = await fetch(`${apiUrl}${endpoint}`, {
+            method: "GET",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            mode: "cors",
+          });
+
+          console.log(`📊 Response for ${endpoint}:`, {
+            status: response.status,
+            statusText: response.statusText,
+            ok: response.ok,
+          });
+
+          if (response.ok) {
+            const data = await response.json().catch(() => ({}));
+            console.log(`✅ Connected via ${endpoint}:`, data);
+            setBackendStatus("connected");
+            connected = true;
+            enqueueSnackbar(`✅ Backend connected via ${endpoint}`, {
+              variant: "success",
+              autoHideDuration: 3000,
+            });
+            break;
+          } else {
+            errorDetails[endpoint] = {
+              status: response.status,
+              statusText: response.statusText,
+            };
+          }
+        } catch (endpointError) {
+          console.log(`❌ Endpoint ${endpoint} failed:`, endpointError.message);
+          errorDetails[endpoint] = endpointError.message;
+        }
+      }
+
+      if (!connected) {
+        console.log("⚠️ All endpoints failed:", errorDetails);
         setBackendStatus("error");
+        setBackendError(JSON.stringify(errorDetails, null, 2));
 
         // Try localhost as fallback
         try {
@@ -77,29 +114,62 @@ const Register = ({ setIsRegister }) => {
             setBackendUrl(LOCAL_URL);
             setBackendStatus("connected");
             console.log("✅ Connected to local backend");
+            enqueueSnackbar("Connected to local backend", { variant: "info" });
           }
         } catch (localError) {
           console.log("❌ Local backend also not available");
         }
       }
     } catch (error) {
-      console.error("❌ Backend connection failed:", error.message);
+      console.error("❌ Backend connection check failed:", error.message);
       setBackendStatus("disconnected");
+      setBackendError(error.message);
+    }
+  };
 
-      // Try localhost as last resort
-      const LOCAL_URL = "http://localhost:8000";
-      console.log("🔄 Attempting local connection:", LOCAL_URL);
-      try {
-        const localResponse = await fetch(`${LOCAL_URL}/api/health`);
-        if (localResponse.ok) {
-          setBackendUrl(LOCAL_URL);
-          setBackendStatus("connected");
-          console.log("✅ Connected to local backend");
-          enqueueSnackbar("Connected to local backend", { variant: "info" });
-        }
-      } catch (localError) {
-        console.log("❌ Cannot connect to any backend");
+  // Test specific registration endpoint
+  const testRegistrationEndpoint = async () => {
+    try {
+      console.log("🧪 Testing registration endpoint directly...");
+
+      const testResponse = await fetch(`${backendUrl}/api/user/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: "Test User",
+          email: `test${Date.now()}@delish.com`,
+          phone: "1234567890",
+          password: "password123",
+          role: "Cashier",
+        }),
+      });
+
+      console.log("Registration test response:", {
+        status: testResponse.status,
+        statusText: testResponse.statusText,
+        ok: testResponse.ok,
+      });
+
+      if (testResponse.ok) {
+        const data = await testResponse.json();
+        console.log("✅ Registration endpoint works:", data);
+        setBackendStatus("connected");
+        enqueueSnackbar("✅ Registration endpoint is functional!", {
+          variant: "success",
+        });
+        return true;
+      } else {
+        const errorText = await testResponse.text();
+        console.log("❌ Registration endpoint error:", errorText);
+        setBackendError(`HTTP ${testResponse.status}: ${errorText}`);
+        return false;
       }
+    } catch (error) {
+      console.error("❌ Registration test failed:", error);
+      setBackendError(error.message);
+      return false;
     }
   };
 
@@ -116,7 +186,7 @@ const Register = ({ setIsRegister }) => {
   }, []);
 
   const handleSubmit = useCallback(
-    (e) => {
+    async (e) => {
       e.preventDefault();
 
       // Basic validation
@@ -156,12 +226,19 @@ const Register = ({ setIsRegister }) => {
         return;
       }
 
-      // Check backend before submitting
-      if (backendStatus !== "connected") {
-        enqueueSnackbar(`Backend server is not running. URL: ${backendUrl}`, {
-          variant: "error",
-          autoHideDuration: 8000,
-        });
+      // First test the registration endpoint
+      enqueueSnackbar("Testing backend connection...", { variant: "info" });
+
+      const isEndpointWorking = await testRegistrationEndpoint();
+
+      if (!isEndpointWorking) {
+        enqueueSnackbar(
+          `Backend registration endpoint is not working. Please check backend deployment.`,
+          {
+            variant: "error",
+            autoHideDuration: 8000,
+          }
+        );
         return;
       }
 
@@ -173,37 +250,45 @@ const Register = ({ setIsRegister }) => {
 
       registerMutation.mutate(formData);
     },
-    [formData, backendStatus, backendUrl]
+    [formData, backendUrl]
   );
 
   // =============================
-  // 📌 Register Mutation - FIXED
+  // 📌 Register Mutation
   // =============================
   const registerMutation = useMutation({
     mutationFn: async (reqData) => {
-      // Override the API URL if backendUrl is set
-      const apiUrl = backendUrl || "https://delish-backend-1.onrender.com";
+      console.log("📡 Registering user to:", `${backendUrl}/api/user/register`);
 
-      console.log("📡 Registering user to:", `${apiUrl}/api/user/register`);
-
-      // Make direct fetch call to ensure we're using correct URL
-      const response = await fetch(`${apiUrl}/api/user/register`, {
+      const response = await fetch(`${backendUrl}/api/user/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
         },
         body: JSON.stringify(reqData),
-        mode: "cors", // Important for CORS
+        mode: "cors",
       });
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
+      const responseText = await response.text();
+      console.log("Raw response:", responseText);
+
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (e) {
+        console.error("Failed to parse response as JSON:", responseText);
         throw new Error(
-          errorData.message || `HTTP error! status: ${response.status}`
+          `Invalid JSON response: ${responseText.substring(0, 100)}`
         );
       }
 
-      return response.json();
+      if (!response.ok) {
+        throw new Error(
+          data.message || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      return data;
     },
     onSuccess: (res) => {
       console.log("✅ Registration response:", res);
@@ -217,7 +302,6 @@ const Register = ({ setIsRegister }) => {
           }
         );
 
-        // Reset form
         setFormData({
           name: "",
           email: "",
@@ -226,7 +310,6 @@ const Register = ({ setIsRegister }) => {
           role: "Cashier",
         });
 
-        // Switch to login after delay
         setTimeout(() => {
           setIsRegister(false);
         }, 2000);
@@ -237,10 +320,7 @@ const Register = ({ setIsRegister }) => {
       }
     },
     onError: (error) => {
-      console.error("❌ Registration error details:", {
-        message: error.message,
-        stack: error.stack,
-      });
+      console.error("❌ Registration error:", error.message);
 
       let errorMessage = "Registration failed. Please try again.";
 
@@ -248,75 +328,19 @@ const Register = ({ setIsRegister }) => {
         error?.message?.includes("NetworkError") ||
         error?.message?.includes("Failed to fetch")
       ) {
-        errorMessage = `Cannot connect to backend at ${backendUrl}. Please check:`;
-
-        enqueueSnackbar(errorMessage, {
-          variant: "error",
-          autoHideDuration: 8000,
-        });
-
-        // Show detailed instructions
-        setTimeout(() => {
-          enqueueSnackbar(
-            `1. Ensure backend is running: ${backendUrl}\n2. Check CORS settings\n3. Try restarting backend server`,
-            { variant: "info", autoHideDuration: 10000 }
-          );
-        }, 1000);
-      } else if (error?.message?.includes("409")) {
-        errorMessage = "User with this email already exists.";
-        enqueueSnackbar(errorMessage, {
-          variant: "error",
-          autoHideDuration: 5000,
-        });
+        errorMessage = `Cannot connect to backend at ${backendUrl}.`;
+      } else if (error?.message?.includes("Invalid JSON")) {
+        errorMessage = "Backend returned invalid response. Check server logs.";
       } else {
-        enqueueSnackbar(error.message || errorMessage, {
-          variant: "error",
-          autoHideDuration: 5000,
-        });
+        errorMessage = error.message;
       }
+
+      enqueueSnackbar(errorMessage, {
+        variant: "error",
+        autoHideDuration: 5000,
+      });
     },
   });
-
-  // Test registration endpoint directly
-  const handleTestRegistration = async () => {
-    try {
-      const testData = {
-        name: "Test User",
-        email: `test${Date.now()}@delish.com`,
-        phone: "1234567890",
-        password: "password123",
-        role: "Cashier",
-      };
-
-      console.log("🧪 Testing registration endpoint...");
-
-      const response = await fetch(`${backendUrl}/api/user/register`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(testData),
-      });
-
-      const data = await response.json();
-      console.log("Test registration result:", data);
-
-      if (data.success) {
-        enqueueSnackbar("✅ Registration endpoint is working!", {
-          variant: "success",
-        });
-      } else {
-        enqueueSnackbar("❌ Registration failed: " + data.message, {
-          variant: "error",
-        });
-      }
-    } catch (error) {
-      console.error("Test failed:", error);
-      enqueueSnackbar("❌ Test failed: " + error.message, {
-        variant: "error",
-      });
-    }
-  };
 
   // Get backend status color
   const getBackendStatusColor = () => {
@@ -335,11 +359,11 @@ const Register = ({ setIsRegister }) => {
   const getBackendStatusText = () => {
     switch (backendStatus) {
       case "connected":
-        return `✅ Backend Connected (${backendUrl})`;
+        return `✅ Backend Connected`;
       case "disconnected":
-        return `❌ Backend Disconnected (${backendUrl})`;
+        return `❌ Backend Disconnected`;
       case "error":
-        return `⚠️ Backend Error (${backendUrl})`;
+        return `⚠️ Backend Error`;
       default:
         return "🔍 Checking Backend...";
     }
@@ -352,33 +376,36 @@ const Register = ({ setIsRegister }) => {
         className={`mb-4 p-3 rounded-lg border text-center text-sm ${getBackendStatusColor()}`}
       >
         <p>{getBackendStatusText()}</p>
-        {backendStatus === "connected" ? (
+        <p className="text-xs mt-1 opacity-80">
+          URL: {backendUrl || "Not detected"}
+        </p>
+        <div className="mt-2 flex gap-2 justify-center">
           <button
-            onClick={handleTestRegistration}
-            className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded"
+            onClick={checkBackendConnection}
+            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded"
+          >
+            Re-check
+          </button>
+          <button
+            onClick={testRegistrationEndpoint}
+            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded"
           >
             Test Registration
           </button>
-        ) : (
-          <p className="text-xs mt-1 opacity-80">
-            Backend URL: {backendUrl || "Not detected"}
-          </p>
-        )}
+        </div>
       </div>
 
-      {/* Environment Indicator */}
-      <div
-        className={`mb-4 p-3 rounded-lg border text-center text-sm ${
-          isProduction
-            ? "bg-green-900 bg-opacity-20 border-green-700 text-green-300"
-            : "bg-blue-900 bg-opacity-20 border-blue-700 text-blue-300"
-        }`}
-      >
-        <p>
-          {isProduction ? "🚀 PRODUCTION" : "🔧 DEVELOPMENT"} |
-          {isMobile ? " 📱 MOBILE" : " 💻 DESKTOP"}
-        </p>
-      </div>
+      {/* Show error details if available */}
+      {backendError && (
+        <div className="mb-4 p-3 bg-red-900 bg-opacity-20 border border-red-700 rounded-lg">
+          <p className="text-red-300 text-sm font-semibold mb-1">
+            Error Details:
+          </p>
+          <pre className="text-red-400 text-xs whitespace-pre-wrap overflow-auto max-h-32">
+            {backendError}
+          </pre>
+        </div>
+      )}
 
       <div className="text-center mb-6">
         <h2 className="text-2xl font-bold text-white mb-2">Create Account</h2>
@@ -403,9 +430,7 @@ const Register = ({ setIsRegister }) => {
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
               minLength={2}
-              disabled={
-                registerMutation.isLoading || backendStatus !== "connected"
-              }
+              disabled={registerMutation.isLoading}
             />
           </div>
         </div>
@@ -424,9 +449,7 @@ const Register = ({ setIsRegister }) => {
               placeholder="Enter employee email"
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
-              disabled={
-                registerMutation.isLoading || backendStatus !== "connected"
-              }
+              disabled={registerMutation.isLoading}
             />
           </div>
         </div>
@@ -446,9 +469,7 @@ const Register = ({ setIsRegister }) => {
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
               minLength={10}
-              disabled={
-                registerMutation.isLoading || backendStatus !== "connected"
-              }
+              disabled={registerMutation.isLoading}
             />
           </div>
         </div>
@@ -468,9 +489,7 @@ const Register = ({ setIsRegister }) => {
               className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
               required
               minLength={6}
-              disabled={
-                registerMutation.isLoading || backendStatus !== "connected"
-              }
+              disabled={registerMutation.isLoading}
             />
           </div>
         </div>
@@ -486,9 +505,7 @@ const Register = ({ setIsRegister }) => {
                 key={role}
                 type="button"
                 onClick={() => handleRoleSelection(role)}
-                disabled={
-                  registerMutation.isLoading || backendStatus !== "connected"
-                }
+                disabled={registerMutation.isLoading}
                 className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
                   formData.role === role
                     ? "bg-yellow-400 text-gray-900 shadow-lg"
@@ -499,19 +516,12 @@ const Register = ({ setIsRegister }) => {
               </button>
             ))}
           </div>
-          {formData.role && (
-            <p className="text-yellow-400 text-xs mt-2 text-center">
-              Selected: <strong>{formData.role}</strong>
-              {formData.role === "Admin" && " (Full system access)"}
-              {formData.role === "Cashier" && " (Limited access)"}
-            </p>
-          )}
         </div>
 
         {/* Submit Button */}
         <button
           type="submit"
-          disabled={registerMutation.isLoading || backendStatus !== "connected"}
+          disabled={registerMutation.isLoading}
           className="w-full rounded-lg mt-6 py-4 text-lg bg-yellow-400 text-gray-900 font-bold hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-yellow-500/25"
         >
           {registerMutation.isLoading ? (
@@ -538,8 +548,6 @@ const Register = ({ setIsRegister }) => {
               </svg>
               Creating Account...
             </span>
-          ) : backendStatus !== "connected" ? (
-            "Backend Not Connected"
           ) : (
             "Create Account"
           )}
@@ -558,52 +566,64 @@ const Register = ({ setIsRegister }) => {
         </div>
       </form>
 
-      {/* Troubleshooting Guide */}
-      {backendStatus !== "connected" && (
-        <div className="mt-4 p-3 bg-red-900 bg-opacity-20 border border-red-700 rounded-lg">
-          <p className="text-red-300 text-xs">
-            🔧 <strong>To fix this issue:</strong>
-            <br />
-            1. Check if backend is running at: {backendUrl}
-            <br />
-            2. For Render: Check deployment status on dashboard
-            <br />
-            3. For Local: Run <code>cd delish-backend && npm start</code>
-            <br />
-            4. Wait for server to start completely
-            <br />
-            5. Check CORS settings in backend
-            <br />
-            6. Refresh this page
-          </p>
-        </div>
-      )}
-
-      {/* Debug Info */}
-      <div className="mt-4 p-3 bg-gray-900 rounded-lg">
-        <p className="text-gray-400 text-xs">
-          <strong>Debug Info:</strong>
-          <br />
-          Backend URL: {backendUrl}
-          <br />
-          Status: {backendStatus}
-          <br />
-          Environment: {isProduction ? "Production" : "Development"}
-          <br />
-          Current API endpoint: {backendUrl}/api/user/register
+      {/* Quick Test Credentials */}
+      <div className="mt-4 p-3 bg-gray-800 rounded-lg">
+        <p className="text-gray-400 text-xs mb-2">
+          <strong>Quick Test:</strong> Try these test credentials:
         </p>
         <button
-          onClick={checkBackendConnection}
-          className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded"
+          onClick={() => {
+            setFormData({
+              name: "Test Employee",
+              email: `test${Date.now()}@delish.com`,
+              phone: "1234567890",
+              password: "password123",
+              role: "Cashier",
+            });
+            enqueueSnackbar("Test credentials filled!", { variant: "info" });
+          }}
+          className="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded"
         >
-          Re-check Backend
+          Fill Test Data
         </button>
+      </div>
+
+      {/* Manual Backend Check */}
+      <div className="mt-4 p-3 bg-gray-900 rounded-lg">
+        <p className="text-gray-400 text-xs mb-2">
+          <strong>Manual Check:</strong> Open these links in new tab:
+        </p>
+        <div className="space-y-1">
+          <a
+            href={`${backendUrl}/api/health`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block px-3 py-1 bg-blue-800 hover:bg-blue-700 text-blue-300 text-xs rounded text-center"
+          >
+            Check /api/health
+          </a>
+          <a
+            href={`${backendUrl}/api/user/register`}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block px-3 py-1 bg-blue-800 hover:bg-blue-700 text-blue-300 text-xs rounded text-center"
+          >
+            Check /api/user/register
+          </a>
+          <a
+            href={backendUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="block px-3 py-1 bg-blue-800 hover:bg-blue-700 text-blue-300 text-xs rounded text-center"
+          >
+            Check Root URL
+          </a>
+        </div>
       </div>
     </div>
   );
 };
 
-// PropTypes validation
 Register.propTypes = {
   setIsRegister: PropTypes.func.isRequired,
 };
