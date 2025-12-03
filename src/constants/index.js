@@ -1,16 +1,4 @@
-// 🍰 Image Imports
-import cheesecake1 from "../assets/images/cheesecake1.jpg";
-import cheesecake2 from "../assets/images/cheesecake1.jpg";
-import cheesecake3 from "../assets/images/cheesecake1.jpg";
-import cheesecake4 from "../assets/images/cheesecake1.jpg";
-import cheesecake5 from "../assets/images/cheesecake1.jpg";
-import cheesecake6 from "../assets/images/cheesecake1.jpg";
-import coffee from "../assets/images/cheesecake1.jpg";
-import frappe from "../assets/images/cheesecake1.jpg";
-import smoothie from "../assets/images/cheesecake1.jpg";
-import icedtea from "../assets/images/cheesecake1.jpg";
-
-// Cheesecake flavor options (shared across categories)
+// 🍰 Cheesecake flavor options (shared across categories)
 export const cheesecakeFlavorOptions = [
   { label: "Mangoes & Cream", price: 220 },
   { label: "Ube Macapuno", price: 220 },
@@ -25,58 +13,20 @@ export const cheesecakeFlavorOptions = [
   { label: "Matcha Zebra", price: 220 },
 ];
 
-// Additional Keto Mini flavors
+// Additional Keto Mini flavors (from image: Lemon, Queso de Bola, Dark Chocolate, New York, Coffee)
 export const ketoMiniFlavorOptions = [
   { label: "Lemon", price: 160 },
-  { label: "New York", price: 160 },
-  { label: "Dark Chocolate", price: 160 },
-  { label: "Coffee Caramel", price: 160 },
   { label: "Queso de Bola", price: 160 },
+  { label: "Dark Chocolate", price: 160 },
+  { label: "New York", price: 160 },
+  { label: "Coffee", price: 160 },
 ];
-
-// Helper function to format Bento & Mini items with all flavor options
-const createBentoItem = (id, name, image, baseOptions) => {
-  // Base options (size/type options)
-  const bases = baseOptions.map((base) => ({
-    ...base,
-    type: "base",
-    hasFlavors: true,
-    description: `${name} (${base.label})`,
-  }));
-
-  // Create flavor variants for EACH base option
-  const flavorVariants = [];
-
-  baseOptions.forEach((base) => {
-    cheesecakeFlavorOptions.forEach((flavor) => {
-      // For each base, create a flavor variant
-      flavorVariants.push({
-        ...flavor,
-        type: "flavor",
-        baseLabel: base.label,
-        basePrice: base.price,
-        description: `${name} (${base.label}) with ${flavor.label} flavor`,
-        totalPrice: base.price + (flavor.price - 220), // Adjust price calculation
-      });
-    });
-  });
-
-  return {
-    id,
-    name,
-    image,
-    category: "Bento & Mini",
-    hasFlavorSelection: true,
-    variants: [...bases, ...flavorVariants],
-  };
-};
 
 // 🍳 All-Day Breakfast (Updated from image)
 export const breakfastItems = [
   {
     id: 1,
-    name: "Longanisa Breakfast",
-    image: cheesecake1,
+    name: "Omelette",
     category: "Breakfast",
     variants: [
       { label: "Regular", price: 119 },
@@ -85,18 +35,16 @@ export const breakfastItems = [
   },
   {
     id: 2,
-    name: "Omelette Breakfast",
-    image: cheesecake1,
+    name: "Pork Shanghai",
     category: "Breakfast",
     variants: [
-      { label: "Regular", price: 129 },
-      { label: "With Brewed Coffee", price: 159 },
+      { label: "Regular", price: 159 },
+      { label: "With Brewed Coffee", price: 189 },
     ],
   },
   {
     id: 3,
-    name: "Spam Breakfast",
-    image: cheesecake1,
+    name: "Longganisa",
     category: "Breakfast",
     variants: [
       { label: "Regular", price: 149 },
@@ -105,8 +53,16 @@ export const breakfastItems = [
   },
   {
     id: 4,
-    name: "Hungarian Breakfast",
-    image: cheesecake1,
+    name: "Bangus Shanghai",
+    category: "Breakfast",
+    variants: [
+      { label: "Regular", price: 159 },
+      { label: "With Brewed Coffee", price: 189 },
+    ],
+  },
+  {
+    id: 5,
+    name: "Spam",
     category: "Breakfast",
     variants: [
       { label: "Regular", price: 149 },
@@ -114,29 +70,55 @@ export const breakfastItems = [
     ],
   },
   {
-    id: 5,
-    name: "Tapa Breakfast",
-    image: cheesecake1,
+    id: 6,
+    name: "Embutido",
     category: "Breakfast",
     variants: [
-      { label: "Regular", price: 169 },
-      { label: "With Brewed Coffee", price: 199 },
+      { label: "Regular", price: 159 },
+      { label: "With Brewed Coffee", price: 189 },
     ],
-  },
-  // Breakfast Add-ons (moved from Add-ons category)
-  {
-    id: 6,
-    name: "Add Rice",
-    image: cheesecake1,
-    category: "Breakfast",
-    variants: [{ label: "Side", price: 25 }],
   },
   {
     id: 7,
-    name: "Add Egg",
-    image: cheesecake1,
+    name: "Hungarian",
     category: "Breakfast",
-    variants: [{ label: "Extra", price: 15 }],
+    variants: [
+      { label: "Regular", price: 149 },
+      { label: "With Brewed Coffee", price: 179 },
+    ],
+  },
+  {
+    id: 8,
+    name: "Tapa",
+    category: "Breakfast",
+    variants: [
+      { label: "Regular", price: 149 },
+      { label: "With Brewed Coffee", price: 179 },
+    ],
+  },
+  {
+    id: 9,
+    name: "Pork Tocino",
+    category: "Breakfast",
+    variants: [
+      { label: "Regular", price: 149 },
+      { label: "With Brewed Coffee", price: 179 },
+    ],
+  },
+  {
+    id: 10,
+    name: "Bacon",
+    category: "Breakfast",
+    variants: [
+      { label: "Regular", price: 149 },
+      { label: "With Brewed Coffee", price: 179 },
+    ],
+  },
+  {
+    id: 11,
+    name: "Keto Pandesal",
+    category: "Breakfast",
+    variants: [{ label: "With bacon and egg", price: 199 }],
   },
 ];
 
@@ -145,7 +127,6 @@ export const pastaItems = [
   {
     id: 1,
     name: "Carbonara",
-    image: cheesecake1,
     category: "Pasta",
     variants: [
       { label: "Solo", price: 189 },
@@ -155,7 +136,6 @@ export const pastaItems = [
   {
     id: 2,
     name: "Pesto",
-    image: cheesecake1,
     category: "Pasta",
     variants: [
       { label: "Solo", price: 189 },
@@ -164,19 +144,23 @@ export const pastaItems = [
   },
 ];
 
-// 🍰 Regular Cheesecakes (Updated with Keto flavors moved here)
+// 🍰 Regular Cheesecakes (Updated from image)
 export const regularCheesecakes = [
   {
     id: 1,
     name: "Regular Cheesecake - Whole",
-    image: cheesecake1,
     category: "Cheesecake",
     variants: [{ label: "Whole", price: 2200 }],
   },
   {
     id: 2,
+    name: "Regular Cheesecake - Pinwheel",
+    category: "Cheesecake",
+    variants: [{ label: "Pinwheel", price: 2300 }],
+  },
+  {
+    id: 3,
     name: "Regular Cheesecake - Slice",
-    image: cheesecake2,
     category: "Cheesecake",
     variants: [
       { label: "Slice", price: 230, type: "base" },
@@ -190,50 +174,81 @@ export const regularCheesecakes = [
     ],
   },
   {
-    id: 3,
-    name: "Regular Cheesecake - Tin Can",
-    image: cheesecake3,
+    id: 4,
+    name: "Regular Cheesecake - Can",
     category: "Cheesecake",
-    variants: [{ label: "Tin Can", price: 700 }],
+    variants: [{ label: "Can", price: 750 }],
   },
   {
-    id: 4,
+    id: 5,
+    name: "Regular Cheesecake - Mini",
+    category: "Cheesecake",
+    variants: [{ label: "Mini / pc", price: 85 }],
+  },
+  {
+    id: 6,
+    name: "Regular Cheesecake - Box of Minis (4s)",
+    category: "Cheesecake",
+    variants: [{ label: "Box", price: 350 }],
+  },
+  {
+    id: 7,
+    name: "Regular Cheesecake - Box of Minis (6s)",
+    category: "Cheesecake",
+    variants: [{ label: "Box", price: 450 }],
+  },
+  {
+    id: 8,
     name: "Regular Cheesecake - Bento",
-    image: cheesecake4,
     category: "Cheesecake",
     variants: [{ label: "Bento", price: 350 }],
   },
+  {
+    id: 9,
+    name: "Regular Cheesecake - Bento Combo",
+    category: "Cheesecake",
+    variants: [{ label: "Bento Combo", price: 500 }],
+  },
 ];
 
-// 🍰 Keto Cheesecakes (Updated - with all flavor variations)
+// 🍰 Keto Cheesecakes (Updated from image)
 export const ketoCheesecakes = [
   {
     id: 1,
     name: "Keto Cheesecake - Whole",
-    image: cheesecake5,
     category: "Keto Cheesecake",
     variants: [{ label: "Whole", price: 3200 }],
   },
   {
     id: 2,
-    name: "Keto Cheesecake - Slice",
-    image: cheesecake6,
+    name: "Keto Cheesecake - Pinwheel",
+    category: "Keto Cheesecake",
+    variants: [{ label: "Pinwheel", price: 3400 }],
+  },
+  {
+    id: 3,
+    name: "Keto Cheesecake - Slices",
     category: "Keto Cheesecake",
     variants: [
-      { label: "Slice", price: 180, type: "base" },
+      { label: "Slice", price: 330, type: "base" },
       ...cheesecakeFlavorOptions.map((flavor) => ({
         ...flavor,
         type: "flavor",
         baseLabel: "Slice",
-        basePrice: 180,
+        basePrice: 330,
         totalPrice: flavor.price,
       })),
     ],
   },
   {
-    id: 3,
+    id: 4,
+    name: "Keto Cheesecake - Can",
+    category: "Keto Cheesecake",
+    variants: [{ label: "Can", price: 1200 }],
+  },
+  {
+    id: 5,
     name: "Keto Cheesecake - Mini",
-    image: cheesecake1,
     category: "Keto Cheesecake",
     variants: [
       { label: "Original", price: 160 },
@@ -244,11 +259,10 @@ export const ketoCheesecakes = [
     ],
   },
   {
-    id: 4,
-    name: "Keto Cheesecake - Can",
-    image: cheesecake2,
+    id: 6,
+    name: "Keto Cheesecake - Box of Minis (6s)",
     category: "Keto Cheesecake",
-    variants: [{ label: "Can", price: 1200 }],
+    variants: [{ label: "Box", price: 900 }],
   },
 ];
 
@@ -258,334 +272,308 @@ export const bentoItems = [
   {
     id: 1,
     name: "Bento Combo",
-    image: cheesecake1,
     category: "Bento & Mini",
     hasFlavorSelection: true,
     baseOptions: [{ label: "Regular", price: 500, type: "size" }],
     variants: [
       { label: "Regular", price: 500, type: "base", hasFlavors: true },
-      // All flavor options for Regular base
       ...cheesecakeFlavorOptions.map((flavor) => ({
         ...flavor,
         type: "flavor",
         baseLabel: "Regular",
         basePrice: 500,
         description: `Bento Combo (Regular) with ${flavor.label} flavor`,
-        totalPrice: 500 + (flavor.price - 220), // Base price + (flavor price - base flavor price)
+        totalPrice: 500 + (flavor.price - 220),
+      })),
+    ],
+  },
+
+  // Bento - Single base with all flavor options
+  {
+    id: 2,
+    name: "Bento",
+    category: "Bento & Mini",
+    hasFlavorSelection: true,
+    baseOptions: [{ label: "Single", price: 350, type: "size" }],
+    variants: [
+      { label: "Single", price: 350, type: "base", hasFlavors: true },
+      ...cheesecakeFlavorOptions.map((flavor) => ({
+        ...flavor,
+        type: "flavor",
+        baseLabel: "Single",
+        basePrice: 350,
+        description: `Bento (Single) with ${flavor.label} flavor`,
+        totalPrice: 350 + (flavor.price - 220),
       })),
     ],
   },
 
   // Mini Box 6s - Box base with all flavor options
   {
-    id: 2,
+    id: 3,
     name: "Mini Box 6s",
-    image: cheesecake2,
     category: "Bento & Mini",
     hasFlavorSelection: true,
     baseOptions: [{ label: "Box", price: 450, type: "size" }],
     variants: [
       { label: "Box", price: 450, type: "base", hasFlavors: true },
-      // All flavor options for Box base
       ...cheesecakeFlavorOptions.map((flavor) => ({
         ...flavor,
         type: "flavor",
         baseLabel: "Box",
         basePrice: 450,
         description: `Mini Box 6s (Box) with ${flavor.label} flavor`,
-        totalPrice: 450 + (flavor.price - 220), // Base price + (flavor price - base flavor price)
+        totalPrice: 450 + (flavor.price - 220),
       })),
     ],
   },
 
   // Mini Box 4s - Box base with all flavor options
   {
-    id: 3,
+    id: 4,
     name: "Mini Box 4s",
-    image: cheesecake3,
     category: "Bento & Mini",
     hasFlavorSelection: true,
     baseOptions: [{ label: "Box", price: 350, type: "size" }],
     variants: [
       { label: "Box", price: 350, type: "base", hasFlavors: true },
-      // All flavor options for Box base
       ...cheesecakeFlavorOptions.map((flavor) => ({
         ...flavor,
         type: "flavor",
         baseLabel: "Box",
         basePrice: 350,
         description: `Mini Box 4s (Box) with ${flavor.label} flavor`,
-        totalPrice: 350 + (flavor.price - 220), // Base price + (flavor price - base flavor price)
+        totalPrice: 350 + (flavor.price - 220),
       })),
     ],
   },
 
   // Mini Cake - Single base with all flavor options
   {
-    id: 4,
+    id: 5,
     name: "Mini Cake",
-    image: cheesecake4,
     category: "Bento & Mini",
     hasFlavorSelection: true,
     baseOptions: [{ label: "Single", price: 85, type: "size" }],
     variants: [
       { label: "Single", price: 85, type: "base", hasFlavors: true },
-      // All flavor options for Single base
       ...cheesecakeFlavorOptions.map((flavor) => ({
         ...flavor,
         type: "flavor",
         baseLabel: "Single",
         basePrice: 85,
         description: `Mini Cake (Single) with ${flavor.label} flavor`,
-        totalPrice: 85 + (flavor.price - 220), // Base price + (flavor price - base flavor price)
+        totalPrice: 85 + (flavor.price - 220),
       })),
     ],
   },
 ];
 
-// 🍟 Snacks Category
+// 🍟 Snacks (Updated from image)
 export const snackItems = [
   {
     id: 1,
-    name: "Fries",
-    image: cheesecake1,
+    name: "Potato Wedges",
     category: "Snacks",
-    variants: [
-      { label: "Regular", price: 80 },
-      { label: "Large", price: 120 },
-      { label: "Cheese", price: 100 },
-    ],
+    variants: [{ label: "Regular", price: 119 }],
   },
   {
     id: 2,
     name: "Nachos",
-    image: cheesecake2,
     category: "Snacks",
-    variants: [
-      { label: "Regular", price: 150 },
-      { label: "Large", price: 200 },
-      { label: "Supreme", price: 250 },
-    ],
-  },
-  {
-    id: 3,
-    name: "Garlic Bread",
-    image: cheesecake3,
-    category: "Snacks",
-    variants: [
-      { label: "3pcs", price: 75 },
-      { label: "6pcs", price: 140 },
-    ],
-  },
-  {
-    id: 4,
-    name: "Chicken Wings",
-    image: cheesecake4,
-    category: "Snacks",
-    variants: [
-      { label: "4pcs", price: 180 },
-      { label: "8pcs", price: 320 },
-      { label: "12pcs", price: 450 },
-    ],
-  },
-  {
-    id: 5,
-    name: "Fish Balls",
-    image: cheesecake5,
-    category: "Snacks",
-    variants: [
-      { label: "10pcs", price: 50 },
-      { label: "20pcs", price: 90 },
-    ],
+    variants: [{ label: "Regular", price: 249 }],
   },
 ];
 
-// ☕ Hot Coffee
+// ☕ Hot Coffee (Updated from image)
 export const hotCoffeeItems = [
   {
     id: 1,
     name: "Brewed Coffee",
-    image: coffee,
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 50 },
-      { label: "16oz", price: 85 },
-      { label: "22oz", price: 100 },
+      { label: "12oz", price: 75 },
+      { label: "16oz", price: 90 },
     ],
   },
   {
     id: 2,
     name: "Americano",
-    image: coffee,
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 50 },
-      { label: "16oz", price: 55 },
-      { label: "22oz", price: 140 },
+      { label: "12oz", price: 90 },
+      { label: "16oz", price: 105 },
     ],
   },
   {
     id: 3,
     name: "Cappuccino",
-    image: coffee,
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 50 },
-      { label: "16oz", price: 65 },
-      { label: "22oz", price: 150 },
+      { label: "12oz", price: 115 },
+      { label: "16oz", price: 130 },
     ],
   },
   {
     id: 4,
-    name: "Latte",
-    image: coffee,
+    name: "Cafe Latte",
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 50 },
-      { label: "16oz", price: 60 },
-      { label: "22oz", price: 145 },
+      { label: "12oz", price: 115 },
+      { label: "16oz", price: 130 },
     ],
   },
   {
     id: 5,
     name: "Vanilla Latte",
-    image: coffee,
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 55 },
-      { label: "16oz", price: 65 },
-      { label: "22oz", price: 150 },
+      { label: "12oz", price: 125 },
+      { label: "16oz", price: 140 },
     ],
   },
   {
     id: 6,
     name: "Hazelnut Latte",
-    image: coffee,
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 55 },
-      { label: "16oz", price: 65 },
-      { label: "22oz", price: 150 },
+      { label: "12oz", price: 125 },
+      { label: "16oz", price: 140 },
     ],
   },
   {
     id: 7,
-    name: "Macchiato",
-    image: coffee,
+    name: "Caramel Macchiato",
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 60 },
-      { label: "16oz", price: 70 },
-      { label: "22oz", price: 155 },
+      { label: "12oz", price: 140 },
+      { label: "16oz", price: 155 },
     ],
   },
   {
     id: 8,
-    name: "Mocha",
-    image: coffee,
+    name: "Cafe Mocha",
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 45 },
-      { label: "16oz", price: 60 },
-      { label: "22oz", price: 145 },
+      { label: "12oz", price: 140 },
+      { label: "16oz", price: 155 },
     ],
   },
   {
     id: 9,
     name: "White Mocha",
-    image: coffee,
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 45 },
-      { label: "16oz", price: 60 },
-      { label: "22oz", price: 145 },
+      { label: "12oz", price: 140 },
+      { label: "16oz", price: 155 },
     ],
   },
   {
     id: 10,
-    name: "Salted Caramel Macchiato",
-    image: coffee,
+    name: "Strawberry Macchiato",
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 60 },
-      { label: "16oz", price: 70 },
-      { label: "22oz", price: 155 },
+      { label: "12oz", price: 140 },
+      { label: "16oz", price: 155 },
     ],
   },
   {
     id: 11,
     name: "Hazelnut Macchiato",
-    image: coffee,
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 55 },
-      { label: "16oz", price: 65 },
-      { label: "22oz", price: 150 },
+      { label: "12oz", price: 140 },
+      { label: "16oz", price: 155 },
     ],
   },
   {
     id: 12,
-    name: "Matcha",
-    image: coffee,
+    name: "Matcha Latte",
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 45 },
-      { label: "16oz", price: 60 },
-      { label: "22oz", price: 145 },
+      { label: "12oz", price: 130 },
+      { label: "16oz", price: 145 },
     ],
   },
   {
     id: 13,
-    name: "Strawberry Milk",
-    image: coffee,
+    name: "Spanish Latte",
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 60 },
-      { label: "16oz", price: 70 },
-      { label: "22oz", price: 155 },
+      { label: "12oz", price: 140 },
+      { label: "16oz", price: 155 },
     ],
   },
   {
     id: 14,
-    name: "Chocolate",
-    image: coffee,
+    name: "Delish Signature",
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 55 },
-      { label: "16oz", price: 70 },
-      { label: "22oz", price: 155 },
+      { label: "12oz", price: 140 },
+      { label: "16oz", price: 155 },
     ],
   },
   {
     id: 15,
-    name: "Spanish Latte",
-    image: coffee,
+    name: "Biscoff Latte",
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 45 },
-      { label: "16oz", price: 60 },
-      { label: "22oz", price: 145 },
+      { label: "12oz", price: 140 },
+      { label: "16oz", price: 155 },
     ],
   },
   {
     id: 16,
-    name: "Delish Signature",
-    image: coffee,
+    name: "Strawberry Milk",
     category: "Hot Coffee",
     variants: [
-      { label: "12oz", price: 55 },
-      { label: "16oz", price: 65 },
-      { label: "22oz", price: 150 },
+      { label: "12oz", price: 125 },
+      { label: "16oz", price: 140 },
+    ],
+  },
+  {
+    id: 17,
+    name: "Choco",
+    category: "Hot Coffee",
+    variants: [
+      { label: "12oz", price: 115 },
+      { label: "16oz", price: 130 },
+    ],
+  },
+  {
+    id: 18,
+    name: "White Choco",
+    category: "Hot Coffee",
+    variants: [
+      { label: "12oz", price: 115 },
+      { label: "16oz", price: 130 },
     ],
   },
 ];
 
-// 🧊 Iced Coffee
+// 🧊 Iced Coffee (Updated from image)
 export const icedCoffeeItems = [
   {
     id: 1,
-    name: "Iced Americano",
-    image: coffee,
+    name: "Americano",
+    category: "Iced Coffee",
+    variants: [
+      { label: "16oz", price: 105 },
+      { label: "22oz", price: 120 },
+    ],
+  },
+  {
+    id: 2,
+    name: "Cafe Latte",
+    category: "Iced Coffee",
+    variants: [
+      { label: "16oz", price: 130 },
+      { label: "22oz", price: 145 },
+    ],
+  },
+  {
+    id: 3,
+    name: "Vanilla Latte",
     category: "Iced Coffee",
     variants: [
       { label: "16oz", price: 140 },
@@ -593,49 +581,26 @@ export const icedCoffeeItems = [
     ],
   },
   {
-    id: 2,
-    name: "Iced Cappuccino",
-    image: coffee,
-    category: "Iced Coffee",
-    variants: [
-      { label: "16oz", price: 150 },
-      { label: "22oz", price: 165 },
-    ],
-  },
-  {
-    id: 3,
-    name: "Iced Latte",
-    image: coffee,
-    category: "Iced Coffee",
-    variants: [
-      { label: "16oz", price: 145 },
-      { label: "22oz", price: 160 },
-    ],
-  },
-  {
     id: 4,
-    name: "Iced Vanilla Latte",
-    image: coffee,
+    name: "Hazelnut Latte",
     category: "Iced Coffee",
     variants: [
-      { label: "16oz", price: 150 },
-      { label: "22oz", price: 165 },
+      { label: "16oz", price: 140 },
+      { label: "22oz", price: 155 },
     ],
   },
   {
     id: 5,
-    name: "Iced Hazelnut Latte",
-    image: coffee,
+    name: "Caramel Macchiato",
     category: "Iced Coffee",
     variants: [
-      { label: "16oz", price: 150 },
-      { label: "22oz", price: 165 },
+      { label: "16oz", price: 155 },
+      { label: "22oz", price: 170 },
     ],
   },
   {
     id: 6,
-    name: "Iced Macchiato",
-    image: coffee,
+    name: "Cafe Mocha",
     category: "Iced Coffee",
     variants: [
       { label: "16oz", price: 155 },
@@ -644,28 +609,25 @@ export const icedCoffeeItems = [
   },
   {
     id: 7,
-    name: "Iced Mocha",
-    image: coffee,
+    name: "White Mocha",
     category: "Iced Coffee",
     variants: [
-      { label: "16oz", price: 145 },
-      { label: "22oz", price: 160 },
+      { label: "16oz", price: 155 },
+      { label: "22oz", price: 170 },
     ],
   },
   {
     id: 8,
-    name: "Iced White Mocha",
-    image: coffee,
+    name: "Strawberry Macchiato",
     category: "Iced Coffee",
     variants: [
-      { label: "16oz", price: 145 },
-      { label: "22oz", price: 160 },
+      { label: "16oz", price: 155 },
+      { label: "22oz", price: 170 },
     ],
   },
   {
     id: 9,
-    name: "Iced Salted Caramel Macchiato",
-    image: coffee,
+    name: "Hazelnut Macchiato",
     category: "Iced Coffee",
     variants: [
       { label: "16oz", price: 155 },
@@ -674,18 +636,7 @@ export const icedCoffeeItems = [
   },
   {
     id: 10,
-    name: "Iced Hazelnut Macchiato",
-    image: coffee,
-    category: "Iced Coffee",
-    variants: [
-      { label: "16oz", price: 150 },
-      { label: "22oz", price: 165 },
-    ],
-  },
-  {
-    id: 11,
-    name: "Iced Matcha",
-    image: coffee,
+    name: "Matcha Latte",
     category: "Iced Coffee",
     variants: [
       { label: "16oz", price: 145 },
@@ -693,9 +644,17 @@ export const icedCoffeeItems = [
     ],
   },
   {
+    id: 11,
+    name: "Spanish Latte",
+    category: "Iced Coffee",
+    variants: [
+      { label: "16oz", price: 155 },
+      { label: "22oz", price: 170 },
+    ],
+  },
+  {
     id: 12,
-    name: "Iced Strawberry Milk",
-    image: coffee,
+    name: "Delish Signature",
     category: "Iced Coffee",
     variants: [
       { label: "16oz", price: 155 },
@@ -704,8 +663,7 @@ export const icedCoffeeItems = [
   },
   {
     id: 13,
-    name: "Iced Chocolate",
-    image: coffee,
+    name: "Biscoff Latte",
     category: "Iced Coffee",
     variants: [
       { label: "16oz", price: 155 },
@@ -714,189 +672,198 @@ export const icedCoffeeItems = [
   },
   {
     id: 14,
-    name: "Iced Spanish Latte",
-    image: coffee,
+    name: "Strawberry Milk",
     category: "Iced Coffee",
     variants: [
-      { label: "16oz", price: 145 },
-      { label: "22oz", price: 160 },
+      { label: "16oz", price: 140 },
+      { label: "22oz", price: 155 },
     ],
   },
   {
     id: 15,
-    name: "Iced Delish Signature",
-    image: coffee,
+    name: "Choco",
     category: "Iced Coffee",
     variants: [
-      { label: "16oz", price: 150 },
-      { label: "22oz", price: 165 },
+      { label: "16oz", price: 130 },
+      { label: "22oz", price: 145 },
+    ],
+  },
+  {
+    id: 16,
+    name: "White Choco",
+    category: "Iced Coffee",
+    variants: [
+      { label: "16oz", price: 130 },
+      { label: "22oz", price: 145 },
     ],
   },
 ];
 
-// 🧊 Frappe
+// 🧊 Frappe (Updated from image)
 export const frappeItems = [
   {
     id: 1,
-    name: "Espresso Frappe",
-    image: frappe,
+    name: "Espresso Blended",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 65 },
-      { label: "22oz", price: 70 },
+      { label: "16oz", price: 155 },
+      { label: "22oz", price: 170 },
     ],
   },
   {
     id: 2,
-    name: "Hazelnut Frappe",
-    image: frappe,
+    name: "Hazelnut",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 70 },
-      { label: "22oz", price: 85 },
+      { label: "16oz", price: 160 },
+      { label: "22oz", price: 175 },
     ],
   },
   {
     id: 3,
-    name: "Caramel Frappe",
-    image: frappe,
+    name: "Caramel",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 55 },
-      { label: "22oz", price: 70 },
+      { label: "16oz", price: 175 },
+      { label: "22oz", price: 190 },
     ],
   },
   {
     id: 4,
-    name: "Mocha Frappe",
-    image: frappe,
+    name: "Mocha",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 55 },
-      { label: "22oz", price: 70 },
+      { label: "16oz", price: 175 },
+      { label: "22oz", price: 190 },
     ],
   },
   {
     id: 5,
-    name: "White Mocha Frappe",
-    image: frappe,
+    name: "White Mocha",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 55 },
-      { label: "22oz", price: 70 },
+      { label: "16oz", price: 175 },
+      { label: "22oz", price: 190 },
     ],
   },
   {
     id: 6,
-    name: "Choco Cream Frappe",
-    image: frappe,
+    name: "Biscoff",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 85 },
-      { label: "22oz", price: 95 },
+      { label: "16oz", price: 180 },
+      { label: "22oz", price: 195 },
     ],
   },
   {
     id: 7,
-    name: "Vanilla Cream Frappe",
-    image: frappe,
+    name: "Vanilla Cream",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 75 },
-      { label: "22oz", price: 85 },
+      { label: "16oz", price: 155 },
+      { label: "22oz", price: 170 },
     ],
   },
   {
     id: 8,
-    name: "Caramel Cream Frappe",
-    image: frappe,
+    name: "Ube",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 80 },
-      { label: "22oz", price: 90 },
+      { label: "16oz", price: 160 },
+      { label: "22oz", price: 185 },
     ],
   },
   {
     id: 9,
-    name: "Oreo Frappe",
-    image: frappe,
+    name: "Caramel Cream",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 85 },
-      { label: "22oz", price: 95 },
+      { label: "16oz", price: 165 },
+      { label: "22oz", price: 180 },
     ],
   },
   {
     id: 10,
-    name: "Choco Hazelnut Frappe",
-    image: frappe,
+    name: "Choco Cream",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 80 },
-      { label: "22oz", price: 90 },
+      { label: "16oz", price: 165 },
+      { label: "22oz", price: 180 },
     ],
   },
   {
     id: 11,
-    name: "Chocochip Frappe",
-    image: frappe,
+    name: "Choco Hazelnut",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 90 },
-      { label: "22oz", price: 100 },
+      { label: "16oz", price: 165 },
+      { label: "22oz", price: 180 },
     ],
   },
   {
     id: 12,
-    name: "Matcha Frappe",
-    image: frappe,
+    name: "Oreo",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 80 },
-      { label: "22oz", price: 90 },
+      { label: "16oz", price: 165 },
+      { label: "22oz", price: 180 },
     ],
   },
   {
     id: 13,
-    name: "Ube Frappe",
-    image: frappe,
+    name: "Matcha",
     category: "Frappe",
     variants: [
-      { label: "16oz", price: 80 },
-      { label: "22oz", price: 90 },
+      { label: "16oz", price: 165 },
+      { label: "22oz", price: 180 },
+    ],
+  },
+  {
+    id: 14,
+    name: "Choco Chip",
+    category: "Frappe",
+    variants: [
+      { label: "16oz", price: 160 },
+      { label: "22oz", price: 175 },
+    ],
+  },
+  {
+    id: 15,
+    name: "Biscoff Cream",
+    category: "Frappe",
+    variants: [
+      { label: "16oz", price: 175 },
+      { label: "22oz", price: 190 },
     ],
   },
 ];
 
-// 🍓 Smoothies
+// 🍓 Smoothies (Updated from image)
 export const smoothieItems = [
   {
     id: 1,
-    name: "Mango Smoothie",
-    image: smoothie,
+    name: "Mango",
     category: "Smoothie",
     variants: [
-      { label: "16oz", price: 120 },
-      { label: "22oz", price: 190 },
+      { label: "16oz", price: 185 },
+      { label: "22oz", price: 200 },
     ],
   },
   {
     id: 2,
-    name: "Strawberry Smoothie",
-    image: smoothie,
+    name: "Strawberry",
     category: "Smoothie",
     variants: [
-      { label: "16oz", price: 120 },
-      { label: "22oz", price: 190 },
+      { label: "16oz", price: 185 },
+      { label: "22oz", price: 200 },
     ],
   },
   {
     id: 3,
-    name: "Strawberry Mango Smoothie",
-    image: smoothie,
+    name: "Strawberry-Mango",
     category: "Smoothie",
     variants: [
-      { label: "16oz", price: 130 },
+      { label: "16oz", price: 185 },
       { label: "22oz", price: 200 },
     ],
   },
@@ -907,144 +874,57 @@ export const icedTeaItems = [
   {
     id: 1,
     name: "Red Iced Tea",
-    image: icedtea,
     category: "Iced Tea",
     variants: [
       { label: "16oz", price: 70 },
-      { label: "1 Liter", price: 155 },
+      { label: "22oz", price: 85 },
     ],
   },
   {
     id: 2,
-    name: "Honey Peach Iced Tea",
-    image: icedtea,
+    name: "Honey Peach",
     category: "Iced Tea",
     variants: [
-      { label: "16oz", price: 70 },
-      { label: "22oz", price: 140 },
+      { label: "16oz", price: 150 },
+      { label: "22oz", price: 165 },
     ],
   },
   {
     id: 3,
-    name: "Honey Lemon Iced Tea",
-    image: icedtea,
+    name: "Honey Lemon",
     category: "Iced Tea",
     variants: [
-      { label: "16oz", price: 70 },
-      { label: "22oz", price: 180 },
+      { label: "16oz", price: 150 },
+      { label: "22oz", price: 165 },
     ],
   },
 ];
 
-// ➕ Add-ons Category (Updated - removed rice and egg)
+// ➕ Add-ons Category (Coffee Add-ons from the drinks menu)
 export const addOnsItems = [
   {
     id: 1,
     name: "Add Shot",
-    image: coffee,
     category: "Add-ons",
     variants: [{ label: "Single", price: 30 }],
   },
   {
     id: 2,
-    name: "Add Whip",
-    image: coffee,
-    category: "Add-ons",
-    variants: [{ label: "Regular", price: 20 }],
-  },
-  {
-    id: 3,
-    name: "Add Syrup",
-    image: coffee,
-    category: "Add-ons",
-    variants: [{ label: "Pump", price: 20 }],
-  },
-  {
-    id: 4,
     name: "Soy Milk",
-    image: coffee,
     category: "Add-ons",
     variants: [{ label: "Substitute", price: 35 }],
   },
   {
-    id: 5,
+    id: 3,
     name: "Almond Milk",
-    image: coffee,
     category: "Add-ons",
     variants: [{ label: "Substitute", price: 45 }],
   },
   {
-    id: 6,
+    id: 4,
     name: "Oat Milk",
-    image: coffee,
     category: "Add-ons",
     variants: [{ label: "Substitute", price: 35 }],
-  },
-  {
-    id: 7,
-    name: "Extra Cheese",
-    image: cheesecake1,
-    category: "Add-ons",
-    variants: [{ label: "Serving", price: 25 }],
-  },
-  {
-    id: 8,
-    name: "Extra Sauce",
-    image: cheesecake1,
-    category: "Add-ons",
-    variants: [{ label: "Side", price: 15 }],
-  },
-];
-
-// 🛍️ Popular Dishes
-export const popularDishes = [
-  {
-    id: 1,
-    image: cheesecake1,
-    name: "Longanisa Breakfast",
-    numberOfOrders: 150,
-  },
-  {
-    id: 2,
-    image: cheesecake2,
-    name: "Tapa Breakfast",
-    numberOfOrders: 140,
-  },
-  {
-    id: 3,
-    image: cheesecake3,
-    name: "Carbonara Pasta",
-    numberOfOrders: 135,
-  },
-  {
-    id: 4,
-    image: cheesecake4,
-    name: "Regular Cheesecake Slice",
-    numberOfOrders: 120,
-  },
-  {
-    id: 5,
-    image: cheesecake5,
-    name: "Bento Combo",
-    numberOfOrders: 110,
-  },
-  {
-    id: 6,
-    image: cheesecake6,
-    name: "Keto Cheesecake Slice",
-    numberOfOrders: 100,
-  },
-  {
-    id: 7,
-    image: frappe,
-    name: "Caramel Frappe",
-    numberOfOrders: 180,
-  },
-  {
-    id: 8,
-    image: coffee,
-    name: "Spanish Latte",
-    numberOfOrders: 200,
   },
 ];
 
@@ -1066,31 +946,31 @@ export const menus = [
   },
   {
     id: 3,
+    name: "Snacks",
+    bgColor: "#FF5252",
+    icon: "🍟",
+    items: snackItems,
+  },
+  {
+    id: 4,
     name: "Regular Cheesecakes",
     bgColor: "#f6b100",
     icon: "🍰",
     items: regularCheesecakes,
   },
   {
-    id: 4,
+    id: 5,
     name: "Keto Cheesecakes",
     bgColor: "#9C27B0",
     icon: "🥑",
     items: ketoCheesecakes,
   },
   {
-    id: 5,
+    id: 6,
     name: "Bento & Mini",
     bgColor: "#FF9800",
     icon: "🍱",
     items: bentoItems,
-  },
-  {
-    id: 6,
-    name: "Snacks",
-    bgColor: "#FF5252",
-    icon: "🍟",
-    items: snackItems,
   },
   {
     id: 7,
@@ -1150,9 +1030,9 @@ export const orders = [
   {
     id: 1,
     customer: "Juan Dela Cruz",
-    item: "Longanisa Breakfast",
+    item: "Longganisa Breakfast",
     quantity: 1,
-    total: 119,
+    total: 149,
     status: "Completed",
   },
   {
@@ -1184,7 +1064,7 @@ export const orders = [
     customer: "Mark Villanueva",
     item: "Tapa Breakfast with Coffee",
     quantity: 1,
-    total: 199,
+    total: 179,
     status: "Pending",
   },
 ];
@@ -1217,7 +1097,7 @@ export const getAllCheesecakeFlavors = () => {
 
   // Get flavors from keto cheesecakes
   ketoCheesecakes.forEach((item) => {
-    if (item.name.includes("Slice")) {
+    if (item.name.includes("Slices")) {
       item.variants.forEach((variant) => {
         if (variant.label !== "Slice") {
           allFlavors.push({
@@ -1269,3 +1149,47 @@ export const getKetoMiniWithFlavors = () => {
   );
   return ketoMiniItem || null;
 };
+
+// 🛍️ Popular Dishes (sample data - adjust as needed)
+export const popularDishes = [
+  {
+    id: 1,
+    name: "Longganisa Breakfast",
+    numberOfOrders: 150,
+  },
+  {
+    id: 2,
+    name: "Tapa Breakfast",
+    numberOfOrders: 140,
+  },
+  {
+    id: 3,
+    name: "Carbonara Pasta",
+    numberOfOrders: 135,
+  },
+  {
+    id: 4,
+    name: "Regular Cheesecake Slice",
+    numberOfOrders: 120,
+  },
+  {
+    id: 5,
+    name: "Bento Combo",
+    numberOfOrders: 110,
+  },
+  {
+    id: 6,
+    name: "Keto Cheesecake Slice",
+    numberOfOrders: 100,
+  },
+  {
+    id: 7,
+    name: "Caramel Frappe",
+    numberOfOrders: 180,
+  },
+  {
+    id: 8,
+    name: "Spanish Latte",
+    numberOfOrders: 200,
+  },
+];
