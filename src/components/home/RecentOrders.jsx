@@ -25,119 +25,66 @@ import { getOrders, updateOrderStatus } from "../../https/index";
 const RecentOrders = ({ orders = [], onStatusChange }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingOrders, setUpdatingOrders] = useState(new Set());
+  const [showAllOrders, setShowAllOrders] = useState(false);
   const [viewMode, setViewMode] = useState("recent"); // 'recent' or 'all'
   const queryClient = useQueryClient();
 
   // Use provided orders prop or fetch if not provided
-  const {
-    data: resData,
-    isError,
-    isLoading,
-  } = useQuery({
+  const { data: resData, isError } = useQuery({
     queryKey: ["orders"],
     queryFn: async () => {
-      try {
-        const response = await getOrders();
-        return response;
-      } catch (error) {
-        console.error("Error fetching orders:", error);
-        throw error;
-      }
+      return await getOrders();
     },
     placeholderData: keepPreviousData,
-    enabled: !orders || orders.length === 0,
+    enabled: !orders || orders.length === 0, // Only fetch if orders prop is not provided
   });
 
   if (isError) {
-    enqueueSnackbar("Failed to load orders", { variant: "error" });
+    enqueueSnackbar("Something went wrong!", { variant: "error" });
   }
 
-  // SAFELY Get all orders - handle different response structures
+  // Get all orders - use prop if provided, otherwise use fetched data
   const allOrders = React.useMemo(() => {
-    // If orders prop is provided, use it
-    if (orders && Array.isArray(orders) && orders.length > 0) {
-      return orders;
+    if (orders && orders.length > 0) {
+      return orders.sort((a, b) => {
+        const dateA = new Date(a.createdAt || a.orderDate || a.date || 0);
+        const dateB = new Date(b.createdAt || b.orderDate || b.date || 0);
+        return dateB - dateA; // Most recent first
+      });
     }
 
-    // Handle different response structures from API
-    if (resData?.data) {
-      // If data is directly an array
-      if (Array.isArray(resData.data)) {
-        return resData.data;
-      }
-      // If data has a nested data property
-      if (resData.data.data && Array.isArray(resData.data.data)) {
-        return resData.data.data;
-      }
-      // If data has a nested orders property
-      if (resData.data.orders && Array.isArray(resData.data.orders)) {
-        return resData.data.orders;
-      }
-      // If data has a nested results property
-      if (resData.data.results && Array.isArray(resData.data.results)) {
-        return resData.data.results;
-      }
-    }
-
-    // Return empty array as fallback
-    return [];
-  }, [orders, resData]);
-
-  // SAFELY Filter orders based on search query
-  const filteredOrders = React.useMemo(() => {
-    if (!Array.isArray(allOrders)) {
-      return [];
-    }
-
-    return allOrders.filter((order) => {
-      if (!order) return false;
-
-      const searchLower = searchQuery.toLowerCase();
-
-      // Check customer name
-      const customerName =
-        order.customerDetails?.name || order.customerName || "";
-      if (customerName.toLowerCase().includes(searchLower)) return true;
-
-      // Check order ID
-      const orderId = order._id || order.id || "";
-      if (orderId.toLowerCase().includes(searchLower)) return true;
-
-      // Check order status
-      const orderStatus = order.orderStatus || order.status || "";
-      if (orderStatus.toLowerCase().includes(searchLower)) return true;
-
-      return false;
+    const fetchedOrders = resData?.data?.data || [];
+    return fetchedOrders.sort((a, b) => {
+      const dateA = new Date(a.createdAt || a.orderDate || a.date || 0);
+      const dateB = new Date(b.createdAt || b.orderDate || b.date || 0);
+      return dateB - dateA; // Most recent first
     });
+  }, [orders, resData?.data?.data]);
+
+  // Filter orders based on search query
+  const filteredOrders = React.useMemo(() => {
+    return allOrders.filter(
+      (order) =>
+        order.customerDetails?.name
+          ?.toLowerCase()
+          .includes(searchQuery.toLowerCase()) ||
+        order._id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        order.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
   }, [allOrders, searchQuery]);
 
-  // SAFELY Show orders based on view mode
+  // Show orders based on view mode
   const displayOrders = React.useMemo(() => {
-    if (!Array.isArray(filteredOrders)) {
-      return [];
-    }
-
     if (viewMode === "all") {
       return filteredOrders;
     }
-
-    // Show only recent orders (last 10) when in recent mode
-    return filteredOrders.slice(0, 10);
+    // Show only recent orders (last 5) when in recent mode
+    return filteredOrders.slice(0, 5);
   }, [filteredOrders, viewMode]);
 
   // Status configuration - Matching the Home component style
   const getStatusConfig = (status) => {
-    if (!status) {
-      return {
-        icon: FaExclamationCircle,
-        color: "text-gray-600",
-        bgColor: "bg-gray-50",
-        borderColor: "border-gray-200",
-        text: "Unknown",
-      };
-    }
-
-    const statusLower = status.toLowerCase();
+    const statusLower = status?.toLowerCase();
     switch (statusLower) {
       case "completed":
       case "delivered":
@@ -180,15 +127,13 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
           color: "text-gray-600",
           bgColor: "bg-gray-50",
           borderColor: "border-gray-200",
-          text: status,
+          text: status || "Unknown",
         };
     }
   };
 
   // Handle status update
   const handleStatusUpdate = async (orderId, currentStatus, newStatus) => {
-    if (!orderId) return;
-
     setUpdatingOrders((prev) => new Set(prev).add(orderId));
 
     try {
@@ -197,6 +142,28 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
         const order = allOrders.find((o) => o._id === orderId);
         await onStatusChange(order, newStatus);
       } else {
+        // Otherwise use the local update logic
+        const previousOrders = queryClient.getQueryData(["orders"]);
+
+        // Optimistic update
+        if (previousOrders) {
+          queryClient.setQueryData(["orders"], (old) => {
+            if (!old?.data?.data) return old;
+
+            return {
+              ...old,
+              data: {
+                ...old.data,
+                data: old.data.data.map((order) =>
+                  order._id === orderId
+                    ? { ...order, orderStatus: newStatus }
+                    : order
+                ),
+              },
+            };
+          });
+        }
+
         // Call API to update order status
         await updateOrderStatus({
           orderId,
@@ -213,6 +180,9 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     } catch (error) {
       console.error("Status update error:", error);
 
+      // Revert optimistic update on error
+      queryClient.invalidateQueries({ queryKey: ["orders"] });
+
       // Show detailed error message
       const errorMessage =
         error.response?.data?.message ||
@@ -228,14 +198,11 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     }
   };
 
-  // SAFELY Format date
+  // Format date
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return "Invalid Date";
-
-      return date.toLocaleDateString("en-US", {
+      return new Date(dateString).toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -247,32 +214,29 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     }
   };
 
-  // SAFELY Calculate and format total amount
+  // Calculate and format total amount
   const calculateTotalAmount = (order) => {
-    if (!order) return 0;
-
     // If totalAmount is directly provided, use it
     if (order.totalAmount !== undefined && order.totalAmount !== null) {
-      return parseFloat(order.totalAmount) || 0;
+      return order.totalAmount;
     }
 
     // If items array exists, calculate from items
     if (order.items && Array.isArray(order.items)) {
       return order.items.reduce((total, item) => {
-        const price = parseFloat(item.price || item.unitPrice || 0);
-        const quantity = parseInt(item.quantity || 1);
+        const price = item.price || item.unitPrice || 0;
+        const quantity = item.quantity || 1;
         return total + price * quantity;
       }, 0);
     }
 
     // If subtotal and other amounts are provided
     if (order.subtotal !== undefined) {
-      const subtotal = parseFloat(order.subtotal || 0);
-      const tax = parseFloat(order.tax || order.taxAmount || 0);
-      const shipping = parseFloat(
-        order.shipping || order.shippingFee || order.deliveryFee || 0
-      );
-      const discount = parseFloat(order.discount || order.discountAmount || 0);
+      const subtotal = order.subtotal || 0;
+      const tax = order.tax || order.taxAmount || 0;
+      const shipping =
+        order.shipping || order.shippingFee || order.deliveryFee || 0;
+      const discount = order.discount || order.discountAmount || 0;
 
       return subtotal + tax + shipping - discount;
     }
@@ -280,9 +244,10 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     return 0;
   };
 
-  // SAFELY Format currency - CHANGED TO PESO
+  // Format currency - CHANGED TO PESO
   const formatCurrency = (amount) => {
-    const numericAmount = parseFloat(amount) || 0;
+    const numericAmount =
+      typeof amount === "number" ? amount : parseFloat(amount) || 0;
     return new Intl.NumberFormat("en-PH", {
       style: "currency",
       currency: "PHP",
@@ -291,23 +256,19 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     }).format(numericAmount);
   };
 
-  // SAFELY Get items count
+  // Get items count
   const getItemsCount = (order) => {
-    if (!order) return 0;
-
     if (order.items && Array.isArray(order.items)) {
       return order.items.reduce(
-        (total, item) => total + (parseInt(item.quantity) || 1),
+        (total, item) => total + (item.quantity || 1),
         0
       );
     }
-    return parseInt(order.itemsCount || order.quantity || 0);
+    return order.itemsCount || order.quantity || 0;
   };
 
-  // SAFELY Get items preview text
+  // Get items preview text
   const getItemsPreview = (order) => {
-    if (!order) return "No items";
-
     if (!order.items || !Array.isArray(order.items)) {
       return "No items";
     }
@@ -316,15 +277,15 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
       .slice(0, 3)
       .map((item) => {
         const name = item.name || item.productName || "Unknown Item";
-        const quantity = parseInt(item.quantity) || 1;
-        return quantity > 1 ? `${name} (${quantity})` : name;
+        const quantity = item.quantity > 1 ? ` (${item.quantity})` : "";
+        return name + quantity;
       })
       .join(", ");
 
     const totalItems = getItemsCount(order);
     const shownItems = order.items
       .slice(0, 3)
-      .reduce((total, item) => total + (parseInt(item.quantity) || 1), 0);
+      .reduce((total, item) => total + (item.quantity || 1), 0);
 
     if (totalItems > shownItems) {
       return `${itemsText} +${totalItems - shownItems} more`;
@@ -333,11 +294,9 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     return itemsText;
   };
 
-  // SAFELY Check if action buttons should be shown for an order
+  // Check if action buttons should be shown for an order
   const shouldShowActions = (order) => {
-    if (!order || !order.orderStatus) return false;
-
-    const status = order.orderStatus.toLowerCase();
+    const status = order.orderStatus?.toLowerCase();
     return (
       status === "pending" ||
       status === "in progress" ||
@@ -345,11 +304,9 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     );
   };
 
-  // SAFELY Get available actions for an order
+  // Get available actions for an order
   const getAvailableActions = (order) => {
-    if (!order || !order.orderStatus) return [];
-
-    const status = order.orderStatus.toLowerCase();
+    const status = order.orderStatus?.toLowerCase();
     const actions = [];
 
     if (status === "pending") {
@@ -377,18 +334,6 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
   const toggleViewMode = () => {
     setViewMode(viewMode === "recent" ? "all" : "recent");
   };
-
-  // Show loading state
-  if (isLoading && (!orders || orders.length === 0)) {
-    return (
-      <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-8 shadow-lg">
-        <div className="flex justify-center items-center">
-          <FaSpinner className="animate-spin text-2xl text-blue-600 mr-3" />
-          <span className="text-gray-700">Loading orders...</span>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-4 shadow-lg hover:shadow-xl transition-all duration-300">
@@ -434,8 +379,8 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
         <p className="text-xs text-gray-600">
           Showing {displayOrders.length} of {filteredOrders.length} orders
           {viewMode === "recent" &&
-            filteredOrders.length > 10 &&
-            " (most recent 10)"}
+            filteredOrders.length > 5 &&
+            " (most recent 5)"}
         </p>
         {viewMode === "all" && (
           <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -453,8 +398,6 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
       >
         {displayOrders.length > 0 ? (
           displayOrders.map((order) => {
-            if (!order) return null;
-
             const statusConfig = getStatusConfig(order.orderStatus);
             const StatusIcon = statusConfig.icon;
             const totalAmount = calculateTotalAmount(order);
@@ -466,7 +409,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
 
             return (
               <div
-                key={order._id || order.id || Math.random()}
+                key={order._id}
                 className={`border rounded-xl p-4 ${statusConfig.bgColor} ${statusConfig.borderColor} hover:shadow-md transition-all duration-200`}
               >
                 {/* Order Header */}
@@ -474,7 +417,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
                   <div className="flex items-center gap-2">
                     <FaReceipt className="text-gray-600 text-sm" />
                     <span className="font-mono text-xs text-gray-700">
-                      #{order._id ? order._id.slice(-8) : "N/A"}
+                      #{order._id?.slice(-8) || "N/A"}
                     </span>
                   </div>
                   <div className="flex items-center gap-1">
@@ -502,9 +445,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
                 <div className="flex items-center gap-2 mb-2">
                   <FaUser className="text-gray-500 text-xs" />
                   <span className="text-xs font-medium text-gray-800">
-                    {order.customerDetails?.name ||
-                      order.customerName ||
-                      "Unknown Customer"}
+                    {order.customerDetails?.name || "Unknown Customer"}
                   </span>
                 </div>
 
@@ -513,9 +454,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
                   <div className="space-y-1">
                     <div className="text-gray-600">Date</div>
                     <div className="font-medium text-gray-800">
-                      {formatDate(
-                        order.createdAt || order.orderDate || order.date
-                      )}
+                      {formatDate(order.createdAt || order.orderDate)}
                     </div>
                   </div>
                   <div className="space-y-1 text-right">
