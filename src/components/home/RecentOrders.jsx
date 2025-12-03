@@ -11,6 +11,7 @@ import {
   FaCheck,
   FaEye,
   FaEyeSlash,
+  FaList,
 } from "react-icons/fa";
 import {
   keepPreviousData,
@@ -388,22 +389,30 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
         <h1 className="text-lg font-semibold text-gray-900">
           {showAllOrders ? "All Orders" : "Recent Orders"}
         </h1>
-        <button
-          onClick={toggleViewAll}
-          className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1 px-3 py-1 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors"
-        >
-          {showAllOrders ? (
-            <>
-              <FaEyeSlash className="text-xs" />
-              Show Less
-            </>
-          ) : (
-            <>
-              <FaEye className="text-xs" />
-              View All
-            </>
+        <div className="flex items-center gap-2">
+          {showAllOrders && (
+            <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
+              <FaList className="text-xs" />
+              <span>All Records</span>
+            </span>
           )}
-        </button>
+          <button
+            onClick={toggleViewAll}
+            className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1 px-3 py-1 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors"
+          >
+            {showAllOrders ? (
+              <>
+                <FaEyeSlash className="text-xs" />
+                Show Recent
+              </>
+            ) : (
+              <>
+                <FaEye className="text-xs" />
+                View All Orders
+              </>
+            )}
+          </button>
+        </div>
       </div>
 
       {/* Search Bar */}
@@ -419,15 +428,22 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
       </div>
 
       {/* Orders Count Info */}
-      <div className="mb-4">
+      <div className="mb-4 flex justify-between items-center">
         <p className="text-xs text-gray-600">
           Showing {displayOrders.length} of {filteredOrders.length} orders
           {!showAllOrders && filteredOrders.length > 5 && " (most recent 5)"}
         </p>
+        <p className="text-xs text-gray-500">
+          Total orders: {allOrders.length}
+        </p>
       </div>
 
       {/* Orders List */}
-      <div className="overflow-y-auto max-h-[400px] space-y-3">
+      <div
+        className={`overflow-y-auto space-y-3 ${
+          showAllOrders ? "max-h-[600px]" : "max-h-[400px]"
+        }`}
+      >
         {displayOrders.length > 0 ? (
           displayOrders.map((order, index) => {
             if (!order) return null;
@@ -572,6 +588,16 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
           </div>
         )}
       </div>
+
+      {/* View Mode Info Footer */}
+      {showAllOrders && (
+        <div className="mt-4 pt-3 border-t border-gray-200">
+          <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
+            <FaList className="text-xs" />
+            <span>Showing all {displayOrders.length} order records</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
