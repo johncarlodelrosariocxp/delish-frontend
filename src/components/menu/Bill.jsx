@@ -74,23 +74,16 @@ const Bill = ({ orderId }) => {
     idNumber: "",
     type: "PWD",
   });
+  const [customerType, setCustomerType] = useState("walk-in"); // "walk-in" or "take-out"
+  const [cashAmount, setCashAmount] = useState(0);
+  const [showCashModal, setShowCashModal] = useState(false);
+
+  // Bluetooth printer state
   const [bluetoothPrinter, setBluetoothPrinter] = useState(null);
   const [isPrinterConnected, setIsPrinterConnected] = useState(false);
 
-  // Customer details state
-  const [customerName, setCustomerName] = useState(
-    customerData.customerName || ""
-  );
-  const [customerPhone, setCustomerPhone] = useState(
-    customerData.customerPhone || ""
-  );
-  const [customerGuests, setCustomerGuests] = useState(
-    customerData.guests || 1
-  );
-
   // Bluetooth printer setup
   useEffect(() => {
-    // Check if Bluetooth is available
     if (navigator.bluetooth) {
       checkPrinterConnection();
     }
@@ -98,11 +91,9 @@ const Bill = ({ orderId }) => {
 
   const checkPrinterConnection = async () => {
     try {
-      // Check for existing permissions
       const devices = await navigator.bluetooth.getDevices();
       if (devices.length > 0) {
         setIsPrinterConnected(true);
-        enqueueSnackbar("Printer is ready", { variant: "success" });
       }
     } catch (error) {
       console.log("No existing printer connection");
@@ -118,17 +109,9 @@ const Bill = ({ orderId }) => {
     }
 
     try {
-      enqueueSnackbar("Searching for Bluetooth printers...", {
-        variant: "info",
-      });
-
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: ["battery_service", "device_information"],
-      });
-
-      enqueueSnackbar(`Found: ${device.name || "Unknown Device"}`, {
-        variant: "info",
       });
 
       const server = await device.gatt.connect();
@@ -139,17 +122,10 @@ const Bill = ({ orderId }) => {
         variant: "success",
       });
 
-      // Store device info for future use
       localStorage.setItem("bluetoothPrinterId", device.id);
     } catch (error) {
       console.error("Bluetooth connection error:", error);
-      if (error.name === "NotFoundError") {
-        enqueueSnackbar("No Bluetooth printer found", { variant: "error" });
-      } else if (error.name === "SecurityError") {
-        enqueueSnackbar("Bluetooth permission denied", { variant: "error" });
-      } else {
-        enqueueSnackbar("Failed to connect to printer", { variant: "error" });
-      }
+      enqueueSnackbar("Failed to connect to printer", { variant: "error" });
     }
   };
 
@@ -238,7 +214,7 @@ const Bill = ({ orderId }) => {
     return `${item.id}-${item.pricePerQuantity}-${item.isRedeemed}`;
   };
 
-  // Calculate totals with PWD/SSS discount on selected items
+  // Calculate totals
   const calculateTotals = () => {
     try {
       const baseGrossTotal = cartData.reduce(
@@ -247,12 +223,10 @@ const Bill = ({ orderId }) => {
         0
       );
 
-      // Calculate PWD/SSS discount only on selected items
       let pwdSssDiscountAmount = 0;
       let discountedItemsTotal = 0;
 
       if (pwdSssDiscountApplied && pwdSssDiscountItems.length > 0) {
-        // Calculate total value of selected items
         discountedItemsTotal = pwdSssDiscountItems.reduce(
           (sum, item) =>
             sum + safeNumber(item.quantity) * safeNumber(item.pricePerQuantity),
@@ -261,18 +235,15 @@ const Bill = ({ orderId }) => {
         pwdSssDiscountAmount = discountedItemsTotal * pwdSssDiscountRate;
       }
 
-      // Calculate redemption amount
       const redemptionAmount = cartData.reduce((sum, item) => {
         return item.isRedeemed
           ? sum + safeNumber(item.quantity) * safeNumber(item.pricePerQuantity)
           : sum;
       }, 0);
 
-      // Calculate subtotals
       const subtotalAfterPwdSssAndRedemption =
         baseGrossTotal - pwdSssDiscountAmount - redemptionAmount;
 
-      // Employee discount
       const employeeDiscountAmount = employeeDiscountApplied
         ? subtotalAfterPwdSssAndRedemption * employeeDiscountRate
         : 0;
@@ -280,7 +251,6 @@ const Bill = ({ orderId }) => {
       const subtotalAfterEmployeeDiscount =
         subtotalAfterPwdSssAndRedemption - employeeDiscountAmount;
 
-      // Shareholder discount
       const shareholderDiscountAmount = shareholderDiscountApplied
         ? subtotalAfterEmployeeDiscount * shareholderDiscountRate
         : 0;
@@ -299,6 +269,11 @@ const Bill = ({ orderId }) => {
         shareholderDiscountAmount +
         redemptionAmount;
 
+      // Calculate change
+      const cashAmountNum = safeNumber(cashAmount);
+      const change =
+        paymentMethod === "Cash" ? Math.max(0, cashAmountNum - total) : 0;
+
       return {
         baseGrossTotal,
         pwdSssDiscountAmount,
@@ -311,6 +286,8 @@ const Bill = ({ orderId }) => {
         total,
         totalDiscountAmount,
         subtotalAfterPwdSssAndRedemption,
+        cashAmount: cashAmountNum,
+        change,
       };
     } catch (error) {
       console.error("Error calculating totals:", error);
@@ -326,6 +303,8 @@ const Bill = ({ orderId }) => {
         total: 0,
         totalDiscountAmount: 0,
         subtotalAfterPwdSssAndRedemption: 0,
+        cashAmount: 0,
+        change: 0,
       };
     }
   };
@@ -346,19 +325,17 @@ const Bill = ({ orderId }) => {
   const processedCart = addDefaultDiscountedPrice(cartData);
   const combinedCart = combineCartItems(processedCart);
 
-  // Calculate item total with PWD/SSS discount if applicable
+  // Calculate item total
   const calculateItemTotal = (item) => {
     if (item.isRedeemed) {
       return 0;
     }
 
-    // Check if this item is selected for PWD/SSS discount
     const isDiscounted = pwdSssDiscountItems.some(
       (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
     );
 
     if (isDiscounted) {
-      // Apply 20% discount to this specific item
       const originalTotal =
         safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
       const discountedTotal = originalTotal * (1 - pwdSssDiscountRate);
@@ -379,13 +356,11 @@ const Bill = ({ orderId }) => {
       return safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
     }
 
-    // Check if this item is selected for PWD/SSS discount
     const isDiscounted = pwdSssDiscountItems.some(
       (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
     );
 
     if (isDiscounted) {
-      // Calculate 20% discount amount
       const originalTotal =
         safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
       return originalTotal * pwdSssDiscountRate;
@@ -410,7 +385,7 @@ const Bill = ({ orderId }) => {
     dispatch(decrementQuantityInOrder({ orderId: currentOrder.id, itemId }));
   };
 
-  // Individual redeem handler for each item
+  // Individual redeem handler
   const handleRedeemItem = (itemId, itemName) => {
     if (!currentOrder) return;
     dispatch(redeemItemInOrder({ orderId: currentOrder.id, itemId }));
@@ -474,19 +449,17 @@ const Bill = ({ orderId }) => {
       drinks,
       foods,
       totalEligible,
-      maxDrinks: Math.min(drinks.length, 1), // Can select up to 1 drink
-      maxFoods: Math.min(foods.length, 2), // Can select up to 2 foods
-      maxTotal: Math.min(totalEligible, 3), // Can select up to 3 items total
+      maxDrinks: Math.min(drinks.length, 1),
+      maxFoods: Math.min(foods.length, 2),
+      maxTotal: Math.min(totalEligible, 3),
     };
   };
 
-  // Handle PWD/SSS discount - open selection modal
+  // Handle PWD/SSS discount
   const handlePwdSssDiscount = () => {
     if (!pwdSssDiscountApplied) {
-      // Open selection modal with PWD/SSS details form
       setShowPwdSssSelection(true);
     } else {
-      // Turn off discount
       setPwdSssDiscountApplied(false);
       setPwdSssDiscountItems([]);
       setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
@@ -520,19 +493,16 @@ const Bill = ({ orderId }) => {
     );
 
     if (isSelected) {
-      // Remove item
       setPwdSssDiscountItems(
         pwdSssDiscountItems.filter(
           (selected) => getItemKey(selected) !== itemKey
         )
       );
     } else {
-      // Check eligibility rules
       const drinks = pwdSssDiscountItems.filter((item) => isDrinkItem(item));
       const foods = pwdSssDiscountItems.filter((item) => isFoodItem(item));
 
       if (isDrinkItem(item)) {
-        // Can only select 1 drink
         if (drinks.length >= 1) {
           enqueueSnackbar(
             "Maximum 1 drink can be selected for PWD/SSS discount",
@@ -543,7 +513,6 @@ const Bill = ({ orderId }) => {
           return;
         }
       } else if (isFoodItem(item)) {
-        // Can only select 2 food items
         if (foods.length >= 2) {
           enqueueSnackbar(
             "Maximum 2 food items can be selected for PWD/SSS discount",
@@ -554,7 +523,6 @@ const Bill = ({ orderId }) => {
           return;
         }
       } else {
-        // Not a drink or food - don't allow selection
         enqueueSnackbar(
           "Only drinks and food items are eligible for PWD/SSS discount",
           {
@@ -572,7 +540,6 @@ const Bill = ({ orderId }) => {
   const handleApplyPwdSssSelection = () => {
     const eligible = getEligibleItemsCount();
 
-    // Check if we have at least 1 item selected
     if (pwdSssDiscountItems.length === 0) {
       enqueueSnackbar("Please select at least 1 item for PWD/SSS discount", {
         variant: "warning",
@@ -580,7 +547,6 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    // Check PWD/SSS details
     if (!pwdSssDetails.name.trim()) {
       enqueueSnackbar("Please enter PWD/SSS holder name", {
         variant: "warning",
@@ -595,11 +561,9 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    // Check the breakdown
     const drinks = pwdSssDiscountItems.filter((item) => isDrinkItem(item));
     const foods = pwdSssDiscountItems.filter((item) => isFoodItem(item));
 
-    // Validate selection based on available items
     if (drinks.length > eligible.maxDrinks) {
       enqueueSnackbar(
         `Cannot select more than ${eligible.maxDrinks} drink(s)`,
@@ -625,7 +589,6 @@ const Bill = ({ orderId }) => {
     setShareholderDiscountApplied(false);
     setShowPwdSssSelection(false);
 
-    // Calculate total value of selected items
     const selectedValue = pwdSssDiscountItems.reduce(
       (sum, item) => sum + calculateItemTotalPrice(item),
       0
@@ -633,7 +596,6 @@ const Bill = ({ orderId }) => {
 
     const discountAmount = selectedValue * pwdSssDiscountRate;
 
-    // Create message based on selection
     let message = `PWD/SSS discount applied to ${
       pwdSssDiscountItems.length
     } item(s) (-₱${discountAmount.toFixed(2)})`;
@@ -691,6 +653,17 @@ const Bill = ({ orderId }) => {
     }));
   };
 
+  // Handle customer type change
+  const handleCustomerTypeChange = (type) => {
+    setCustomerType(type);
+    enqueueSnackbar(
+      `Customer type set to ${type === "walk-in" ? "Walk-in" : "Take-out"}`,
+      {
+        variant: "info",
+      }
+    );
+  };
+
   // Thermal printer ESC/POS commands
   const ESC = "\x1B";
   const GS = "\x1D";
@@ -710,53 +683,36 @@ const Bill = ({ orderId }) => {
     FEED_LINES: (lines) => ESC + "d" + String.fromCharCode(lines),
     SET_CHAR_SIZE: (width, height) =>
       GS + "!" + String.fromCharCode((height - 1) * 16 + (width - 1)),
-    QR_CODE_STORE: (data) => {
-      const len = data.length + 3;
-      return (
-        GS +
-        "(k" +
-        String.fromCharCode(len % 256) +
-        String.fromCharCode(Math.floor(len / 256)) +
-        "\x31\x50\x30" +
-        data
-      );
-    },
-    QR_CODE_PRINT: GS + "(k\x03\x00\x31\x51\x30",
+    DRAWER_OPEN: ESC + "p" + "\x00" + "\x19" + "\xFA",
   };
 
   // Send data to Bluetooth printer
   const sendToPrinter = async (data) => {
     if (!bluetoothPrinter || !isPrinterConnected) {
-      enqueueSnackbar("Printer not connected", { variant: "error" });
-      return false;
+      // Try to auto-connect
+      await connectToPrinter();
+      if (!isPrinterConnected) {
+        throw new Error("Printer not connected");
+      }
     }
 
     try {
-      // Convert text to Uint8Array
       const encoder = new TextEncoder();
       const dataArray = encoder.encode(data);
 
-      // Get the GATT server
       const server = await bluetoothPrinter.gatt.connect();
-
-      // Get the service - thermal printers often use these services
       const service = await server.getPrimaryService(
         "000018f0-0000-1000-8000-00805f9b34fb"
       );
-
-      // Get the characteristic for writing
       const characteristic = await service.getCharacteristic(
         "00002af1-0000-1000-8000-00805f9b34fb"
       );
 
-      // Write the data
       await characteristic.writeValue(dataArray);
-
       return true;
     } catch (error) {
       console.error("Print error:", error);
-      enqueueSnackbar("Failed to print", { variant: "error" });
-      return false;
+      throw error;
     }
   };
 
@@ -774,6 +730,8 @@ const Bill = ({ orderId }) => {
     receipt += printerCommands.SET_CHAR_SIZE(1, 1);
     receipt += "123 Main Street, City" + LF;
     receipt += "Phone: (123) 456-7890" + LF;
+    receipt +=
+      "Customer: " + (customerType === "walk-in" ? "Walk-in" : "Take-out") + LF;
     receipt += LF;
 
     // Order info
@@ -787,8 +745,9 @@ const Bill = ({ orderId }) => {
     receipt += "Date: " + new Date().toLocaleDateString() + LF;
     receipt += "Time: " + new Date().toLocaleTimeString() + LF;
     receipt +=
-      "Customer: " + (orderData.customerDetails?.name || "Walk-in") + LF;
-    receipt += "Table: " + (orderData.table || "N/A") + LF;
+      "Status: Customer " +
+      (customerType === "walk-in" ? "Dine-in" : "Take-out") +
+      LF;
     receipt += LF;
 
     receipt += printerCommands.UNDERLINE_ON;
@@ -842,6 +801,11 @@ const Bill = ({ orderId }) => {
     receipt += "VAT (12%):   ₱" + totals.vatAmount.toFixed(2) + LF;
     receipt += "Total:       ₱" + totals.total.toFixed(2) + LF;
 
+    if (paymentMethod === "Cash") {
+      receipt += "Cash:        ₱" + totals.cashAmount.toFixed(2) + LF;
+      receipt += "Change:      ₱" + totals.change.toFixed(2) + LF;
+    }
+
     receipt += LF;
     receipt += printerCommands.ALIGN_CENTER;
     receipt += "Payment: " + paymentMethod + LF;
@@ -862,7 +826,6 @@ const Bill = ({ orderId }) => {
   const printReceipt = async (orderData) => {
     try {
       if (!isPrinterConnected) {
-        enqueueSnackbar("Connecting to printer...", { variant: "info" });
         await connectToPrinter();
       }
 
@@ -877,170 +840,17 @@ const Bill = ({ orderId }) => {
 
           // Open cash drawer if payment is cash
           if (paymentMethod === "Cash") {
-            // Send cash drawer open command (ESC p m t1 t2)
-            const cashDrawerCommand = ESC + "p" + "\x00" + "\x19" + "\xFA";
+            const cashDrawerCommand = printerCommands.DRAWER_OPEN;
             await sendToPrinter(cashDrawerCommand);
             enqueueSnackbar("Cash drawer opened", { variant: "info" });
           }
         }
       } else {
-        enqueueSnackbar("Could not connect to printer", { variant: "error" });
-        // Fallback to browser print
-        fallbackPrint(orderData);
+        throw new Error("Could not connect to printer");
       }
     } catch (error) {
       console.error("Print error:", error);
-      enqueueSnackbar("Printing failed, using fallback", {
-        variant: "warning",
-      });
-      fallbackPrint(orderData);
-    }
-  };
-
-  // Fallback print method
-  const fallbackPrint = (orderData) => {
-    const printWindow = window.open("", "_blank");
-    const receiptHTML = `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Receipt - Order ${orderData._id?.slice(-8) || ""}</title>
-        <style>
-          body {
-            font-family: 'Courier New', monospace;
-            width: 80mm;
-            margin: 0;
-            padding: 10px;
-          }
-          .header {
-            text-align: center;
-            margin-bottom: 10px;
-          }
-          .restaurant-name {
-            font-size: 18px;
-            font-weight: bold;
-          }
-          .receipt-info {
-            margin: 10px 0;
-          }
-          .item {
-            margin: 5px 0;
-          }
-          .item-name {
-            font-weight: bold;
-          }
-          .total {
-            margin-top: 10px;
-            border-top: 1px dashed #000;
-            padding-top: 10px;
-          }
-          .footer {
-            text-align: center;
-            margin-top: 20px;
-            font-size: 12px;
-          }
-          @media print {
-            body { width: 80mm; }
-          }
-        </style>
-      </head>
-      <body>
-        <div class="header">
-          <div class="restaurant-name">DELISH RESTAURANT</div>
-          <div>123 Main Street, City</div>
-          <div>Phone: (123) 456-7890</div>
-        </div>
-        
-        <div class="receipt-info">
-          <div>Order #: ${orderData._id?.slice(-8) || "N/A"}</div>
-          <div>Date: ${new Date().toLocaleDateString()}</div>
-          <div>Time: ${new Date().toLocaleTimeString()}</div>
-          <div>Customer: ${orderData.customerDetails?.name || "Walk-in"}</div>
-          <div>Table: ${orderData.table || "N/A"}</div>
-        </div>
-        
-        <hr>
-        
-        <div class="items">
-          <strong>ITEMS</strong>
-          ${combinedCart
-            .map(
-              (item) => `
-            <div class="item">
-              <div class="item-name">${item.name}</div>
-              <div>${item.quantity} x ₱${safeNumber(
-                item.pricePerQuantity
-              ).toFixed(2)} = ₱${calculateItemTotal(item).toFixed(2)}</div>
-              ${
-                item.isRedeemed
-                  ? '<div style="color: green;">[REDEEMED - FREE]</div>'
-                  : ""
-              }
-            </div>
-          `
-            )
-            .join("")}
-        </div>
-        
-        <hr>
-        
-        <div class="total">
-          <div>Subtotal: ₱${totals.baseGrossTotal.toFixed(2)}</div>
-          ${
-            totals.pwdSssDiscountAmount > 0
-              ? `<div>PWD/SSS Discount: -₱${totals.pwdSssDiscountAmount.toFixed(
-                  2
-                )}</div>`
-              : ""
-          }
-          ${
-            totals.redemptionAmount > 0
-              ? `<div>Redemption: -₱${totals.redemptionAmount.toFixed(2)}</div>`
-              : ""
-          }
-          ${
-            totals.employeeDiscountAmount > 0
-              ? `<div>Employee Discount: -₱${totals.employeeDiscountAmount.toFixed(
-                  2
-                )}</div>`
-              : ""
-          }
-          ${
-            totals.shareholderDiscountAmount > 0
-              ? `<div>Shareholder Discount: -₱${totals.shareholderDiscountAmount.toFixed(
-                  2
-                )}</div>`
-              : ""
-          }
-          <div>VAT (12%): ₱${totals.vatAmount.toFixed(2)}</div>
-          <div><strong>Total: ₱${totals.total.toFixed(2)}</strong></div>
-        </div>
-        
-        <div class="footer">
-          <div>Payment: ${paymentMethod}</div>
-          <div>Cashier: ${user?.name || "Admin"}</div>
-          <br>
-          <div>Thank you for dining with us!</div>
-          <div>Please visit again!</div>
-        </div>
-        
-        <script>
-          window.onload = function() {
-            window.print();
-            setTimeout(function() {
-              window.close();
-            }, 1000);
-          };
-        </script>
-      </body>
-      </html>
-    `;
-
-    if (printWindow) {
-      printWindow.document.write(receiptHTML);
-      printWindow.document.close();
-    } else {
-      enqueueSnackbar("Could not open print window", { variant: "error" });
+      throw error;
     }
   };
 
@@ -1060,9 +870,12 @@ const Bill = ({ orderId }) => {
       const invoiceOrderInfo = {
         ...data,
         customerDetails: {
-          name: customerName || "Walk-in",
-          phone: customerPhone || "Not provided",
-          guests: customerGuests || 1,
+          name:
+            customerType === "walk-in"
+              ? "Walk-in Customer"
+              : "Take-out Customer",
+          type: customerType,
+          status: customerType === "walk-in" ? "Dine-in" : "Take-out",
         },
         items: combinedCart.map((item) => {
           const isDiscounted = pwdSssDiscountItems.some(
@@ -1089,13 +902,16 @@ const Bill = ({ orderId }) => {
           employeeDiscount: totals.employeeDiscountAmount,
           shareholderDiscount: totals.shareholderDiscountAmount,
           redemptionDiscount: totals.redemptionAmount,
+          cashAmount: totals.cashAmount,
+          change: totals.change,
         },
         paymentMethod: paymentMethod,
         orderStatus: "Completed",
+        customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
         orderDate: new Date().toISOString(),
         cashier: user?.name || "Admin",
         pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null,
-        user: user?._id || "000000000000000000000001", // Valid ObjectId
+        user: user?._id || "000000000000000000000001",
       };
 
       setOrderInfo(invoiceOrderInfo);
@@ -1129,7 +945,15 @@ const Bill = ({ orderId }) => {
 
       // PRINT RECEIPT
       setTimeout(async () => {
-        await printReceipt(data);
+        try {
+          await printReceipt(data);
+          enqueueSnackbar("Receipt printed via Bluetooth!", {
+            variant: "success",
+          });
+        } catch (error) {
+          console.error("Failed to print:", error);
+          enqueueSnackbar("Failed to print receipt", { variant: "warning" });
+        }
 
         // Show invoice
         setShowInvoice(true);
@@ -1202,26 +1026,12 @@ const Bill = ({ orderId }) => {
       }
     }
 
-    // Validate customer details
-    if (!customerName.trim()) {
-      enqueueSnackbar("Please enter customer name", {
-        variant: "error",
-      });
-      return;
-    }
-
-    if (!customerPhone.trim()) {
-      enqueueSnackbar("Please enter customer phone number", {
-        variant: "error",
-      });
-      return;
-    }
-
-    if (!customerGuests || customerGuests < 1) {
-      enqueueSnackbar("Please enter valid number of guests", {
-        variant: "error",
-      });
-      return;
+    // Validate cash amount if payment is cash
+    if (paymentMethod === "Cash") {
+      if (totals.cashAmount < totals.total) {
+        setShowCashModal(true);
+        return;
+      }
     }
 
     setIsProcessing(true);
@@ -1238,11 +1048,11 @@ const Bill = ({ orderId }) => {
       customerData.tableId ||
       null;
 
-    // Prepare bills data with ALL REQUIRED FIELDS - FIXED
+    // Prepare bills data
     const bills = {
-      total: Number(totals.baseGrossTotal.toFixed(2)), // Required
-      tax: Number(totals.vatAmount.toFixed(2)), // Required
-      totalWithTax: Number(totals.total.toFixed(2)), // Required
+      total: Number(totals.baseGrossTotal.toFixed(2)),
+      tax: Number(totals.vatAmount.toFixed(2)),
+      totalWithTax: Number(totals.total.toFixed(2)),
       discount: Number(totals.totalDiscountAmount.toFixed(2)),
       pwdSssDiscount: Number(totals.pwdSssDiscountAmount.toFixed(2)),
       pwdSssDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
@@ -1250,6 +1060,8 @@ const Bill = ({ orderId }) => {
       shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
       redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
       netSales: Number(totals.netSales.toFixed(2)),
+      cashAmount: Number(totals.cashAmount.toFixed(2)),
+      change: Number(totals.change.toFixed(2)),
     };
 
     // Prepare items data
@@ -1274,20 +1086,22 @@ const Bill = ({ orderId }) => {
     // Get cashier name
     const cashierName = user?.name || "Admin";
 
-    // Prepare COMPLETE order data with ALL REQUIRED FIELDS - FIXED
+    // Prepare COMPLETE order data
     const orderData = {
       customerDetails: {
-        name: customerName.trim(), // Required
-        phone: customerPhone.trim(), // Required
-        guests: Number(safeNumber(customerGuests)), // Required
-        email: customerData.customerEmail || "",
-        address: customerData.customerAddress || "",
+        name:
+          customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer",
+        type: customerType,
+        status: customerType === "walk-in" ? "Dine-in" : "Take-out",
+        phone: "",
+        guests: 1,
       },
-      orderStatus: "Completed", // Required
-      bills: bills, // Already contains all required fields
+      orderStatus: "Completed",
+      bills: bills,
       items: items,
       table: tableId,
       paymentMethod: paymentMethod,
+      customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
       pwdSssDiscountApplied: pwdSssDiscountApplied,
       pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null,
       pwdSssSelectedItems: pwdSssDiscountItems.map((item) => ({
@@ -1297,10 +1111,12 @@ const Bill = ({ orderId }) => {
         type: isDrinkItem(item) ? "drink" : "food",
       })),
       cashier: cashierName,
-      user: user?._id || "000000000000000000000001", // Required - Valid ObjectId
+      user: user?._id || "000000000000000000000001",
       orderDate: new Date().toISOString(),
       totalAmount: Number(totals.total.toFixed(2)),
-      notes: customerData.notes || "",
+      cashAmount: Number(totals.cashAmount.toFixed(2)),
+      change: Number(totals.change.toFixed(2)),
+      notes: "",
     };
 
     console.log("Sending order data:", JSON.stringify(orderData, null, 2));
@@ -1373,9 +1189,9 @@ const Bill = ({ orderId }) => {
             }
           },
           prefill: {
-            name: orderData.customerDetails.name,
+            name: "Customer",
             email: "",
-            contact: orderData.customerDetails.phone,
+            contact: "",
           },
           theme: { color: "#2563eb" },
           modal: {
@@ -1406,6 +1222,19 @@ const Bill = ({ orderId }) => {
       // Cash payment - directly submit order
       console.log("Processing cash order...");
       orderMutation.mutate(orderData);
+    }
+  };
+
+  // Handle cash amount submission
+  const handleCashSubmit = () => {
+    if (totals.cashAmount >= totals.total) {
+      setShowCashModal(false);
+      // Continue with order placement
+      handlePlaceOrder();
+    } else {
+      enqueueSnackbar("Cash amount must be greater than or equal to total", {
+        variant: "error",
+      });
     }
   };
 
@@ -1448,6 +1277,47 @@ const Bill = ({ orderId }) => {
 
   return (
     <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
+      {/* Cash Modal */}
+      {showCashModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+              Enter Cash Amount
+            </h3>
+            <div className="mb-6">
+              <p className="text-gray-600 mb-2">
+                Total Amount: ₱{totals.total.toFixed(2)}
+              </p>
+              <input
+                type="number"
+                value={cashAmount}
+                onChange={(e) => setCashAmount(e.target.value)}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                placeholder="Enter cash amount"
+                min={totals.total}
+                step="0.01"
+                autoFocus
+              />
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCashModal(false)}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCashSubmit}
+                disabled={totals.cashAmount < totals.total}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* PWD/SSS Selection Modal */}
       {showPwdSssSelection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1585,7 +1455,7 @@ const Bill = ({ orderId }) => {
                   >
                     <div className="flex items-center flex-1">
                       <div
-                        className={`w-5 h-5 rounded-full border mr-3 flex items-center justify-center flex-shrink-0 ${
+                        className={`w-5 h-5 rounded-full border mr-3 flex-shrink-0 ${
                           isSelected
                             ? "bg-green-500 border-green-500"
                             : "border-gray-400"
@@ -1679,79 +1549,37 @@ const Bill = ({ orderId }) => {
       )}
 
       <div className="max-w-[600px] mx-auto space-y-4">
-        {/* Printer Connection Button */}
-        <div className="bg-white rounded-lg p-4 shadow-md">
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-gray-900 text-sm font-semibold">
-                Thermal Printer
-              </h2>
-              <p className="text-gray-500 text-xs">
-                {isPrinterConnected
-                  ? "Connected and ready to print"
-                  : "Not connected"}
-              </p>
-            </div>
-            <button
-              onClick={connectToPrinter}
-              className={`px-4 py-2 rounded-lg font-semibold text-xs ${
-                isPrinterConnected
-                  ? "bg-green-100 text-green-700"
-                  : "bg-blue-600 text-white hover:bg-blue-700"
-              }`}
-            >
-              {isPrinterConnected ? "✓ Connected" : "Connect Printer"}
-            </button>
-          </div>
-        </div>
-
-        {/* 🧾 CUSTOMER DETAILS */}
+        {/* 🧾 CUSTOMER TYPE */}
         <div className="bg-white rounded-lg p-4 shadow-md">
           <h2 className="text-gray-900 text-sm font-semibold mb-3">
-            Customer Details (Required)
+            Customer Type
           </h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Name *
-              </label>
-              <input
-                type="text"
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                placeholder="Customer Name"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Phone *
-              </label>
-              <input
-                type="text"
-                value={customerPhone}
-                onChange={(e) => setCustomerPhone(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                placeholder="Phone Number"
-                required
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">
-                Guests *
-              </label>
-              <input
-                type="number"
-                value={customerGuests}
-                onChange={(e) => setCustomerGuests(e.target.value)}
-                min="1"
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                placeholder="1"
-                required
-              />
-            </div>
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleCustomerTypeChange("walk-in")}
+              className={`flex-1 px-4 py-3 rounded-lg font-semibold text-sm ${
+                customerType === "walk-in"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              } transition-colors`}
+            >
+              Walk-in
+            </button>
+            <button
+              onClick={() => handleCustomerTypeChange("take-out")}
+              className={`flex-1 px-4 py-3 rounded-lg font-semibold text-sm ${
+                customerType === "take-out"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              } transition-colors`}
+            >
+              Take-out
+            </button>
           </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Status will be updated to{" "}
+            {customerType === "walk-in" ? "Dine-in" : "Take-out"} on receipt
+          </p>
         </div>
 
         {/* 🛒 CART ITEMS */}
@@ -1966,97 +1794,84 @@ const Bill = ({ orderId }) => {
             </h1>
           </div>
 
-          <div className="flex justify-between items-center">
-            <p className="text-xs text-gray-500 font-medium">
-              Total (VAT inclusive)
-            </p>
-            <h1 className="text-gray-900 text-md font-bold">
+          <div className="flex justify-between items-center border-t pt-2">
+            <p className="text-sm text-gray-700 font-semibold">TOTAL</p>
+            <h1 className="text-gray-900 text-xl font-bold">
               ₱{totals.total.toFixed(2)}
             </h1>
           </div>
+
+          {paymentMethod === "Cash" && totals.cashAmount > 0 && (
+            <>
+              <div className="flex justify-between items-center border-t pt-2">
+                <p className="text-xs text-gray-600 font-medium">Cash</p>
+                <p className="text-md text-gray-800 font-bold">
+                  ₱{totals.cashAmount.toFixed(2)}
+                </p>
+              </div>
+              <div className="flex justify-between items-center">
+                <p className="text-xs text-gray-600 font-medium">Change</p>
+                <p className="text-md text-green-600 font-bold">
+                  ₱{totals.change.toFixed(2)}
+                </p>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* 🎟 DISCOUNT & REDEMPTION BUTTONS */}
-        <div className="flex flex-col sm:flex-row gap-3 mt-4">
+        {/* 🎟 DISCOUNT & REDEMPTION BUTTONS - IN ONE ROW */}
+        <div className="grid grid-cols-4 gap-2">
           <button
             onClick={handlePwdSssDiscount}
             disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
+            className={`px-2 py-2 rounded-lg font-semibold text-xs ${
               pwdSssDiscountApplied
                 ? "bg-green-500 text-white hover:bg-green-600"
                 : "bg-green-100 text-green-700 hover:bg-green-200"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {pwdSssDiscountApplied ? (
-              <span className="flex items-center justify-center gap-1">
-                <span>✓ PWD/SSS Applied</span>
-                {pwdSssDetails.name && (
-                  <span className="text-xs truncate">
-                    ({pwdSssDetails.name})
-                  </span>
-                )}
-              </span>
-            ) : (
-              "PWD/SSS (20% - Select 1-3 items)"
-            )}
+            {pwdSssDiscountApplied ? "✓ PWD/SSS" : "PWD/SSS"}
           </button>
 
           <button
             onClick={handleEmployeeDiscount}
             disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
+            className={`px-2 py-2 rounded-lg font-semibold text-xs ${
               employeeDiscountApplied
                 ? "bg-yellow-500 text-white hover:bg-yellow-600"
                 : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {employeeDiscountApplied
-              ? "✓ Employee Discount (15%)"
-              : "Employee (15%)"}
+            {employeeDiscountApplied ? "✓ Employee" : "Employee"}
           </button>
 
           <button
             onClick={handleShareholderDiscount}
             disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
+            className={`px-2 py-2 rounded-lg font-semibold text-xs ${
               shareholderDiscountApplied
                 ? "bg-purple-500 text-white hover:bg-purple-600"
                 : "bg-purple-100 text-purple-700 hover:bg-purple-200"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {shareholderDiscountApplied
-              ? "✓ Shareholder Discount (10%)"
-              : "Shareholder (10%)"}
+            {shareholderDiscountApplied ? "✓ Shareholder" : "Shareholder"}
           </button>
-        </div>
 
-        {/* 🎟 REDEMPTION BUTTON */}
-        <div className="flex flex-col sm:flex-row gap-3">
           {!hasRedeemedItem ? (
-            showRedeemOptions ? (
-              <button
-                onClick={handleCancelRedeem}
-                disabled={isProcessing}
-                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-gray-500 text-white hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancel Redeem
-              </button>
-            ) : (
-              <button
-                onClick={handleShowRedeemOptions}
-                disabled={isProcessing || combinedCart.length === 0}
-                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Redeem (Free 1 Item)
-              </button>
-            )
+            <button
+              onClick={handleShowRedeemOptions}
+              disabled={isProcessing || combinedCart.length === 0}
+              className="px-2 py-2 rounded-lg font-semibold text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Redeem
+            </button>
           ) : (
             <button
               onClick={handleRemoveRedemption}
               disabled={isProcessing}
-              className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-2 py-2 rounded-lg font-semibold text-xs bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Remove Redemption
+              Remove
             </button>
           )}
         </div>
@@ -2066,7 +1881,7 @@ const Bill = ({ orderId }) => {
           <button
             onClick={() => setPaymentMethod("Cash")}
             disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
               paymentMethod === "Cash"
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-gray-200 text-gray-600 hover:bg-gray-300"
@@ -2078,7 +1893,7 @@ const Bill = ({ orderId }) => {
           <button
             onClick={() => setPaymentMethod("Online")}
             disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
               paymentMethod === "Online"
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-gray-200 text-gray-600 hover:bg-gray-300"
@@ -2096,11 +1911,9 @@ const Bill = ({ orderId }) => {
               isProcessing ||
               !paymentMethod ||
               cartData.length === 0 ||
-              !customerName.trim() ||
-              !customerPhone.trim() ||
-              !customerGuests
+              !customerType
             }
-            className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white shadow hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
             {isProcessing ? (
               <>
