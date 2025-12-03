@@ -39,7 +39,6 @@ const MenuContainer = ({ orderId }) => {
     setSelectedSlice({
       item,
       variant,
-      image: item.image,
     });
   };
 
@@ -142,16 +141,22 @@ const MenuContainer = ({ orderId }) => {
   const isRegularCheesecakes = selected.name === "Regular Cheesecakes";
   const isKetoCheesecakes = selected.name === "Keto Cheesecakes";
   const isBentoMini = selected.name === "Bento & Mini";
-  const isSliceItem = (item) => item.name.includes("Slice");
+  const isSliceItem = (item) =>
+    item.name.includes("Slice") || item.name.includes("Slices");
 
   // Check if item is a Bento item
   const isBentoItem = (item) => {
-    return item.category === "Bento" || item.category === "Bento & Mini";
+    return item.category === "Bento & Mini";
   };
 
   // Check if item is a Keto Slice item
   const isKetoSliceItem = (item) => {
-    return isKetoCheesecakes && item.name === "Keto Cheesecake - Slice";
+    return isKetoCheesecakes && item.name === "Keto Cheesecake - Slices";
+  };
+
+  // Check if item is a Regular Slice item
+  const isRegularSliceItem = (item) => {
+    return isRegularCheesecakes && item.name === "Regular Cheesecake - Slice";
   };
 
   // Get base options for Bento items
@@ -162,6 +167,14 @@ const MenuContainer = ({ orderId }) => {
   // Get base options for Keto items
   const getKetoBaseOptions = (item) => {
     if (isKetoSliceItem(item)) {
+      return item.variants.filter((variant) => variant.type === "base");
+    }
+    return item.variants;
+  };
+
+  // Get base options for Regular slice items
+  const getRegularSliceBaseOptions = (item) => {
+    if (isRegularSliceItem(item)) {
       return item.variants.filter((variant) => variant.type === "base");
     }
     return item.variants;
@@ -228,6 +241,7 @@ const MenuContainer = ({ orderId }) => {
                 {selected.items.length} items available
                 {isBentoMini && " - All customizable with flavors!"}
                 {isKetoCheesecakes && " - Slices customizable with flavors!"}
+                {isRegularCheesecakes && " - Slices customizable with flavors!"}
               </p>
             </div>
           </div>
@@ -237,12 +251,8 @@ const MenuContainer = ({ orderId }) => {
         {isRegularCheesecakes && selectedSlice && (
           <div className="bg-yellow-50 border-b border-yellow-200 px-4 py-3">
             <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-yellow-400">
-                <img
-                  src={selectedSlice.image}
-                  alt={selectedSlice.item.name}
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-16 h-16 rounded-lg overflow-hidden border-2 border-yellow-400 bg-gray-100 flex items-center justify-center">
+                <span className="text-2xl">🍰</span>
               </div>
               <div className="flex-1">
                 <h3 className="text-gray-900 font-semibold text-sm">
@@ -475,7 +485,7 @@ const MenuContainer = ({ orderId }) => {
                 key={item.id}
                 className={`flex flex-col gap-3 p-3 rounded-xl bg-white shadow-sm border transition-all duration-200 hover:shadow-md ${
                   isRegularCheesecakes &&
-                  isSliceItem(item) &&
+                  isRegularSliceItem(item) &&
                   selectedSlice?.item?.id === item.id
                     ? "border-2 border-yellow-400 bg-yellow-50"
                     : "border-gray-100 hover:border-yellow-200"
@@ -498,7 +508,7 @@ const MenuContainer = ({ orderId }) => {
                         Customizable
                       </span>
                     )}
-                    {isKetoSliceItem(item) && (
+                    {(isKetoSliceItem(item) || isRegularSliceItem(item)) && (
                       <span className="inline-block ml-2 text-xs bg-purple-100 text-purple-800 px-2 py-0.5 rounded-full">
                         Customizable
                       </span>
@@ -582,20 +592,25 @@ const MenuContainer = ({ orderId }) => {
                           </div>
                         </div>
                       ))
-                    : // Regular items (non-Bento, non-Keto Slice)
-                      item.variants.map((variant) => (
+                    : isRegularSliceItem(item)
+                    ? // Regular Cheesecake Slice - Show base options
+                      getRegularSliceBaseOptions(item).map((variant) => (
                         <div
                           key={variant.label}
                           className="flex flex-col gap-2"
                         >
-                          <p className="text-gray-700 text-xs sm:text-[0.8rem] font-medium leading-tight">
-                            ₱{variant.price.toLocaleString()} / {variant.label}
-                          </p>
+                          <div className="flex justify-between items-center">
+                            <p className="text-gray-700 text-xs sm:text-[0.8rem] font-medium leading-tight">
+                              ₱{variant.price.toLocaleString()} /{" "}
+                              {variant.label}
+                            </p>
+                            <span className="text-xs text-yellow-600 font-semibold">
+                              + Flavors
+                            </span>
+                          </div>
 
                           {/* Special handling for Regular Cheesecake Slice */}
-                          {isRegularCheesecakes &&
-                          isSliceItem(item) &&
-                          variant.label === "Slice" ? (
+                          {variant.label === "Slice" ? (
                             <button
                               onClick={() => handleSelectSlice(item, variant)}
                               className={`py-2 rounded-lg shadow font-semibold text-sm w-full transition-colors ${
@@ -606,7 +621,7 @@ const MenuContainer = ({ orderId }) => {
                             >
                               {selectedSlice?.item?.id === item.id
                                 ? "Selected"
-                                : "Select"}
+                                : "Select Base"}
                             </button>
                           ) : (
                             <button
@@ -616,6 +631,24 @@ const MenuContainer = ({ orderId }) => {
                               Add
                             </button>
                           )}
+                        </div>
+                      ))
+                    : // Regular items (non-Bento, non-Keto Slice, non-Regular Slice)
+                      item.variants.map((variant) => (
+                        <div
+                          key={variant.label}
+                          className="flex flex-col gap-2"
+                        >
+                          <p className="text-gray-700 text-xs sm:text-[0.8rem] font-medium leading-tight">
+                            ₱{variant.price.toLocaleString()} / {variant.label}
+                          </p>
+
+                          <button
+                            onClick={() => handleAddToCart(item, variant)}
+                            className="bg-yellow-400 text-gray-900 py-2 rounded-lg shadow hover:bg-yellow-500 active:scale-95 transition-colors font-semibold text-sm w-full"
+                          >
+                            Add
+                          </button>
                         </div>
                       ))}
                 </div>
