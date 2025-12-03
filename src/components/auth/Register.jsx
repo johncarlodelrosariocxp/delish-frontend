@@ -1,4 +1,3 @@
-// src/components/auth/Register.jsx
 import { useState, useCallback, memo, useEffect } from "react";
 import { register } from "../../https/index";
 import { useMutation } from "@tanstack/react-query";
@@ -14,12 +13,13 @@ const Register = ({ setIsRegister }) => {
     email: "",
     phone: "",
     password: "",
-    role: "",
+    role: "Cashier", // Set default role
   });
 
   const [isMobile, setIsMobile] = useState(false);
   const [isProduction, setIsProduction] = useState(false);
   const [backendStatus, setBackendStatus] = useState("checking");
+  const [backendUrl, setBackendUrl] = useState("");
 
   // Detect environment and device type
   useEffect(() => {
@@ -39,27 +39,67 @@ const Register = ({ setIsRegister }) => {
     checkBackendConnection();
   }, []);
 
-  // Check if backend is running
+  // Check if backend is running - FIXED VERSION
   const checkBackendConnection = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
-      const response = await fetch(`${apiUrl}/health`, {
+      // Use Render production URL
+      const RENDER_URL = "https://delish-backend-1.onrender.com";
+      const LOCAL_URL = "http://localhost:8000";
+
+      // Try production URL first
+      const apiUrl = RENDER_URL;
+      setBackendUrl(apiUrl);
+
+      console.log("🔗 Testing connection to:", apiUrl);
+
+      const response = await fetch(`${apiUrl}/api/health`, {
         method: "GET",
         headers: {
           "Content-Type": "application/json",
         },
+        mode: "cors", // Add CORS mode
       });
 
       if (response.ok) {
+        const data = await response.json();
+        console.log("✅ Backend connected! Status:", response.status);
+        console.log("📊 Health check response:", data);
         setBackendStatus("connected");
-        console.log("✅ Backend is running");
       } else {
+        console.log("⚠️ Backend returned non-OK status:", response.status);
         setBackendStatus("error");
-        console.log("❌ Backend returned error status");
+
+        // Try localhost as fallback
+        try {
+          console.log("🔄 Trying localhost as fallback...");
+          const localResponse = await fetch(`${LOCAL_URL}/api/health`);
+          if (localResponse.ok) {
+            setBackendUrl(LOCAL_URL);
+            setBackendStatus("connected");
+            console.log("✅ Connected to local backend");
+          }
+        } catch (localError) {
+          console.log("❌ Local backend also not available");
+        }
       }
     } catch (error) {
+      console.error("❌ Backend connection failed:", error.message);
       setBackendStatus("disconnected");
-      console.log("❌ Backend connection failed:", error.message);
+
+      // Try localhost as last resort
+      const LOCAL_URL = "http://localhost:8000";
+      console.log("🔄 Attempting local connection:", LOCAL_URL);
+      try {
+        const localResponse = await fetch(`${LOCAL_URL}/api/health`);
+        if (localResponse.ok) {
+          setBackendUrl(LOCAL_URL);
+          setBackendStatus("connected");
+          console.log("✅ Connected to local backend");
+          enqueueSnackbar("Connected to local backend", { variant: "info" });
+        }
+      } catch (localError) {
+        console.log("❌ Cannot connect to any backend");
+      }
     }
   };
 
@@ -118,31 +158,59 @@ const Register = ({ setIsRegister }) => {
 
       // Check backend before submitting
       if (backendStatus !== "connected") {
-        enqueueSnackbar(
-          "Backend server is not running. Please start the backend server first.",
-          {
-            variant: "error",
-            autoHideDuration: 8000,
-          }
-        );
+        enqueueSnackbar(`Backend server is not running. URL: ${backendUrl}`, {
+          variant: "error",
+          autoHideDuration: 8000,
+        });
         return;
       }
 
+      // Log what we're sending
+      console.log("📤 Sending registration data:", {
+        url: `${backendUrl}/api/user/register`,
+        data: formData,
+      });
+
       registerMutation.mutate(formData);
     },
-    [formData, backendStatus]
+    [formData, backendStatus, backendUrl]
   );
 
   // =============================
-  // 📌 Register Mutation
+  // 📌 Register Mutation - FIXED
   // =============================
   const registerMutation = useMutation({
-    mutationFn: (reqData) => register(reqData),
+    mutationFn: async (reqData) => {
+      // Override the API URL if backendUrl is set
+      const apiUrl = backendUrl || "https://delish-backend-1.onrender.com";
+
+      console.log("📡 Registering user to:", `${apiUrl}/api/user/register`);
+
+      // Make direct fetch call to ensure we're using correct URL
+      const response = await fetch(`${apiUrl}/api/user/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(reqData),
+        mode: "cors", // Important for CORS
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(
+          errorData.message || `HTTP error! status: ${response.status}`
+        );
+      }
+
+      return response.json();
+    },
     onSuccess: (res) => {
-      if (res?.data?.success) {
+      console.log("✅ Registration response:", res);
+
+      if (res?.success) {
         enqueueSnackbar(
-          res.data.message ||
-            "Account created successfully! You can now login.",
+          res.message || "Account created successfully! You can now login.",
           {
             variant: "success",
             autoHideDuration: 5000,
@@ -155,7 +223,7 @@ const Register = ({ setIsRegister }) => {
           email: "",
           phone: "",
           password: "",
-          role: "",
+          role: "Cashier",
         });
 
         // Switch to login after delay
@@ -163,23 +231,24 @@ const Register = ({ setIsRegister }) => {
           setIsRegister(false);
         }, 2000);
       } else {
-        enqueueSnackbar(res?.data?.message || "Registration failed", {
+        enqueueSnackbar(res?.message || "Registration failed", {
           variant: "error",
         });
       }
     },
     onError: (error) => {
-      console.error("Registration error details:", {
-        code: error.code,
+      console.error("❌ Registration error details:", {
         message: error.message,
-        response: error.response,
-        config: error.config,
+        stack: error.stack,
       });
 
       let errorMessage = "Registration failed. Please try again.";
 
-      if (error?.code === "NETWORK_ERROR" || error?.code === "ECONNREFUSED") {
-        errorMessage = "Cannot connect to backend server. Please check:";
+      if (
+        error?.message?.includes("NetworkError") ||
+        error?.message?.includes("Failed to fetch")
+      ) {
+        errorMessage = `Cannot connect to backend at ${backendUrl}. Please check:`;
 
         enqueueSnackbar(errorMessage, {
           variant: "error",
@@ -189,36 +258,65 @@ const Register = ({ setIsRegister }) => {
         // Show detailed instructions
         setTimeout(() => {
           enqueueSnackbar(
-            "• Open terminal in delish-backend folder\n• Run: npm start\n• Ensure server runs on port 8000",
+            `1. Ensure backend is running: ${backendUrl}\n2. Check CORS settings\n3. Try restarting backend server`,
             { variant: "info", autoHideDuration: 10000 }
           );
         }, 1000);
-      } else if (error?.response?.data?.message) {
-        errorMessage = error.response.data.message;
-        enqueueSnackbar(errorMessage, {
-          variant: "error",
-          autoHideDuration: 5000,
-        });
-      } else if (error?.response?.status === 400) {
-        errorMessage = "Invalid data. Please check your inputs.";
-        enqueueSnackbar(errorMessage, {
-          variant: "error",
-          autoHideDuration: 5000,
-        });
-      } else if (error?.response?.status === 409) {
+      } else if (error?.message?.includes("409")) {
         errorMessage = "User with this email already exists.";
         enqueueSnackbar(errorMessage, {
           variant: "error",
           autoHideDuration: 5000,
         });
       } else {
-        enqueueSnackbar(errorMessage, {
+        enqueueSnackbar(error.message || errorMessage, {
           variant: "error",
           autoHideDuration: 5000,
         });
       }
     },
   });
+
+  // Test registration endpoint directly
+  const handleTestRegistration = async () => {
+    try {
+      const testData = {
+        name: "Test User",
+        email: `test${Date.now()}@delish.com`,
+        phone: "1234567890",
+        password: "password123",
+        role: "Cashier",
+      };
+
+      console.log("🧪 Testing registration endpoint...");
+
+      const response = await fetch(`${backendUrl}/api/user/register`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(testData),
+      });
+
+      const data = await response.json();
+      console.log("Test registration result:", data);
+
+      if (data.success) {
+        enqueueSnackbar("✅ Registration endpoint is working!", {
+          variant: "success",
+        });
+      } else {
+        enqueueSnackbar("❌ Registration failed: " + data.message, {
+          variant: "error",
+        });
+      }
+    } catch (error) {
+      console.error("Test failed:", error);
+      enqueueSnackbar("❌ Test failed: " + error.message, {
+        variant: "error",
+      });
+    }
+  };
 
   // Get backend status color
   const getBackendStatusColor = () => {
@@ -237,19 +335,16 @@ const Register = ({ setIsRegister }) => {
   const getBackendStatusText = () => {
     switch (backendStatus) {
       case "connected":
-        return "✅ Backend Connected";
+        return `✅ Backend Connected (${backendUrl})`;
       case "disconnected":
-        return "❌ Backend Disconnected";
+        return `❌ Backend Disconnected (${backendUrl})`;
       case "error":
-        return "⚠️ Backend Error";
+        return `⚠️ Backend Error (${backendUrl})`;
       default:
         return "🔍 Checking Backend...";
     }
   };
 
-  // =============================
-  // 📌 Render
-  // =============================
   return (
     <div className="w-full max-w-md mx-auto p-6">
       {/* Backend Status Indicator */}
@@ -257,9 +352,16 @@ const Register = ({ setIsRegister }) => {
         className={`mb-4 p-3 rounded-lg border text-center text-sm ${getBackendStatusColor()}`}
       >
         <p>{getBackendStatusText()}</p>
-        {backendStatus !== "connected" && (
+        {backendStatus === "connected" ? (
+          <button
+            onClick={handleTestRegistration}
+            className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded"
+          >
+            Test Registration
+          </button>
+        ) : (
           <p className="text-xs mt-1 opacity-80">
-            Start backend: <code>cd delish-backend && npm start</code>
+            Backend URL: {backendUrl || "Not detected"}
           </p>
         )}
       </div>
@@ -437,7 +539,7 @@ const Register = ({ setIsRegister }) => {
               Creating Account...
             </span>
           ) : backendStatus !== "connected" ? (
-            "Start Backend First"
+            "Backend Not Connected"
           ) : (
             "Create Account"
           )}
@@ -462,35 +564,40 @@ const Register = ({ setIsRegister }) => {
           <p className="text-red-300 text-xs">
             🔧 <strong>To fix this issue:</strong>
             <br />
-            1. Open terminal in <code>delish-backend</code> folder
+            1. Check if backend is running at: {backendUrl}
             <br />
-            2. Run: <code>npm start</code>
+            2. For Render: Check deployment status on dashboard
             <br />
-            3. Wait for "POS Server is listening on port 8000" message
+            3. For Local: Run <code>cd delish-backend && npm start</code>
             <br />
-            4. Refresh this page
+            4. Wait for server to start completely
+            <br />
+            5. Check CORS settings in backend
+            <br />
+            6. Refresh this page
           </p>
         </div>
       )}
 
-      {/* Environment-specific Help Text */}
-      <div className="mt-4 p-3 bg-gray-800 rounded-lg">
-        <p className="text-gray-400 text-xs text-center">
-          {isProduction ? (
-            <>
-              🚀 <strong>Production Mode</strong>
-              <br />
-              Ensure backend is deployed and running
-            </>
-          ) : (
-            <>
-              💡 <strong>Development Tips:</strong>
-              <br />• Backend running on port 8000
-              <br />• Same WiFi network for mobile
-              <br />• Use computer IP for mobile access
-            </>
-          )}
+      {/* Debug Info */}
+      <div className="mt-4 p-3 bg-gray-900 rounded-lg">
+        <p className="text-gray-400 text-xs">
+          <strong>Debug Info:</strong>
+          <br />
+          Backend URL: {backendUrl}
+          <br />
+          Status: {backendStatus}
+          <br />
+          Environment: {isProduction ? "Production" : "Development"}
+          <br />
+          Current API endpoint: {backendUrl}/api/user/register
         </p>
+        <button
+          onClick={checkBackendConnection}
+          className="mt-2 px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded"
+        >
+          Re-check Backend
+        </button>
       </div>
     </div>
   );
