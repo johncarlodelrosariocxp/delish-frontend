@@ -1144,7 +1144,7 @@ const Bill = ({ orderId }) => {
     },
   });
 
-  // Handle place order with better validation
+  // Handle place order WITHOUT customer name validation
   const handlePlaceOrder = async () => {
     if (isProcessing) return;
 
@@ -1171,23 +1171,7 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    // Validate customer details
-    if (!customerData.customerName || customerData.customerName.trim() === "") {
-      enqueueSnackbar("Please enter customer name", {
-        variant: "error",
-      });
-      return;
-    }
-
-    if (
-      !customerData.customerPhone ||
-      customerData.customerPhone.trim() === ""
-    ) {
-      enqueueSnackbar("Please enter customer phone", {
-        variant: "error",
-      });
-      return;
-    }
+    // REMOVED CUSTOMER NAME VALIDATION - Use default "Walk-in"
 
     // Validate PWD/SSS discount if applied
     if (pwdSssDiscountApplied) {
@@ -1258,8 +1242,8 @@ const Bill = ({ orderId }) => {
     // Prepare COMPLETE order data with ALL REQUIRED FIELDS
     const orderData = {
       customerDetails: {
-        name: customerData.customerName.trim(),
-        phone: customerData.customerPhone.trim(),
+        name: customerData.customerName?.trim() || "Walk-in", // Use default if empty
+        phone: customerData.customerPhone?.trim() || "Not provided",
         guests: safeNumber(customerData.guests) || 1,
         email: customerData.customerEmail || "",
         address: customerData.customerAddress || "",
