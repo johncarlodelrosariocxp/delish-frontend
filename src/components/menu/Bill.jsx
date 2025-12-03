@@ -665,6 +665,11 @@ const Bill = ({ orderId }) => {
     });
   };
 
+  // Handle denomination button click
+  const handleDenominationClick = (amount) => {
+    setCashAmount((prev) => safeNumber(prev) + amount);
+  };
+
   // Thermal printer ESC/POS commands
   const ESC = "\x1B";
   const GS = "\x1D";
@@ -1291,7 +1296,8 @@ const Bill = ({ orderId }) => {
             <h3 className="text-lg font-semibold mb-4 text-gray-900">
               Enter Cash Amount
             </h3>
-            <div className="mb-6">
+
+            <div className="mb-4">
               <p className="text-gray-600 mb-2">
                 Total Amount: ₱{totals.total.toFixed(2)}
               </p>
@@ -1299,13 +1305,69 @@ const Bill = ({ orderId }) => {
                 type="number"
                 value={cashAmount}
                 onChange={(e) => setCashAmount(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                className="w-full px-3 py-3 border border-gray-300 rounded-lg text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none mb-4"
                 placeholder="Enter cash amount"
                 min={totals.total}
                 step="0.01"
                 autoFocus
               />
+
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <button
+                  onClick={() => handleDenominationClick(10)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱10
+                </button>
+                <button
+                  onClick={() => handleDenominationClick(20)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱20
+                </button>
+                <button
+                  onClick={() => handleDenominationClick(50)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱50
+                </button>
+                <button
+                  onClick={() => handleDenominationClick(100)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱100
+                </button>
+                <button
+                  onClick={() => handleDenominationClick(500)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱500
+                </button>
+                <button
+                  onClick={() => handleDenominationClick(1000)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱1000
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-600">Entered Amount:</span>
+                <span className="text-lg font-bold text-gray-900">
+                  ₱{safeNumber(cashAmount).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm text-gray-600">Change:</span>
+                <span className="text-lg font-bold text-green-600">
+                  ₱
+                  {Math.max(0, safeNumber(cashAmount) - totals.total).toFixed(
+                    2
+                  )}
+                </span>
+              </div>
             </div>
+
             <div className="flex gap-2">
               <button
                 onClick={() => setShowCashModal(false)}

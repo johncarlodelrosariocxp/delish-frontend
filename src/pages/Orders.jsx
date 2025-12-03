@@ -9,6 +9,10 @@ import {
   FaPrint,
   FaCalendar,
   FaTachometerAlt,
+  FaUtensils,
+  FaBox,
+  FaUsers,
+  FaShoppingCart,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -25,6 +29,14 @@ const Orders = () => {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [totalSales, setTotalSales] = useState(0);
   const [dateFilter, setDateFilter] = useState("today");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [customerTypeFilter, setCustomerTypeFilter] = useState("all");
+  const [metrics, setMetrics] = useState({
+    totalOrders: 0,
+    dineInOrders: 0,
+    takeOutOrders: 0,
+    completedOrders: 0,
+  });
   const scrollRef = useRef(null);
 
   const user = useSelector((state) => state.user);
@@ -73,15 +85,59 @@ const Orders = () => {
     placeholderData: keepPreviousData,
   });
 
-  // Status configuration - All orders are completed
-  const getStatusConfig = () => {
-    return {
-      icon: FaCheckCircle,
-      color: "text-green-500",
-      bgColor: "bg-green-50",
-      borderColor: "border-green-200",
-      text: "Completed",
-    };
+  // Status configuration
+  const getStatusConfig = (order) => {
+    // First check if order has customer status (Dine-in/Take-out)
+    const customerStatus = order.customerStatus?.toLowerCase();
+    const orderStatus = order.orderStatus?.toLowerCase();
+
+    // Determine status based on customer type and order status
+    if (customerStatus === "dine-in") {
+      return {
+        icon: FaUtensils,
+        color: "text-blue-500",
+        bgColor: "bg-blue-50",
+        borderColor: "border-blue-200",
+        text: "Dine-in",
+        type: "customer",
+      };
+    } else if (customerStatus === "take-out") {
+      return {
+        icon: FaBox,
+        color: "text-purple-500",
+        bgColor: "bg-purple-50",
+        borderColor: "border-purple-200",
+        text: "Take-out",
+        type: "customer",
+      };
+    } else if (orderStatus === "completed") {
+      return {
+        icon: FaCheckCircle,
+        color: "text-green-500",
+        bgColor: "bg-green-50",
+        borderColor: "border-green-200",
+        text: "Completed",
+        type: "order",
+      };
+    } else if (orderStatus === "in progress" || orderStatus === "processing") {
+      return {
+        icon: FaShoppingCart,
+        color: "text-yellow-500",
+        bgColor: "bg-yellow-50",
+        borderColor: "border-yellow-200",
+        text: "In Progress",
+        type: "order",
+      };
+    } else {
+      return {
+        icon: FaUsers,
+        color: "text-gray-500",
+        bgColor: "bg-gray-50",
+        borderColor: "border-gray-200",
+        text: order.customerStatus || order.orderStatus || "Unknown",
+        type: "unknown",
+      };
+    }
   };
 
   // ✅ FIXED: Handle data safely
@@ -175,16 +231,44 @@ const Orders = () => {
       filterByDateRange(order, dateFilter)
     );
 
-    // All orders are considered completed for sales calculation
-    const total = filteredByDate.reduce((sum, order) => {
-      if (!order) return sum;
+    // Calculate metrics
+    let total = 0;
+    let dineInCount = 0;
+    let takeOutCount = 0;
+    let completedCount = 0;
+
+    filteredByDate.forEach((order) => {
+      if (!order) return;
+
+      // Calculate total sales
       const amount = order.bills?.totalWithTax || order.totalAmount || 0;
-      return sum + (Number(amount) || 0);
-    }, 0);
+      total += Number(amount) || 0;
+
+      // Count customer types
+      const customerStatus = order.customerStatus?.toLowerCase();
+      if (customerStatus === "dine-in") {
+        dineInCount++;
+      } else if (customerStatus === "take-out") {
+        takeOutCount++;
+      }
+
+      // Count completed orders
+      const orderStatus = order.orderStatus?.toLowerCase();
+      if (orderStatus === "completed") {
+        completedCount++;
+      }
+    });
+
     setTotalSales(total);
+    setMetrics({
+      totalOrders: filteredByDate.length,
+      dineInOrders: dineInCount,
+      takeOutOrders: takeOutCount,
+      completedOrders: completedCount,
+    });
   }, [orders, dateFilter]);
 
-  // Filter orders based on search query and date filter
+  // Filter orders based on search query and filters
   const filteredOrders = React.useMemo(() => {
     try {
       if (!Array.isArray(orders)) {
@@ -195,16 +279,55 @@ const Orders = () => {
       const filtered = orders.filter((order) => {
         if (!order) return false;
 
+        // Date filter
         const dateMatch = filterByDateRange(order, dateFilter);
 
+        // Customer type filter
+        let customerTypeMatch = true;
+        if (customerTypeFilter !== "all") {
+          const customerStatus = order.customerStatus?.toLowerCase();
+          if (customerTypeFilter === "dine-in") {
+            customerTypeMatch = customerStatus === "dine-in";
+          } else if (customerTypeFilter === "take-out") {
+            customerTypeMatch = customerStatus === "take-out";
+          }
+        }
+
+        // Status filter
+        let statusMatch = true;
+        if (statusFilter !== "all") {
+          const orderStatus = order.orderStatus?.toLowerCase();
+          const customerStatus = order.customerStatus?.toLowerCase();
+
+          if (statusFilter === "completed") {
+            statusMatch = orderStatus === "completed";
+          } else if (statusFilter === "in-progress") {
+            statusMatch =
+              orderStatus === "in progress" || orderStatus === "processing";
+          } else if (statusFilter === "dine-in") {
+            statusMatch = customerStatus === "dine-in";
+          } else if (statusFilter === "take-out") {
+            statusMatch = customerStatus === "take-out";
+          }
+        }
+
+        // Search filter
         const searchMatch =
           (order.customerDetails?.name || "")
             .toLowerCase()
             .includes(searchQuery.toLowerCase()) ||
           (order._id || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-          "completed".includes(searchQuery.toLowerCase()); // Search for "completed" status
+          (order.customerStatus || "")
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase()) ||
+          (order.orderStatus || "")
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase()) ||
+          (order.cashier || "")
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase());
 
-        return dateMatch && searchMatch;
+        return dateMatch && customerTypeMatch && statusMatch && searchMatch;
       });
 
       console.log("🔍 Filtered orders:", filtered.length);
@@ -213,7 +336,7 @@ const Orders = () => {
       console.error("❌ Error filtering orders:", error);
       return [];
     }
-  }, [orders, searchQuery, dateFilter]);
+  }, [orders, searchQuery, dateFilter, statusFilter, customerTypeFilter]);
 
   // Calculate and format total amount
   const calculateTotalAmount = (order) => {
@@ -334,15 +457,27 @@ const Orders = () => {
     navigate("/dashboard");
   };
 
+  // Get user display name
+  const getUserDisplayName = (order) => {
+    // Check for user name in different possible locations
+    if (order.cashier) return order.cashier;
+    if (order.user?.name) return order.user.name;
+    if (order.userDetails?.name) return order.userDetails.name;
+    if (user.name && order.user?._id === user._id) return user.name;
+    return "Admin";
+  };
+
   // Order Card Component
   const OrderCard = ({ order, onViewReceipt }) => {
     if (!order) return null;
 
-    const statusConfig = getStatusConfig();
+    const statusConfig = getStatusConfig(order);
     const StatusIcon = statusConfig.icon;
     const totalAmount = calculateTotalAmount(order);
     const itemsCount = getItemsCount(order);
     const itemsPreview = getItemsPreview(order);
+    const userDisplayName = getUserDisplayName(order);
+    const isCustomerStatus = statusConfig.type === "customer";
 
     return (
       <div className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-all duration-200 w-full h-full flex flex-col">
@@ -361,15 +496,34 @@ const Orders = () => {
             >
               {statusConfig.text}
             </span>
+            {isCustomerStatus && (
+              <span className="text-[10px] text-gray-500 ml-1">(Customer)</span>
+            )}
           </div>
         </div>
 
-        {/* Customer Info */}
-        <div className="flex items-center gap-2 mb-3">
-          <FaUser className="text-gray-500 text-xs" />
-          <span className="text-xs font-medium text-gray-800">
-            {order.customerDetails?.name || "Unknown Customer"}
-          </span>
+        {/* Customer and User Info */}
+        <div className="space-y-2 mb-3">
+          <div className="flex items-center gap-2">
+            <FaUser className="text-gray-500 text-xs" />
+            <span className="text-xs font-medium text-gray-800">
+              {order.customerDetails?.name || "Walk-in Customer"}
+            </span>
+            {order.customerStatus && (
+              <span
+                className={`text-[10px] px-1.5 py-0.5 rounded-full ${
+                  isCustomerStatus ? statusConfig.bgColor : "bg-gray-100"
+                } ${isCustomerStatus ? statusConfig.color : "text-gray-600"}`}
+              >
+                {order.customerStatus}
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 text-xs text-gray-600">
+            <span>Cashier:</span>
+            <span className="font-medium text-gray-800">{userDisplayName}</span>
+          </div>
         </div>
 
         {/* Table Info */}
@@ -409,6 +563,16 @@ const Orders = () => {
           </div>
         )}
 
+        {/* Order Status */}
+        {order.orderStatus && statusConfig.type === "order" && (
+          <div className="mt-2 pt-2 border-t border-gray-200 mb-3">
+            <div className="text-xs text-gray-600 mb-1">Order Status</div>
+            <div className={`text-xs font-medium ${statusConfig.color}`}>
+              {order.orderStatus}
+            </div>
+          </div>
+        )}
+
         {/* Receipt Button */}
         <div className="flex gap-2 pt-2 border-t border-gray-200 mt-auto">
           <button
@@ -433,11 +597,9 @@ const Orders = () => {
             <h1 className="text-[#333333] text-xl sm:text-2xl font-bold tracking-wider">
               Orders
             </h1>
-            {user.role?.toLowerCase() !== "admin" && (
-              <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-medium">
-                Your Orders
-              </span>
-            )}
+            <span className="bg-blue-100 text-blue-800 px-2 py-1 rounded-full text-xs font-medium">
+              Total: {metrics.totalOrders}
+            </span>
             <span
               className={`px-2 py-1 rounded-full text-xs font-medium ${
                 user.role?.toLowerCase() === "admin"
@@ -477,26 +639,92 @@ const Orders = () => {
                 <option value="all">All Time</option>
               </select>
             </div>
-
-            {/* Metrics Display */}
-            <div className="flex flex-wrap gap-2 md:gap-4">
-              <span className="text-xs sm:text-sm font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">
-                Sales: {formatCurrency(totalSales)}
-              </span>
-            </div>
           </div>
         </div>
 
-        {/* Search Bar */}
-        <div className="flex items-center gap-2 bg-gray-100 rounded-md px-3 py-2 mx-4 mb-4 mt-2">
-          <FaSearch className="text-gray-600 text-xs sm:text-sm" />
-          <input
-            type="text"
-            placeholder="Search by name or order ID..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="bg-transparent outline-none text-black w-full text-xs sm:text-sm placeholder-gray-500"
-          />
+        {/* Filters and Search Section */}
+        <div className="px-4 mb-4">
+          <div className="flex flex-col md:flex-row gap-3 mb-3">
+            {/* Search Bar */}
+            <div className="flex items-center gap-2 bg-gray-100 rounded-md px-3 py-2 flex-1">
+              <FaSearch className="text-gray-600 text-xs sm:text-sm" />
+              <input
+                type="text"
+                placeholder="Search by name, order ID, cashier, or status..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="bg-transparent outline-none text-black w-full text-xs sm:text-sm placeholder-gray-500"
+              />
+            </div>
+
+            {/* Status Filter */}
+            <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border">
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="bg-transparent outline-none text-black text-xs sm:text-sm"
+              >
+                <option value="all">All Status</option>
+                <option value="completed">Completed Orders</option>
+                <option value="in-progress">In Progress</option>
+                <option value="dine-in">Dine-in Only</option>
+                <option value="take-out">Take-out Only</option>
+              </select>
+            </div>
+
+            {/* Customer Type Filter */}
+            <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border">
+              <select
+                value={customerTypeFilter}
+                onChange={(e) => setCustomerTypeFilter(e.target.value)}
+                className="bg-transparent outline-none text-black text-xs sm:text-sm"
+              >
+                <option value="all">All Types</option>
+                <option value="dine-in">Dine-in</option>
+                <option value="take-out">Take-out</option>
+              </select>
+            </div>
+          </div>
+
+          {/* Metrics Display */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="bg-white rounded-lg p-3 border shadow-sm">
+              <div className="text-xs text-gray-500 mb-1">Total Sales</div>
+              <div className="text-lg font-bold text-green-600">
+                {formatCurrency(totalSales)}
+              </div>
+            </div>
+
+            <div className="bg-blue-50 rounded-lg p-3 border border-blue-100 shadow-sm">
+              <div className="flex items-center gap-2 mb-1">
+                <FaUtensils className="text-blue-500 text-xs" />
+                <div className="text-xs text-gray-500">Dine-in Orders</div>
+              </div>
+              <div className="text-lg font-bold text-blue-600">
+                {metrics.dineInOrders}
+              </div>
+            </div>
+
+            <div className="bg-purple-50 rounded-lg p-3 border border-purple-100 shadow-sm">
+              <div className="flex items-center gap-2 mb-1">
+                <FaBox className="text-purple-500 text-xs" />
+                <div className="text-xs text-gray-500">Take-out Orders</div>
+              </div>
+              <div className="text-lg font-bold text-purple-600">
+                {metrics.takeOutOrders}
+              </div>
+            </div>
+
+            <div className="bg-green-50 rounded-lg p-3 border border-green-100 shadow-sm">
+              <div className="flex items-center gap-2 mb-1">
+                <FaCheckCircle className="text-green-500 text-xs" />
+                <div className="text-xs text-gray-500">Completed</div>
+              </div>
+              <div className="text-lg font-bold text-green-600">
+                {metrics.completedOrders}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -527,21 +755,29 @@ const Orders = () => {
               <div className="text-center bg-white rounded-lg p-6">
                 <FaReceipt className="mx-auto text-gray-400 text-2xl mb-2" />
                 <p className="text-gray-500 text-sm">
-                  {searchQuery || dateFilter !== "today"
-                    ? "No orders found matching your criteria"
+                  {searchQuery ||
+                  dateFilter !== "today" ||
+                  statusFilter !== "all" ||
+                  customerTypeFilter !== "all"
+                    ? "No orders found matching your filters"
                     : user.role?.toLowerCase() === "admin"
                     ? "No orders available"
                     : "You haven't placed any orders yet"}
                 </p>
-                {(searchQuery || dateFilter !== "today") && (
+                {(searchQuery ||
+                  dateFilter !== "today" ||
+                  statusFilter !== "all" ||
+                  customerTypeFilter !== "all") && (
                   <button
                     onClick={() => {
                       setSearchQuery("");
                       setDateFilter("today");
+                      setStatusFilter("all");
+                      setCustomerTypeFilter("all");
                     }}
                     className="text-[#025cca] text-xs mt-1 hover:underline"
                   >
-                    Clear filters
+                    Clear all filters
                   </button>
                 )}
               </div>

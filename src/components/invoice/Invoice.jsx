@@ -326,7 +326,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Order Receipt - DELISH</title>
+          <title>Order Receipt - DELISH CAFE</title>
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
             /* Thermal printer friendly styles */
@@ -409,7 +409,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         <body>
           <div class="receipt-container">
             <div class="header">
-              <div class="company-name">DELISH RESTAURANT</div>
+              <div class="company-name">DELISH CAFE</div>
               <div class="receipt-title">ORDER RECEIPT</div>
               <div class="success-icon">✓</div>
               <div>Thank you for your order!</div>
@@ -425,7 +425,11 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                     : "N/A"
                 }</td></tr>
                 <tr><td><strong>Customer:</strong></td><td>${
-                  orderInfo.customerDetails?.name || "Walk-in Customer"
+                  orderInfo.customerDetails?.name ||
+                  orderInfo.customerStatus ||
+                  (orderInfo.customerType === "walk-in"
+                    ? "Walk-in Customer"
+                    : "Take-out Customer")
                 }</td></tr>
                 <tr><td><strong>Cashier:</strong></td><td>${
                   orderInfo.cashier || "Admin"
@@ -433,18 +437,24 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <tr><td><strong>Date:</strong></td><td>${new Date(
                   orderInfo.orderDate || Date.now()
                 ).toLocaleString()}</td></tr>
+                <tr><td><strong>Status:</strong></td><td>${
+                  orderInfo.customerStatus ||
+                  (orderInfo.customerType === "walk-in"
+                    ? "Dine-in"
+                    : "Take-out")
+                }</td></tr>
               </table>
             </div>
             
             ${
-              orderInfo.pwdSssDetails
+              orderInfo.pwdSeniorDetails
                 ? `
             <div class="border-top">
               <table width="100%">
-                <tr><td><strong>PWD/SSS Details:</strong></td></tr>
-                <tr><td>Type: ${orderInfo.pwdSssDetails.type}</td></tr>
-                <tr><td>Name: ${orderInfo.pwdSssDetails.name}</td></tr>
-                <tr><td>ID: ${orderInfo.pwdSssDetails.idNumber}</td></tr>
+                <tr><td><strong>PWD/SENIOR Details:</strong></td></tr>
+                <tr><td>Type: ${orderInfo.pwdSeniorDetails.type}</td></tr>
+                <tr><td>Name: ${orderInfo.pwdSeniorDetails.name}</td></tr>
+                <tr><td>ID: ${orderInfo.pwdSeniorDetails.idNumber}</td></tr>
               </table>
             </div>
             `
@@ -458,12 +468,12 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                   .map(
                     (item) => `
                   <tr>
-                    <td>${item.name}${item.isFree ? " (FREE)" : ""} x${
+                    <td>${item.name}${item.isFree ? " (FREE)" : ""}${
+                      item.isPwdSeniorDiscounted ? " (PWD/Senior -20%)" : ""
+                    }${item.isRedeemed ? " (Redeemed)" : ""} x${
                       item.quantity || 1
                     }</td>
-                    <td class="text-right">₱${(
-                      (item.price || 0) * (item.quantity || 1)
-                    ).toFixed(2)}</td>
+                    <td class="text-right">₱${(item.price || 0).toFixed(2)}</td>
                   </tr>
                 `
                   )
@@ -477,19 +487,43 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                   orderInfo.bills?.total || 0
                 ).toFixed(2)}</td></tr>
                 ${
-                  orderInfo.bills?.pwdSssDiscount > 0
-                    ? `<tr><td class="discount-item">PWD/SSS Discount:</td><td class="text-right discount-item">-₱${(
-                        orderInfo.bills.pwdSssDiscount || 0
+                  orderInfo.bills?.pwdSeniorDiscount > 0
+                    ? `<tr><td class="discount-item">PWD/Senior Discount:</td><td class="text-right discount-item">-₱${(
+                        orderInfo.bills.pwdSeniorDiscount || 0
+                      ).toFixed(2)}</td></tr>`
+                    : ""
+                }
+                ${
+                  orderInfo.bills?.redemptionDiscount > 0
+                    ? `<tr><td class="discount-item">Redemption Discount:</td><td class="text-right discount-item">-₱${(
+                        orderInfo.bills.redemptionDiscount || 0
                       ).toFixed(2)}</td></tr>`
                     : ""
                 }
                 ${
                   orderInfo.bills?.employeeDiscount > 0
-                    ? `<tr><td class="discount-item">Employee Discount:</td><td class="text-right discount-item">-₱${(
+                    ? `<tr><td class="discount-item">Employee Discount (15%):</td><td class="text-right discount-item">-₱${(
                         orderInfo.bills.employeeDiscount || 0
                       ).toFixed(2)}</td></tr>`
                     : ""
                 }
+                ${
+                  orderInfo.bills?.shareholderDiscount > 0
+                    ? `<tr><td class="discount-item">Shareholder Discount (10%):</td><td class="text-right discount-item">-₱${(
+                        orderInfo.bills.shareholderDiscount || 0
+                      ).toFixed(2)}</td></tr>`
+                    : ""
+                }
+                ${
+                  orderInfo.bills?.discount > 0
+                    ? `<tr><td>Total Discount:</td><td class="text-right">-₱${(
+                        orderInfo.bills.discount || 0
+                      ).toFixed(2)}</td></tr>`
+                    : ""
+                }
+                <tr><td>Net of VAT:</td><td class="text-right">₱${(
+                  orderInfo.bills?.netSales || 0
+                ).toFixed(2)}</td></tr>
                 <tr><td>VAT (12%):</td><td class="text-right">₱${(
                   orderInfo.bills?.tax || 0
                 ).toFixed(2)}</td></tr>
@@ -499,6 +533,19 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                     orderInfo.bills?.totalWithTax || 0
                   ).toFixed(2)}</td>
                 </tr>
+                ${
+                  orderInfo.paymentMethod === "Cash" &&
+                  orderInfo.bills?.cashAmount > 0
+                    ? `
+                    <tr><td>Cash:</td><td class="text-right">₱${(
+                      orderInfo.bills.cashAmount || 0
+                    ).toFixed(2)}</td></tr>
+                    <tr><td>Change:</td><td class="text-right">₱${(
+                      orderInfo.bills.change || 0
+                    ).toFixed(2)}</td></tr>
+                    `
+                    : ""
+                }
               </table>
             </div>
             
@@ -507,14 +554,15 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <tr><td><strong>Payment:</strong></td><td>${
                   orderInfo.paymentMethod || "Cash"
                 }</td></tr>
-                <tr><td><strong>Status:</strong></td><td>${
-                  orderInfo.orderStatus || "In Progress"
+                <tr><td><strong>Order Status:</strong></td><td>${
+                  orderInfo.orderStatus || "Completed"
                 }</td></tr>
               </table>
             </div>
             
             <div class="thank-you">
               <div>Thank you for your purchase!</div>
+              <div>Please visit DELISH CAFE again!</div>
             </div>
           </div>
         </body>
@@ -548,18 +596,28 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       ? Math.floor(new Date(orderInfo.orderDate).getTime()).toString().slice(-6)
       : "N/A";
 
-    const customerName = orderInfo.customerDetails?.name || "Walk-in Customer";
+    const customerName =
+      orderInfo.customerDetails?.name ||
+      orderInfo.customerStatus ||
+      (orderInfo.customerType === "walk-in"
+        ? "Walk-in Customer"
+        : "Take-out Customer");
+
     const cashierName = orderInfo.cashier || "Admin";
     const orderDate = new Date(
       orderInfo.orderDate || Date.now()
     ).toLocaleString();
+
+    const customerStatus =
+      orderInfo.customerStatus ||
+      (orderInfo.customerType === "walk-in" ? "Dine-in" : "Take-out");
 
     let receiptText = thermalCommands.INIT;
 
     // Header
     receiptText += thermalCommands.ALIGN_CENTER;
     receiptText += thermalCommands.TEXT_LARGE;
-    receiptText += "DELISH RESTAURANT\n";
+    receiptText += "DELISH CAFE\n";
     receiptText += thermalCommands.TEXT_NORMAL;
     receiptText += "ORDER RECEIPT\n";
     receiptText += "✓ Thank you!\n\n";
@@ -571,17 +629,18 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     receiptText += `Customer: ${customerName}\n`;
     receiptText += `Cashier: ${cashierName}\n`;
     receiptText += `Date: ${orderDate}\n`;
+    receiptText += `Status: ${customerStatus}\n`;
     receiptText += thermalCommands.BOLD_OFF;
     receiptText += "=".repeat(LINE_WIDTH) + "\n\n";
 
-    // PWD/SSS Details if available
-    if (orderInfo.pwdSssDetails) {
+    // PWD/Senior Details if available
+    if (orderInfo.pwdSeniorDetails) {
       receiptText += thermalCommands.BOLD_ON;
-      receiptText += `PWD/SSS DETAILS:\n`;
+      receiptText += `PWD/SENIOR DETAILS:\n`;
       receiptText += thermalCommands.BOLD_OFF;
-      receiptText += `Type: ${orderInfo.pwdSssDetails.type}\n`;
-      receiptText += `Name: ${orderInfo.pwdSssDetails.name}\n`;
-      receiptText += `ID: ${orderInfo.pwdSssDetails.idNumber}\n`;
+      receiptText += `Type: ${orderInfo.pwdSeniorDetails.type}\n`;
+      receiptText += `Name: ${orderInfo.pwdSeniorDetails.name}\n`;
+      receiptText += `ID: ${orderInfo.pwdSeniorDetails.idNumber}\n`;
       receiptText += "-".repeat(LINE_WIDTH) + "\n\n";
     }
 
@@ -594,16 +653,21 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       const itemQuantity = item.quantity || 1;
       const itemPrice = item.price || 0;
       const isFree = item.isFree;
+      const isRedeemed = item.isRedeemed;
+      const isPwdSeniorDiscounted = item.isPwdSeniorDiscounted;
 
       const itemName =
         item.name && item.name.length > 17
           ? item.name.substring(0, 14) + "..."
           : item.name || "Item";
 
-      const lineStart = `${itemName} x${itemQuantity}`;
-      const priceString = isFree
-        ? "FREE"
-        : `₱${(itemPrice * itemQuantity).toFixed(2)}`;
+      let itemNote = "";
+      if (isFree || isRedeemed) itemNote = " (FREE)";
+      else if (isPwdSeniorDiscounted) itemNote = " (PWD/SENIOR -20%)";
+
+      const lineStart = `${itemName}${itemNote} x${itemQuantity}`;
+      const priceString =
+        isFree || isRedeemed ? "FREE" : `₱${itemPrice.toFixed(2)}`;
 
       receiptText += lineStart;
       receiptText += " ".repeat(
@@ -616,36 +680,75 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
     // Bill Summary
     const subtotal = orderInfo.bills?.total || 0;
-    const pwdDiscount = orderInfo.bills?.pwdSssDiscount || 0;
+    const pwdDiscount = orderInfo.bills?.pwdSeniorDiscount || 0;
+    const redemptionDiscount = orderInfo.bills?.redemptionDiscount || 0;
     const empDiscount = orderInfo.bills?.employeeDiscount || 0;
+    const shareholderDiscount = orderInfo.bills?.shareholderDiscount || 0;
+    const totalDiscount = orderInfo.bills?.discount || 0;
+    const netSales = orderInfo.bills?.netSales || 0;
     const tax = orderInfo.bills?.tax || 0;
     const total = orderInfo.bills?.totalWithTax || 0;
+    const cashAmount = orderInfo.bills?.cashAmount || 0;
+    const change = orderInfo.bills?.change || 0;
 
     const billItems = [
       { label: "Subtotal:", value: subtotal, isDiscount: false },
-      { label: "PWD/SSS Discount:", value: pwdDiscount, isDiscount: true },
-      { label: "Employee Discount:", value: empDiscount, isDiscount: true },
-      { label: "VAT (12%):", value: tax, isDiscount: false },
+      { label: "PWD/Senior Discount:", value: pwdDiscount, isDiscount: true },
+      {
+        label: "Redemption Discount:",
+        value: redemptionDiscount,
+        isDiscount: true,
+      },
+      {
+        label: "Employee Discount (15%):",
+        value: empDiscount,
+        isDiscount: true,
+      },
+      {
+        label: "Shareholder Discount (10%):",
+        value: shareholderDiscount,
+        isDiscount: true,
+      },
     ];
 
+    // Add discount lines
     billItems.forEach(({ label, value, isDiscount }) => {
-      if (value > 0 || label === "Subtotal:" || label === "VAT (12%):") {
-        const displayValue = isDiscount
-          ? `-₱${value.toFixed(2)}`
-          : `₱${value.toFixed(2)}`;
+      if (value > 0) {
+        const displayValue = `-₱${value.toFixed(2)}`;
         const spacing = " ".repeat(
           Math.max(1, LINE_WIDTH - label.length - displayValue.length)
         );
-        if (isDiscount) {
-          receiptText += `${label.padEnd(
-            LINE_WIDTH - displayValue.length,
-            " "
-          )}${displayValue}\n`;
-        } else {
-          receiptText += `${label}${spacing}${displayValue}\n`;
-        }
+        receiptText += `${label.padEnd(
+          LINE_WIDTH - displayValue.length,
+          " "
+        )}${displayValue}\n`;
       }
     });
+
+    if (totalDiscount > 0) {
+      const label = "Total Discount:";
+      const displayValue = `-₱${totalDiscount.toFixed(2)}`;
+      receiptText += `${label.padEnd(
+        LINE_WIDTH - displayValue.length,
+        " "
+      )}${displayValue}\n`;
+    }
+
+    // Net of VAT
+    const netLabel = "Net of VAT:";
+    const netDisplayValue = `₱${netSales.toFixed(2)}`;
+    const netSpacing = " ".repeat(
+      Math.max(1, LINE_WIDTH - netLabel.length - netDisplayValue.length)
+    );
+    receiptText += `${netLabel}${netSpacing}${netDisplayValue}\n`;
+
+    // VAT
+    const vatLabel = "VAT (12%):";
+    const vatDisplayValue = `₱${tax.toFixed(2)}`;
+    const vatSpacing = " ".repeat(
+      Math.max(1, LINE_WIDTH - vatLabel.length - vatDisplayValue.length)
+    );
+    receiptText += `${vatLabel}${vatSpacing}${vatDisplayValue}\n`;
 
     receiptText += thermalCommands.BOLD_ON;
     const totalLabel = "TOTAL:";
@@ -656,17 +759,34 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     receiptText += `${totalLabel}${totalSpacing}${totalDisplayValue}\n`;
     receiptText += thermalCommands.BOLD_OFF;
 
+    // Cash and Change if payment is Cash
+    if (orderInfo.paymentMethod === "Cash" && cashAmount > 0) {
+      const cashLabel = "Cash:";
+      const cashDisplayValue = `₱${cashAmount.toFixed(2)}`;
+      const cashSpacing = " ".repeat(
+        Math.max(1, LINE_WIDTH - cashLabel.length - cashDisplayValue.length)
+      );
+      receiptText += `${cashLabel}${cashSpacing}${cashDisplayValue}\n`;
+
+      const changeLabel = "Change:";
+      const changeDisplayValue = `₱${change.toFixed(2)}`;
+      const changeSpacing = " ".repeat(
+        Math.max(1, LINE_WIDTH - changeLabel.length - changeDisplayValue.length)
+      );
+      receiptText += `${changeLabel}${changeSpacing}${changeDisplayValue}\n`;
+    }
+
     receiptText += "=".repeat(LINE_WIDTH) + "\n\n";
 
     // Payment Info
     receiptText += thermalCommands.BOLD_ON;
     receiptText += `Payment: ${orderInfo.paymentMethod || "Cash"}\n`;
-    receiptText += `Status: ${orderInfo.orderStatus || "In Progress"}\n`;
+    receiptText += `Order Status: ${orderInfo.orderStatus || "Completed"}\n`;
     receiptText += thermalCommands.BOLD_OFF;
 
     receiptText += "\n" + thermalCommands.ALIGN_CENTER;
     receiptText += "Thank you for your purchase!\n";
-    receiptText += "Please come again!\n\n";
+    receiptText += "Please visit DELISH CAFE again!\n\n";
 
     // Add cash drawer command if requested
     if (includeDrawerCommand) {
@@ -815,7 +935,20 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               <div className="col-span-2">
                 <span className="text-gray-600">Customer:</span>
                 <p className="font-medium truncate">
-                  {orderInfo.customerDetails?.name || "Walk-in"}
+                  {orderInfo.customerDetails?.name ||
+                    orderInfo.customerStatus ||
+                    (orderInfo.customerType === "walk-in"
+                      ? "Walk-in"
+                      : "Take-out")}
+                </p>
+              </div>
+              <div className="col-span-2">
+                <span className="text-gray-600">Status:</span>
+                <p className="font-medium truncate text-blue-600">
+                  {orderInfo.customerStatus ||
+                    (orderInfo.customerType === "walk-in"
+                      ? "Dine-in"
+                      : "Take-out")}
                 </p>
               </div>
               <div className="col-span-2">
@@ -827,30 +960,30 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             </div>
           </div>
 
-          {/* PWD/SSS Details */}
-          {orderInfo.pwdSssDetails && (
+          {/* PWD/Senior Details */}
+          {orderInfo.pwdSeniorDetails && (
             <div className="bg-green-50 p-3 rounded-lg border border-green-200">
               <h3 className="font-semibold text-green-700 text-sm mb-2 flex items-center gap-2">
                 <IconIdCard className="w-4 h-4" />
-                PWD/SSS Details
+                PWD/SENIOR Details
               </h3>
               <div className="space-y-1 text-xs">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Type:</span>
                   <span className="font-medium text-green-700">
-                    {orderInfo.pwdSssDetails.type}
+                    {orderInfo.pwdSeniorDetails.type}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Name:</span>
                   <span className="font-medium truncate">
-                    {orderInfo.pwdSssDetails.name}
+                    {orderInfo.pwdSeniorDetails.name}
                   </span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">ID Number:</span>
                   <span className="font-medium">
-                    {orderInfo.pwdSssDetails.idNumber}
+                    {orderInfo.pwdSeniorDetails.idNumber}
                   </span>
                 </div>
               </div>
@@ -860,46 +993,55 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           {/* Items Ordered */}
           <div className="bg-gray-50 p-3 rounded-lg">
             <h3 className="font-semibold text-gray-700 text-sm mb-2">
-              Items Ordered
+              Items Ordered ({(orderInfo.items || []).length})
             </h3>
             <div className="space-y-2 max-h-32 overflow-y-auto">
               {(orderInfo.items || []).map((item, index) => (
                 <div
                   key={index}
                   className={`flex justify-between items-start p-2 rounded text-xs ${
-                    item.isFree ? "bg-red-50 border border-red-200" : "bg-white"
+                    item.isFree || item.isRedeemed
+                      ? "bg-red-50 border border-red-200"
+                      : item.isPwdSeniorDiscounted
+                      ? "bg-green-50 border border-green-200"
+                      : "bg-white border border-gray-200"
                   }`}
                 >
                   <div className="flex-1 pr-2">
                     <p className="font-medium truncate">
                       {item.name}
-                      {item.isFree && (
-                        <span className="ml-1 text-red-600 font-semibold">
+                      {item.isFree || item.isRedeemed ? (
+                        <span className="ml-1 text-red-600 font-semibold text-[10px]">
                           (FREE)
                         </span>
-                      )}
-                      {item.isPwdSssDiscounted && (
-                        <span className="ml-1 text-green-600 font-semibold">
-                          (PWD/SSS -20%)
+                      ) : item.isPwdSeniorDiscounted ? (
+                        <span className="ml-1 text-green-600 font-semibold text-[10px]">
+                          (PWD/SENIOR -20%)
                         </span>
-                      )}
+                      ) : null}
                     </p>
-                    <p className="text-gray-600">
+                    <p className="text-gray-600 text-[10px]">
                       {item.quantity || 1} × ₱
-                      {(item.pricePerQuantity || item.price || 0).toFixed(2)}
+                      {(
+                        item.pricePerQuantity ||
+                        item.originalPrice ||
+                        0
+                      ).toFixed(2)}
                     </p>
                   </div>
                   <div className="text-right min-w-16">
                     <p
                       className={`font-semibold ${
-                        item.isFree ? "text-red-600" : "text-gray-800"
+                        item.isFree || item.isRedeemed
+                          ? "text-red-600"
+                          : item.isPwdSeniorDiscounted
+                          ? "text-green-600"
+                          : "text-gray-800"
                       }`}
                     >
-                      {item.isFree
+                      {item.isFree || item.isRedeemed
                         ? "FREE"
-                        : `₱${(
-                            (item.price || 0) * (item.quantity || 1)
-                          ).toFixed(2)}`}
+                        : `₱${(item.price || 0).toFixed(2)}`}
                     </p>
                   </div>
                 </div>
@@ -918,23 +1060,55 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <span>₱{(orderInfo.bills?.total || 0).toFixed(2)}</span>
               </div>
 
-              {(orderInfo.bills?.pwdSssDiscount || 0) > 0 && (
+              {(orderInfo.bills?.pwdSeniorDiscount || 0) > 0 && (
                 <div className="flex justify-between text-green-600">
-                  <span>PWD/SSS:</span>
+                  <span>PWD/Senior Disc:</span>
                   <span>
-                    -₱{(orderInfo.bills.pwdSssDiscount || 0).toFixed(2)}
+                    -₱{(orderInfo.bills.pwdSeniorDiscount || 0).toFixed(2)}
+                  </span>
+                </div>
+              )}
+
+              {(orderInfo.bills?.redemptionDiscount || 0) > 0 && (
+                <div className="flex justify-between text-blue-600">
+                  <span>Redemption Disc:</span>
+                  <span>
+                    -₱{(orderInfo.bills.redemptionDiscount || 0).toFixed(2)}
                   </span>
                 </div>
               )}
 
               {(orderInfo.bills?.employeeDiscount || 0) > 0 && (
                 <div className="flex justify-between text-yellow-600">
-                  <span>Emp Disc:</span>
+                  <span>Emp Disc (15%):</span>
                   <span>
                     -₱{(orderInfo.bills.employeeDiscount || 0).toFixed(2)}
                   </span>
                 </div>
               )}
+
+              {(orderInfo.bills?.shareholderDiscount || 0) > 0 && (
+                <div className="flex justify-between text-purple-600">
+                  <span>Shareholder Disc (10%):</span>
+                  <span>
+                    -₱{(orderInfo.bills.shareholderDiscount || 0).toFixed(2)}
+                  </span>
+                </div>
+              )}
+
+              {(orderInfo.bills?.discount || 0) > 0 && (
+                <div className="flex justify-between text-red-600 border-t pt-1">
+                  <span>Total Discount:</span>
+                  <span className="font-semibold">
+                    -₱{(orderInfo.bills.discount || 0).toFixed(2)}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-between border-t pt-1">
+                <span>Net of VAT:</span>
+                <span>₱{(orderInfo.bills?.netSales || 0).toFixed(2)}</span>
+              </div>
 
               <div className="flex justify-between">
                 <span>VAT (12%):</span>
@@ -947,6 +1121,24 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                   ₱{(orderInfo.bills?.totalWithTax || 0).toFixed(2)}
                 </span>
               </div>
+
+              {orderInfo.paymentMethod === "Cash" &&
+                orderInfo.bills?.cashAmount > 0 && (
+                  <>
+                    <div className="border-t pt-2 flex justify-between">
+                      <span className="text-gray-600">Cash:</span>
+                      <span className="text-gray-800">
+                        ₱{(orderInfo.bills.cashAmount || 0).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Change:</span>
+                      <span className="text-green-600 font-semibold">
+                        ₱{(orderInfo.bills.change || 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </>
+                )}
             </div>
           </div>
 
@@ -963,9 +1155,18 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Status:</span>
+                <span>Order Status:</span>
                 <span className="font-medium text-green-600">
-                  {orderInfo.orderStatus || "In Progress"}
+                  {orderInfo.orderStatus || "Completed"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Customer Status:</span>
+                <span className="font-medium text-blue-600">
+                  {orderInfo.customerStatus ||
+                    (orderInfo.customerType === "walk-in"
+                      ? "Dine-in"
+                      : "Take-out")}
                 </span>
               </div>
             </div>
