@@ -1076,33 +1076,7 @@ const Bill = ({ orderId }) => {
     });
 
     // Get cashier name
-    const cashierName = user?.name || "Admin";
-
-    // Prepare COMPLETE order data - NO CUSTOMER DETAILS REQUIRED
-    const orderData = {
-      // NO customerDetails field - completely removed
-      orderStatus: "Completed",
-      bills: bills,
-      items: items,
-      table: null,
-      paymentMethod: paymentMethod,
-      customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
-      pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
-      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
-      pwdSeniorSelectedItems: pwdSeniorDiscountItems.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        pricePerQuantity: item.pricePerQuantity,
-        type: isDrinkItem(item) ? "drink" : "food",
-      })),
-      cashier: cashierName,
-      user: user?._id || "000000000000000000000001",
-      orderDate: new Date().toISOString(),
-      totalAmount: Number(totals.total.toFixed(2)),
-      cashAmount: Number(totals.cashAmount.toFixed(2)),
-      change: Number(totals.change.toFixed(2)),
-      notes: "",
-    };
+    const cashierName = user?.name;
 
     console.log("Sending order data:", JSON.stringify(orderData, null, 2));
 
