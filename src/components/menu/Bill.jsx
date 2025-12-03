@@ -54,11 +54,12 @@ const Bill = ({ orderId }) => {
   const cartData = currentOrder?.items || [];
 
   const vatRate = 12;
-  const pwdSssDiscountRate = 0.2;
+  const pwdSeniorDiscountRate = 0.2;
   const employeeDiscountRate = 0.15;
   const shareholderDiscountRate = 0.1;
 
-  const [pwdSssDiscountApplied, setPwdSssDiscountApplied] = useState(false);
+  const [pwdSeniorDiscountApplied, setPwdSeniorDiscountApplied] =
+    useState(false);
   const [employeeDiscountApplied, setEmployeeDiscountApplied] = useState(false);
   const [shareholderDiscountApplied, setShareholderDiscountApplied] =
     useState(false);
@@ -67,16 +68,17 @@ const Bill = ({ orderId }) => {
   const [orderInfo, setOrderInfo] = useState(null);
   const [showRedeemOptions, setShowRedeemOptions] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [pwdSssDiscountItems, setPwdSssDiscountItems] = useState([]);
-  const [showPwdSssSelection, setShowPwdSssSelection] = useState(false);
-  const [pwdSssDetails, setPwdSssDetails] = useState({
+  const [pwdSeniorDiscountItems, setPwdSeniorDiscountItems] = useState([]);
+  const [showPwdSeniorSelection, setShowPwdSeniorSelection] = useState(false);
+  const [pwdSeniorDetails, setPwdSeniorDetails] = useState({
     name: "",
     idNumber: "",
     type: "PWD",
   });
-  const [customerType, setCustomerType] = useState("walk-in"); // "walk-in" or "take-out"
+  const [customerType, setCustomerType] = useState("walk-in");
   const [cashAmount, setCashAmount] = useState(0);
   const [showCashModal, setShowCashModal] = useState(false);
+  const [showOnlineOptions, setShowOnlineOptions] = useState(false);
 
   // Bluetooth printer state
   const [bluetoothPrinter, setBluetoothPrinter] = useState(null);
@@ -223,16 +225,16 @@ const Bill = ({ orderId }) => {
         0
       );
 
-      let pwdSssDiscountAmount = 0;
+      let pwdSeniorDiscountAmount = 0;
       let discountedItemsTotal = 0;
 
-      if (pwdSssDiscountApplied && pwdSssDiscountItems.length > 0) {
-        discountedItemsTotal = pwdSssDiscountItems.reduce(
+      if (pwdSeniorDiscountApplied && pwdSeniorDiscountItems.length > 0) {
+        discountedItemsTotal = pwdSeniorDiscountItems.reduce(
           (sum, item) =>
             sum + safeNumber(item.quantity) * safeNumber(item.pricePerQuantity),
           0
         );
-        pwdSssDiscountAmount = discountedItemsTotal * pwdSssDiscountRate;
+        pwdSeniorDiscountAmount = discountedItemsTotal * pwdSeniorDiscountRate;
       }
 
       const redemptionAmount = cartData.reduce((sum, item) => {
@@ -241,15 +243,15 @@ const Bill = ({ orderId }) => {
           : sum;
       }, 0);
 
-      const subtotalAfterPwdSssAndRedemption =
-        baseGrossTotal - pwdSssDiscountAmount - redemptionAmount;
+      const subtotalAfterPwdSeniorAndRedemption =
+        baseGrossTotal - pwdSeniorDiscountAmount - redemptionAmount;
 
       const employeeDiscountAmount = employeeDiscountApplied
-        ? subtotalAfterPwdSssAndRedemption * employeeDiscountRate
+        ? subtotalAfterPwdSeniorAndRedemption * employeeDiscountRate
         : 0;
 
       const subtotalAfterEmployeeDiscount =
-        subtotalAfterPwdSssAndRedemption - employeeDiscountAmount;
+        subtotalAfterPwdSeniorAndRedemption - employeeDiscountAmount;
 
       const shareholderDiscountAmount = shareholderDiscountApplied
         ? subtotalAfterEmployeeDiscount * shareholderDiscountRate
@@ -264,7 +266,7 @@ const Bill = ({ orderId }) => {
       const total = Math.max(0, Number(discountedTotal.toFixed(2)));
 
       const totalDiscountAmount =
-        pwdSssDiscountAmount +
+        pwdSeniorDiscountAmount +
         employeeDiscountAmount +
         shareholderDiscountAmount +
         redemptionAmount;
@@ -276,7 +278,7 @@ const Bill = ({ orderId }) => {
 
       return {
         baseGrossTotal,
-        pwdSssDiscountAmount,
+        pwdSeniorDiscountAmount,
         discountedItemsTotal,
         redemptionAmount,
         employeeDiscountAmount,
@@ -285,7 +287,7 @@ const Bill = ({ orderId }) => {
         vatAmount,
         total,
         totalDiscountAmount,
-        subtotalAfterPwdSssAndRedemption,
+        subtotalAfterPwdSeniorAndRedemption,
         cashAmount: cashAmountNum,
         change,
       };
@@ -293,7 +295,7 @@ const Bill = ({ orderId }) => {
       console.error("Error calculating totals:", error);
       return {
         baseGrossTotal: 0,
-        pwdSssDiscountAmount: 0,
+        pwdSeniorDiscountAmount: 0,
         discountedItemsTotal: 0,
         redemptionAmount: 0,
         employeeDiscountAmount: 0,
@@ -302,7 +304,7 @@ const Bill = ({ orderId }) => {
         vatAmount: 0,
         total: 0,
         totalDiscountAmount: 0,
-        subtotalAfterPwdSssAndRedemption: 0,
+        subtotalAfterPwdSeniorAndRedemption: 0,
         cashAmount: 0,
         change: 0,
       };
@@ -331,14 +333,14 @@ const Bill = ({ orderId }) => {
       return 0;
     }
 
-    const isDiscounted = pwdSssDiscountItems.some(
+    const isDiscounted = pwdSeniorDiscountItems.some(
       (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
     );
 
     if (isDiscounted) {
       const originalTotal =
         safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
-      const discountedTotal = originalTotal * (1 - pwdSssDiscountRate);
+      const discountedTotal = originalTotal * (1 - pwdSeniorDiscountRate);
       return discountedTotal;
     }
 
@@ -356,14 +358,14 @@ const Bill = ({ orderId }) => {
       return safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
     }
 
-    const isDiscounted = pwdSssDiscountItems.some(
+    const isDiscounted = pwdSeniorDiscountItems.some(
       (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
     );
 
     if (isDiscounted) {
       const originalTotal =
         safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
-      return originalTotal * pwdSssDiscountRate;
+      return originalTotal * pwdSeniorDiscountRate;
     }
 
     return 0;
@@ -408,38 +410,38 @@ const Bill = ({ orderId }) => {
 
   // Get discounted items info for display
   const getDiscountedItemsInfo = () => {
-    if (!pwdSssDiscountApplied || totals.pwdSssDiscountAmount === 0)
+    if (!pwdSeniorDiscountApplied || totals.pwdSeniorDiscountAmount === 0)
       return null;
 
-    const drinkCount = pwdSssDiscountItems.filter((item) =>
+    const drinkCount = pwdSeniorDiscountItems.filter((item) =>
       isDrinkItem(item)
     ).length;
 
-    const foodCount = pwdSssDiscountItems.filter((item) =>
+    const foodCount = pwdSeniorDiscountItems.filter((item) =>
       isFoodItem(item)
     ).length;
 
-    let info = "PWD/SSS Discount (20% on selected items)";
+    let info = "PWD/Senior Discount (20% on selected items)";
 
     if (drinkCount === 1 && foodCount === 2) {
-      info = "PWD/SSS Discount (20% – 1 drink + 2 food)";
+      info = "PWD/Senior Discount (20% – 1 drink + 2 food)";
     } else if (drinkCount === 1 && foodCount === 1) {
-      info = "PWD/SSS Discount (20% – 1 drink + 1 food)";
+      info = "PWD/Senior Discount (20% – 1 drink + 1 food)";
     } else if (drinkCount === 1) {
-      info = "PWD/SSS Discount (20% – 1 drink)";
+      info = "PWD/Senior Discount (20% – 1 drink)";
     } else if (foodCount === 2) {
-      info = "PWD/SSS Discount (20% – 2 food)";
+      info = "PWD/Senior Discount (20% – 2 food)";
     } else if (foodCount === 1) {
-      info = "PWD/SSS Discount (20% – 1 food)";
+      info = "PWD/Senior Discount (20% – 1 food)";
     }
 
-    const discountAmount = totals.pwdSssDiscountAmount.toFixed(2);
+    const discountAmount = totals.pwdSeniorDiscountAmount.toFixed(2);
     return `${info} (-₱${discountAmount})`;
   };
 
   const discountedItemsInfo = getDiscountedItemsInfo();
 
-  // Get eligible items count for PWD/SSS discount
+  // Get eligible items count for PWD/Senior discount
   const getEligibleItemsCount = () => {
     const drinks = combinedCart.filter((item) => isDrinkItem(item));
     const foods = combinedCart.filter((item) => isFoodItem(item));
@@ -455,57 +457,58 @@ const Bill = ({ orderId }) => {
     };
   };
 
-  // Handle PWD/SSS discount
-  const handlePwdSssDiscount = () => {
-    if (!pwdSssDiscountApplied) {
-      setShowPwdSssSelection(true);
+  // Handle PWD/Senior discount
+  const handlePwdSeniorDiscount = () => {
+    if (!pwdSeniorDiscountApplied) {
+      setShowPwdSeniorSelection(true);
     } else {
-      setPwdSssDiscountApplied(false);
-      setPwdSssDiscountItems([]);
-      setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
+      setPwdSeniorDiscountApplied(false);
+      setPwdSeniorDiscountItems([]);
+      setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
       setEmployeeDiscountApplied(false);
       setShareholderDiscountApplied(false);
-      enqueueSnackbar("PWD/SSS discount removed", { variant: "info" });
+      enqueueSnackbar("PWD/Senior discount removed", { variant: "info" });
     }
   };
 
   const handleEmployeeDiscount = () => {
     setEmployeeDiscountApplied(!employeeDiscountApplied);
-    setPwdSssDiscountApplied(false);
-    setPwdSssDiscountItems([]);
-    setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
+    setPwdSeniorDiscountApplied(false);
+    setPwdSeniorDiscountItems([]);
+    setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
     setShareholderDiscountApplied(false);
   };
 
   const handleShareholderDiscount = () => {
     setShareholderDiscountApplied(!shareholderDiscountApplied);
-    setPwdSssDiscountApplied(false);
-    setPwdSssDiscountItems([]);
-    setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
+    setPwdSeniorDiscountApplied(false);
+    setPwdSeniorDiscountItems([]);
+    setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
     setEmployeeDiscountApplied(false);
   };
 
   // Toggle item selection in modal
   const toggleItemSelection = (item) => {
     const itemKey = getItemKey(item);
-    const isSelected = pwdSssDiscountItems.some(
+    const isSelected = pwdSeniorDiscountItems.some(
       (selected) => getItemKey(selected) === itemKey
     );
 
     if (isSelected) {
-      setPwdSssDiscountItems(
-        pwdSssDiscountItems.filter(
+      setPwdSeniorDiscountItems(
+        pwdSeniorDiscountItems.filter(
           (selected) => getItemKey(selected) !== itemKey
         )
       );
     } else {
-      const drinks = pwdSssDiscountItems.filter((item) => isDrinkItem(item));
-      const foods = pwdSssDiscountItems.filter((item) => isFoodItem(item));
+      const drinks = pwdSeniorDiscountItems.filter((item) => isDrinkItem(item));
+      const foods = pwdSeniorDiscountItems.filter((item) => isFoodItem(item));
 
+      // PWD/SENIOR DISCOUNT: Can select 1-3 items (1 drink max, 2 food max)
       if (isDrinkItem(item)) {
         if (drinks.length >= 1) {
           enqueueSnackbar(
-            "Maximum 1 drink can be selected for PWD/SSS discount",
+            "Maximum 1 drink can be selected for PWD/Senior discount",
             {
               variant: "warning",
             }
@@ -515,7 +518,7 @@ const Bill = ({ orderId }) => {
       } else if (isFoodItem(item)) {
         if (foods.length >= 2) {
           enqueueSnackbar(
-            "Maximum 2 food items can be selected for PWD/SSS discount",
+            "Maximum 2 food items can be selected for PWD/Senior discount",
             {
               variant: "warning",
             }
@@ -524,7 +527,7 @@ const Bill = ({ orderId }) => {
         }
       } else {
         enqueueSnackbar(
-          "Only drinks and food items are eligible for PWD/SSS discount",
+          "Only drinks and food items are eligible for PWD/Senior discount",
           {
             variant: "warning",
           }
@@ -532,97 +535,86 @@ const Bill = ({ orderId }) => {
         return;
       }
 
-      setPwdSssDiscountItems([...pwdSssDiscountItems, item]);
+      // Check total items
+      if (pwdSeniorDiscountItems.length >= 3) {
+        enqueueSnackbar(
+          "Maximum 3 items can be selected for PWD/Senior discount",
+          {
+            variant: "warning",
+          }
+        );
+        return;
+      }
+
+      setPwdSeniorDiscountItems([...pwdSeniorDiscountItems, item]);
     }
   };
 
-  // Apply the selection with PWD/SSS details
-  const handleApplyPwdSssSelection = () => {
-    const eligible = getEligibleItemsCount();
-
-    if (pwdSssDiscountItems.length === 0) {
-      enqueueSnackbar("Please select at least 1 item for PWD/SSS discount", {
+  // Apply the selection with PWD/Senior details
+  const handleApplyPwdSeniorSelection = () => {
+    if (pwdSeniorDiscountItems.length === 0) {
+      enqueueSnackbar("Please select at least 1 item for PWD/Senior discount", {
         variant: "warning",
       });
       return;
     }
 
-    if (!pwdSssDetails.name.trim()) {
-      enqueueSnackbar("Please enter PWD/SSS holder name", {
+    if (!pwdSeniorDetails.name.trim()) {
+      enqueueSnackbar("Please enter PWD/Senior holder name", {
         variant: "warning",
       });
       return;
     }
 
-    if (!pwdSssDetails.idNumber.trim()) {
-      enqueueSnackbar("Please enter PWD/SSS ID number", {
+    if (!pwdSeniorDetails.idNumber.trim()) {
+      enqueueSnackbar("Please enter PWD/Senior ID number", {
         variant: "warning",
       });
       return;
     }
 
-    const drinks = pwdSssDiscountItems.filter((item) => isDrinkItem(item));
-    const foods = pwdSssDiscountItems.filter((item) => isFoodItem(item));
-
-    if (drinks.length > eligible.maxDrinks) {
-      enqueueSnackbar(
-        `Cannot select more than ${eligible.maxDrinks} drink(s)`,
-        {
-          variant: "warning",
-        }
-      );
-      return;
-    }
-
-    if (foods.length > eligible.maxFoods) {
-      enqueueSnackbar(
-        `Cannot select more than ${eligible.maxFoods} food item(s)`,
-        {
-          variant: "warning",
-        }
-      );
-      return;
-    }
-
-    setPwdSssDiscountApplied(true);
+    setPwdSeniorDiscountApplied(true);
     setEmployeeDiscountApplied(false);
     setShareholderDiscountApplied(false);
-    setShowPwdSssSelection(false);
+    setShowPwdSeniorSelection(false);
 
-    const selectedValue = pwdSssDiscountItems.reduce(
+    const selectedValue = pwdSeniorDiscountItems.reduce(
       (sum, item) => sum + calculateItemTotalPrice(item),
       0
     );
 
-    const discountAmount = selectedValue * pwdSssDiscountRate;
+    const discountAmount = selectedValue * pwdSeniorDiscountRate;
 
-    let message = `PWD/SSS discount applied to ${
-      pwdSssDiscountItems.length
+    const drinks = pwdSeniorDiscountItems.filter((item) => isDrinkItem(item));
+    const foods = pwdSeniorDiscountItems.filter((item) => isFoodItem(item));
+
+    let message = `PWD/Senior discount applied to ${
+      pwdSeniorDiscountItems.length
     } item(s) (-₱${discountAmount.toFixed(2)})`;
 
     if (drinks.length === 1 && foods.length === 2) {
-      message = `PWD/SSS discount applied to 1 drink and 2 food items (-₱${discountAmount.toFixed(
+      message = `PWD/Senior discount applied to 1 drink and 2 food items (-₱${discountAmount.toFixed(
         2
       )})`;
     } else if (drinks.length === 1 && foods.length === 1) {
-      message = `PWD/SSS discount applied to 1 drink and 1 food item (-₱${discountAmount.toFixed(
+      message = `PWD/Senior discount applied to 1 drink and 1 food item (-₱${discountAmount.toFixed(
         2
       )})`;
     } else if (drinks.length === 1) {
-      message = `PWD/SSS discount applied to 1 drink (-₱${discountAmount.toFixed(
+      message = `PWD/Senior discount applied to 1 drink (-₱${discountAmount.toFixed(
         2
       )})`;
     } else if (foods.length === 2) {
-      message = `PWD/SSS discount applied to 2 food items (-₱${discountAmount.toFixed(
+      message = `PWD/Senior discount applied to 2 food items (-₱${discountAmount.toFixed(
         2
       )})`;
     } else if (foods.length === 1) {
-      message = `PWD/SSS discount applied to 1 food item (-₱${discountAmount.toFixed(
+      message = `PWD/Senior discount applied to 1 food item (-₱${discountAmount.toFixed(
         2
       )})`;
     }
 
-    message += ` for ${pwdSssDetails.type}: ${pwdSssDetails.name}`;
+    message += ` for ${pwdSeniorDetails.type}: ${pwdSeniorDetails.name}`;
 
     enqueueSnackbar(message, {
       variant: "success",
@@ -630,24 +622,24 @@ const Bill = ({ orderId }) => {
   };
 
   // Cancel selection
-  const handleCancelPwdSssSelection = () => {
-    setShowPwdSssSelection(false);
+  const handleCancelPwdSeniorSelection = () => {
+    setShowPwdSeniorSelection(false);
   };
 
-  // Clear PWD/SSS discount
-  const clearPwdSssDiscount = () => {
-    setPwdSssDiscountApplied(false);
-    setPwdSssDiscountItems([]);
-    setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
-    enqueueSnackbar("PWD/SSS discount removed", {
+  // Clear PWD/Senior discount
+  const clearPwdSeniorDiscount = () => {
+    setPwdSeniorDiscountApplied(false);
+    setPwdSeniorDiscountItems([]);
+    setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
+    enqueueSnackbar("PWD/Senior discount removed", {
       variant: "info",
     });
   };
 
-  // Handle PWD/SSS details change
-  const handlePwdSssDetailsChange = (e) => {
+  // Handle PWD/Senior details change
+  const handlePwdSeniorDetailsChange = (e) => {
     const { name, value } = e.target;
-    setPwdSssDetails((prev) => ({
+    setPwdSeniorDetails((prev) => ({
       ...prev,
       [name]: value,
     }));
@@ -662,6 +654,15 @@ const Bill = ({ orderId }) => {
         variant: "info",
       }
     );
+  };
+
+  // Handle online payment selection
+  const handleOnlinePaymentSelect = (method) => {
+    setPaymentMethod(method);
+    setShowOnlineOptions(false);
+    enqueueSnackbar(`Payment method set to ${method}`, {
+      variant: "success",
+    });
   };
 
   // Thermal printer ESC/POS commands
@@ -779,9 +780,9 @@ const Bill = ({ orderId }) => {
     receipt += printerCommands.ALIGN_RIGHT;
     receipt += "Subtotal:    ₱" + totals.baseGrossTotal.toFixed(2) + LF;
 
-    if (totals.pwdSssDiscountAmount > 0) {
+    if (totals.pwdSeniorDiscountAmount > 0) {
       receipt +=
-        "PWD/SSS Disc: -₱" + totals.pwdSssDiscountAmount.toFixed(2) + LF;
+        "PWD/Senior:   -₱" + totals.pwdSeniorDiscountAmount.toFixed(2) + LF;
     }
 
     if (totals.redemptionAmount > 0) {
@@ -844,6 +845,7 @@ const Bill = ({ orderId }) => {
             await sendToPrinter(cashDrawerCommand);
             enqueueSnackbar("Cash drawer opened", { variant: "info" });
           }
+          return true;
         }
       } else {
         throw new Error("Could not connect to printer");
@@ -878,7 +880,7 @@ const Bill = ({ orderId }) => {
           status: customerType === "walk-in" ? "Dine-in" : "Take-out",
         },
         items: combinedCart.map((item) => {
-          const isDiscounted = pwdSssDiscountItems.some(
+          const isDiscounted = pwdSeniorDiscountItems.some(
             (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
           );
 
@@ -889,7 +891,7 @@ const Bill = ({ orderId }) => {
             originalPrice: safeNumber(item.pricePerQuantity),
             pricePerQuantity: safeNumber(item.pricePerQuantity),
             isFree: item.isRedeemed || false,
-            isPwdSssDiscounted: isDiscounted,
+            isPwdSeniorDiscounted: isDiscounted,
           };
         }),
         bills: {
@@ -897,8 +899,8 @@ const Bill = ({ orderId }) => {
           tax: totals.vatAmount,
           discount: totals.totalDiscountAmount,
           totalWithTax: totals.total,
-          pwdSssDiscount: totals.pwdSssDiscountAmount,
-          pwdSssDiscountedValue: totals.discountedItemsTotal,
+          pwdSeniorDiscount: totals.pwdSeniorDiscountAmount,
+          pwdSeniorDiscountedValue: totals.discountedItemsTotal,
           employeeDiscount: totals.employeeDiscountAmount,
           shareholderDiscount: totals.shareholderDiscountAmount,
           redemptionDiscount: totals.redemptionAmount,
@@ -910,7 +912,7 @@ const Bill = ({ orderId }) => {
         customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
         orderDate: new Date().toISOString(),
         cashier: user?.name || "Admin",
-        pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null,
+        pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
         user: user?._id || "000000000000000000000001",
       };
 
@@ -943,7 +945,7 @@ const Bill = ({ orderId }) => {
 
       enqueueSnackbar("Order placed successfully!", { variant: "success" });
 
-      // PRINT RECEIPT
+      // PRINT RECEIPT AUTOMATICALLY
       setTimeout(async () => {
         try {
           await printReceipt(data);
@@ -983,7 +985,7 @@ const Bill = ({ orderId }) => {
     },
   });
 
-  // Handle place order with ALL required fields
+  // Handle place order
   const handlePlaceOrder = async () => {
     if (isProcessing) return;
 
@@ -1010,16 +1012,16 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    // Validate PWD/SSS discount if applied
-    if (pwdSssDiscountApplied) {
-      if (!pwdSssDetails.name.trim()) {
-        enqueueSnackbar("Please enter PWD/SSS holder name", {
+    // Validate PWD/Senior discount if applied
+    if (pwdSeniorDiscountApplied) {
+      if (!pwdSeniorDetails.name.trim()) {
+        enqueueSnackbar("Please enter PWD/Senior holder name", {
           variant: "error",
         });
         return;
       }
-      if (!pwdSssDetails.idNumber.trim()) {
-        enqueueSnackbar("Please enter PWD/SSS ID number", {
+      if (!pwdSeniorDetails.idNumber.trim()) {
+        enqueueSnackbar("Please enter PWD/Senior ID number", {
           variant: "error",
         });
         return;
@@ -1054,8 +1056,8 @@ const Bill = ({ orderId }) => {
       tax: Number(totals.vatAmount.toFixed(2)),
       totalWithTax: Number(totals.total.toFixed(2)),
       discount: Number(totals.totalDiscountAmount.toFixed(2)),
-      pwdSssDiscount: Number(totals.pwdSssDiscountAmount.toFixed(2)),
-      pwdSssDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
+      pwdSeniorDiscount: Number(totals.pwdSeniorDiscountAmount.toFixed(2)),
+      pwdSeniorDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
       employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
       shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
       redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
@@ -1066,7 +1068,7 @@ const Bill = ({ orderId }) => {
 
     // Prepare items data
     const items = cartData.map((item) => {
-      const isPwdSssDiscounted = pwdSssDiscountItems.some(
+      const isPwdSeniorDiscounted = pwdSeniorDiscountItems.some(
         (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
       );
 
@@ -1077,7 +1079,7 @@ const Bill = ({ orderId }) => {
         price: calculateItemTotal(item),
         originalPrice: safeNumber(item.pricePerQuantity),
         isRedeemed: Boolean(item.isRedeemed),
-        isPwdSssDiscounted: isPwdSssDiscounted,
+        isPwdSeniorDiscounted: isPwdSeniorDiscounted,
         category: item.category || "general",
         id: item.id || Date.now().toString(),
       };
@@ -1102,9 +1104,9 @@ const Bill = ({ orderId }) => {
       table: tableId,
       paymentMethod: paymentMethod,
       customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
-      pwdSssDiscountApplied: pwdSssDiscountApplied,
-      pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null,
-      pwdSssSelectedItems: pwdSssDiscountItems.map((item) => ({
+      pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
+      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
+      pwdSeniorSelectedItems: pwdSeniorDiscountItems.map((item) => ({
         name: item.name,
         quantity: item.quantity,
         pricePerQuantity: item.pricePerQuantity,
@@ -1122,7 +1124,12 @@ const Bill = ({ orderId }) => {
     console.log("Sending order data:", JSON.stringify(orderData, null, 2));
 
     // Handle payment methods
-    if (paymentMethod === "Online") {
+    if (paymentMethod === "BDO" || paymentMethod === "GCASH") {
+      // Digital payment methods - directly submit order
+      console.log(`Processing ${paymentMethod} order...`);
+      orderMutation.mutate(orderData);
+    } else if (paymentMethod === "Online") {
+      // Legacy online payment
       try {
         console.log("Loading Razorpay script...");
         const loaded = await loadScript(
@@ -1318,18 +1325,49 @@ const Bill = ({ orderId }) => {
         </div>
       )}
 
-      {/* PWD/SSS Selection Modal */}
-      {showPwdSssSelection && (
+      {/* Online Payment Options Modal */}
+      {showOnlineOptions && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+              Select Digital Payment Method
+            </h3>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleOnlinePaymentSelect("BDO")}
+                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition-colors"
+              >
+                BDO
+              </button>
+              <button
+                onClick={() => handleOnlinePaymentSelect("GCASH")}
+                className="w-full px-4 py-3 bg-green-600 text-white rounded-lg font-semibold text-sm hover:bg-green-700 transition-colors"
+              >
+                GCASH
+              </button>
+              <button
+                onClick={() => setShowOnlineOptions(false)}
+                className="w-full px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PWD/Senior Selection Modal */}
+      {showPwdSeniorSelection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4 text-gray-900">
-              PWD/SSS Discount Application
+              PWD/Senior Discount Application
             </h3>
 
-            {/* PWD/SSS Details Form */}
+            {/* PWD/Senior Details Form */}
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <h4 className="text-sm font-semibold text-blue-800 mb-3">
-                PWD/SSS Holder Information
+                PWD/Senior Holder Information
               </h4>
               <div className="space-y-3">
                 <div>
@@ -1342,8 +1380,8 @@ const Bill = ({ orderId }) => {
                         type="radio"
                         name="type"
                         value="PWD"
-                        checked={pwdSssDetails.type === "PWD"}
-                        onChange={handlePwdSssDetailsChange}
+                        checked={pwdSeniorDetails.type === "PWD"}
+                        onChange={handlePwdSeniorDetailsChange}
                         className="mr-2"
                       />
                       <span className="text-sm">PWD</span>
@@ -1352,12 +1390,12 @@ const Bill = ({ orderId }) => {
                       <input
                         type="radio"
                         name="type"
-                        value="SSS"
-                        checked={pwdSssDetails.type === "SSS"}
-                        onChange={handlePwdSssDetailsChange}
+                        value="Senior"
+                        checked={pwdSeniorDetails.type === "Senior"}
+                        onChange={handlePwdSeniorDetailsChange}
                         className="mr-2"
                       />
-                      <span className="text-sm">SSS</span>
+                      <span className="text-sm">Senior Citizen</span>
                     </label>
                   </div>
                 </div>
@@ -1369,10 +1407,10 @@ const Bill = ({ orderId }) => {
                   <input
                     type="text"
                     name="name"
-                    value={pwdSssDetails.name}
-                    onChange={handlePwdSssDetailsChange}
+                    value={pwdSeniorDetails.name}
+                    onChange={handlePwdSeniorDetailsChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    placeholder="Enter PWD/SSS holder name"
+                    placeholder="Enter PWD/Senior holder name"
                     required
                   />
                 </div>
@@ -1384,10 +1422,10 @@ const Bill = ({ orderId }) => {
                   <input
                     type="text"
                     name="idNumber"
-                    value={pwdSssDetails.idNumber}
-                    onChange={handlePwdSssDetailsChange}
+                    value={pwdSeniorDetails.idNumber}
+                    onChange={handlePwdSeniorDetailsChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    placeholder="Enter PWD/SSS ID number"
+                    placeholder="Enter PWD/Senior ID number"
                     required
                   />
                 </div>
@@ -1400,14 +1438,14 @@ const Bill = ({ orderId }) => {
                   Selected Items:
                 </span>
                 <span className="text-sm font-bold text-yellow-800">
-                  {pwdSssDiscountItems.length}/3
+                  {pwdSeniorDiscountItems.length}/3
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="text-xs text-yellow-700">
                   Drinks:{" "}
                   {
-                    pwdSssDiscountItems.filter((item) => isDrinkItem(item))
+                    pwdSeniorDiscountItems.filter((item) => isDrinkItem(item))
                       .length
                   }
                   /1
@@ -1415,7 +1453,7 @@ const Bill = ({ orderId }) => {
                 <div className="text-xs text-yellow-700">
                   Food:{" "}
                   {
-                    pwdSssDiscountItems.filter((item) => isFoodItem(item))
+                    pwdSeniorDiscountItems.filter((item) => isFoodItem(item))
                       .length
                   }
                   /2
@@ -1425,11 +1463,11 @@ const Bill = ({ orderId }) => {
 
             <div className="space-y-3 mb-6 max-h-[300px] overflow-y-auto">
               <p className="text-sm font-medium text-gray-700 mb-2">
-                Select items for 20% discount:
+                Select items for 20% discount (1-3 items allowed):
               </p>
               {combinedCart.map((item, index) => {
                 const itemKey = getItemKey(item);
-                const isSelected = pwdSssDiscountItems.some(
+                const isSelected = pwdSeniorDiscountItems.some(
                   (selected) => getItemKey(selected) === itemKey
                 );
                 const isDrink = isDrinkItem(item);
@@ -1440,7 +1478,7 @@ const Bill = ({ orderId }) => {
 
                 const itemType = isDrink ? "Drink" : "Food";
                 const itemValue = calculateItemTotalPrice(item);
-                const discountAmount = itemValue * pwdSssDiscountRate;
+                const discountAmount = itemValue * pwdSeniorDiscountRate;
                 const discountedValue = itemValue - discountAmount;
 
                 return (
@@ -1503,7 +1541,7 @@ const Bill = ({ orderId }) => {
               <div>
                 <p className="text-sm font-medium text-gray-900">
                   Selected Value: ₱
-                  {pwdSssDiscountItems
+                  {pwdSeniorDiscountItems
                     .reduce(
                       (sum, item) => sum + calculateItemTotalPrice(item),
                       0
@@ -1513,32 +1551,32 @@ const Bill = ({ orderId }) => {
                 <p className="text-xs text-gray-600">
                   After 20% discount (-₱
                   {(
-                    pwdSssDiscountItems.reduce(
+                    pwdSeniorDiscountItems.reduce(
                       (sum, item) => sum + calculateItemTotalPrice(item),
                       0
-                    ) * pwdSssDiscountRate
+                    ) * pwdSeniorDiscountRate
                   ).toFixed(2)}
                   ): ₱
                   {(
-                    pwdSssDiscountItems.reduce(
+                    pwdSeniorDiscountItems.reduce(
                       (sum, item) => sum + calculateItemTotalPrice(item),
                       0
                     ) *
-                    (1 - pwdSssDiscountRate)
+                    (1 - pwdSeniorDiscountRate)
                   ).toFixed(2)}
                 </p>
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={handleCancelPwdSssSelection}
+                  onClick={handleCancelPwdSeniorSelection}
                   className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={handleApplyPwdSssSelection}
+                  onClick={handleApplyPwdSeniorSelection}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={pwdSssDiscountItems.length === 0}
+                  disabled={pwdSeniorDiscountItems.length === 0}
                 >
                   Apply Discount
                 </button>
@@ -1592,7 +1630,7 @@ const Bill = ({ orderId }) => {
           ) : (
             combinedCart.map((item, index) => {
               const itemKey = getItemKey(item);
-              const isDiscounted = pwdSssDiscountItems.some(
+              const isDiscounted = pwdSeniorDiscountItems.some(
                 (discountedItem) => getItemKey(discountedItem) === itemKey
               );
               const isDrink = isDrinkItem(item);
@@ -1625,7 +1663,7 @@ const Bill = ({ orderId }) => {
                         )}
                         {isDiscounted && !item.isRedeemed && (
                           <span className="ml-2 bg-green-600 text-white text-xs px-2 py-1 rounded-full">
-                            PWD/SSS -20%
+                            PWD/SENIOR -20%
                           </span>
                         )}
                       </p>
@@ -1729,15 +1767,15 @@ const Bill = ({ orderId }) => {
             </h1>
           </div>
 
-          {pwdSssDiscountApplied && totals.pwdSssDiscountAmount > 0 && (
+          {pwdSeniorDiscountApplied && totals.pwdSeniorDiscountAmount > 0 && (
             <div className="flex justify-between items-center text-green-600">
               <div className="flex items-center">
                 <p className="text-xs font-medium mr-2">
                   {discountedItemsInfo}
-                  {pwdSssDetails.name && ` (${pwdSssDetails.name})`}
+                  {pwdSeniorDetails.name && ` (${pwdSeniorDetails.name})`}
                 </p>
                 <button
-                  onClick={clearPwdSssDiscount}
+                  onClick={clearPwdSeniorDiscount}
                   className="text-xs text-red-500 hover:text-red-700 font-medium"
                   disabled={isProcessing}
                 >
@@ -1745,7 +1783,7 @@ const Bill = ({ orderId }) => {
                 </button>
               </div>
               <h1 className="text-md font-bold">
-                -₱{totals.pwdSssDiscountAmount.toFixed(2)}
+                -₱{totals.pwdSeniorDiscountAmount.toFixed(2)}
               </h1>
             </div>
           )}
@@ -1822,15 +1860,15 @@ const Bill = ({ orderId }) => {
         {/* 🎟 DISCOUNT & REDEMPTION BUTTONS - IN ONE ROW */}
         <div className="grid grid-cols-4 gap-2">
           <button
-            onClick={handlePwdSssDiscount}
+            onClick={handlePwdSeniorDiscount}
             disabled={isProcessing}
             className={`px-2 py-2 rounded-lg font-semibold text-xs ${
-              pwdSssDiscountApplied
+              pwdSeniorDiscountApplied
                 ? "bg-green-500 text-white hover:bg-green-600"
                 : "bg-green-100 text-green-700 hover:bg-green-200"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {pwdSssDiscountApplied ? "✓ PWD/SSS" : "PWD/SSS"}
+            {pwdSeniorDiscountApplied ? "✓ PWD/SENIOR" : "PWD/SENIOR"}
           </button>
 
           <button
@@ -1891,15 +1929,19 @@ const Bill = ({ orderId }) => {
           </button>
 
           <button
-            onClick={() => setPaymentMethod("Online")}
+            onClick={() => setShowOnlineOptions(true)}
             disabled={isProcessing}
             className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
-              paymentMethod === "Online"
+              paymentMethod === "BDO" || paymentMethod === "GCASH"
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-gray-200 text-gray-600 hover:bg-gray-300"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            Online
+            {paymentMethod === "BDO"
+              ? "✓ BDO"
+              : paymentMethod === "GCASH"
+              ? "✓ GCASH"
+              : "Online"}
           </button>
         </div>
 
