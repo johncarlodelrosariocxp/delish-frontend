@@ -12,6 +12,7 @@ import {
   FaEye,
   FaEyeSlash,
   FaList,
+  FaTable,
 } from "react-icons/fa";
 import {
   keepPreviousData,
@@ -24,7 +25,7 @@ import { getOrders, updateOrderStatus } from "../../https/index";
 const RecentOrders = ({ orders = [], onStatusChange }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingOrders, setUpdatingOrders] = useState(new Set());
-  const [showAllOrders, setShowAllOrders] = useState(false);
+  const [viewMode, setViewMode] = useState("recent"); // 'recent' or 'all'
   const queryClient = useQueryClient();
 
   // Use provided orders prop or fetch if not provided
@@ -51,33 +52,30 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     enqueueSnackbar("Failed to load orders", { variant: "error" });
   }
 
-  // Get all orders - use prop if provided, otherwise use fetched data
+  // SAFELY Get all orders - handle different response structures
   const allOrders = React.useMemo(() => {
-    // If orders prop is provided and it's an array, use it
-    if (orders && Array.isArray(orders)) {
+    // If orders prop is provided, use it
+    if (orders && Array.isArray(orders) && orders.length > 0) {
       return orders;
     }
 
-    // Handle the API response structure
-    if (resData) {
-      // First check if data exists
-      const responseData = resData.data;
-
-      // Handle different possible response structures
-      if (Array.isArray(responseData)) {
-        // If response.data is directly an array
-        return responseData;
-      } else if (responseData && typeof responseData === "object") {
-        // Check for common nested structures
-        if (Array.isArray(responseData.data)) {
-          return responseData.data;
-        } else if (Array.isArray(responseData.orders)) {
-          return responseData.orders;
-        } else if (Array.isArray(responseData.items)) {
-          return responseData.items;
-        } else if (Array.isArray(responseData.results)) {
-          return responseData.results;
-        }
+    // Handle different response structures from API
+    if (resData?.data) {
+      // If data is directly an array
+      if (Array.isArray(resData.data)) {
+        return resData.data;
+      }
+      // If data has a nested data property
+      if (resData.data.data && Array.isArray(resData.data.data)) {
+        return resData.data.data;
+      }
+      // If data has a nested orders property
+      if (resData.data.orders && Array.isArray(resData.data.orders)) {
+        return resData.data.orders;
+      }
+      // If data has a nested results property
+      if (resData.data.results && Array.isArray(resData.data.results)) {
+        return resData.data.results;
       }
     }
 
@@ -85,9 +83,11 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     return [];
   }, [orders, resData]);
 
-  // Filter orders based on search query
+  // SAFELY Filter orders based on search query
   const filteredOrders = React.useMemo(() => {
-    if (!Array.isArray(allOrders)) return [];
+    if (!Array.isArray(allOrders)) {
+      return [];
+    }
 
     return allOrders.filter((order) => {
       if (!order) return false;
@@ -111,11 +111,19 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     });
   }, [allOrders, searchQuery]);
 
-  // Show only recent orders (last 5) when not in "show all" mode, otherwise show filtered results
+  // SAFELY Show orders based on view mode
   const displayOrders = React.useMemo(() => {
-    if (!Array.isArray(filteredOrders)) return [];
-    return showAllOrders ? filteredOrders : filteredOrders.slice(0, 5);
-  }, [filteredOrders, showAllOrders]);
+    if (!Array.isArray(filteredOrders)) {
+      return [];
+    }
+
+    if (viewMode === "all") {
+      return filteredOrders;
+    }
+
+    // Show only recent orders (last 10) when in recent mode
+    return filteredOrders.slice(0, 10);
+  }, [filteredOrders, viewMode]);
 
   // Status configuration - Matching the Home component style
   const getStatusConfig = (status) => {
@@ -220,7 +228,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     }
   };
 
-  // Format date
+  // SAFELY Format date
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     try {
@@ -239,7 +247,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     }
   };
 
-  // Calculate and format total amount
+  // SAFELY Calculate and format total amount
   const calculateTotalAmount = (order) => {
     if (!order) return 0;
 
@@ -272,7 +280,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     return 0;
   };
 
-  // Format currency - CHANGED TO PESO
+  // SAFELY Format currency - CHANGED TO PESO
   const formatCurrency = (amount) => {
     const numericAmount = parseFloat(amount) || 0;
     return new Intl.NumberFormat("en-PH", {
@@ -283,7 +291,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     }).format(numericAmount);
   };
 
-  // Get items count
+  // SAFELY Get items count
   const getItemsCount = (order) => {
     if (!order) return 0;
 
@@ -296,7 +304,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     return parseInt(order.itemsCount || order.quantity || 0);
   };
 
-  // Get items preview text
+  // SAFELY Get items preview text
   const getItemsPreview = (order) => {
     if (!order) return "No items";
 
@@ -325,7 +333,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     return itemsText;
   };
 
-  // Check if action buttons should be shown for an order
+  // SAFELY Check if action buttons should be shown for an order
   const shouldShowActions = (order) => {
     if (!order || !order.orderStatus) return false;
 
@@ -337,7 +345,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     );
   };
 
-  // Get available actions for an order
+  // SAFELY Get available actions for an order
   const getAvailableActions = (order) => {
     if (!order || !order.orderStatus) return [];
 
@@ -366,8 +374,8 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
   };
 
   // Toggle between showing all orders and recent orders only
-  const toggleViewAll = () => {
-    setShowAllOrders(!showAllOrders);
+  const toggleViewMode = () => {
+    setViewMode(viewMode === "recent" ? "all" : "recent");
   };
 
   // Show loading state
@@ -387,20 +395,14 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
       {/* Header */}
       <div className="flex justify-between items-center mb-4">
         <h1 className="text-lg font-semibold text-gray-900">
-          {showAllOrders ? "All Orders" : "Recent Orders"}
+          {viewMode === "all" ? "All Orders" : "Recent Orders"}
         </h1>
-        <div className="flex items-center gap-2">
-          {showAllOrders && (
-            <span className="flex items-center gap-1 text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
-              <FaList className="text-xs" />
-              <span>All Records</span>
-            </span>
-          )}
+        <div className="flex gap-2">
           <button
-            onClick={toggleViewAll}
+            onClick={toggleViewMode}
             className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1 px-3 py-1 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors"
           >
-            {showAllOrders ? (
+            {viewMode === "all" ? (
               <>
                 <FaEyeSlash className="text-xs" />
                 Show Recent
@@ -408,7 +410,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
             ) : (
               <>
                 <FaEye className="text-xs" />
-                View All Orders
+                View All Records
               </>
             )}
           </button>
@@ -431,21 +433,26 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
       <div className="mb-4 flex justify-between items-center">
         <p className="text-xs text-gray-600">
           Showing {displayOrders.length} of {filteredOrders.length} orders
-          {!showAllOrders && filteredOrders.length > 5 && " (most recent 5)"}
+          {viewMode === "recent" &&
+            filteredOrders.length > 10 &&
+            " (most recent 10)"}
         </p>
-        <p className="text-xs text-gray-500">
-          Total orders: {allOrders.length}
-        </p>
+        {viewMode === "all" && (
+          <div className="flex items-center gap-2 text-xs text-gray-500">
+            <FaTable className="text-xs" />
+            <span>All Records View</span>
+          </div>
+        )}
       </div>
 
       {/* Orders List */}
       <div
         className={`overflow-y-auto space-y-3 ${
-          showAllOrders ? "max-h-[600px]" : "max-h-[400px]"
+          viewMode === "all" ? "max-h-[600px]" : "max-h-[400px]"
         }`}
       >
         {displayOrders.length > 0 ? (
-          displayOrders.map((order, index) => {
+          displayOrders.map((order) => {
             if (!order) return null;
 
             const statusConfig = getStatusConfig(order.orderStatus);
@@ -453,13 +460,13 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
             const totalAmount = calculateTotalAmount(order);
             const itemsCount = getItemsCount(order);
             const itemsPreview = getItemsPreview(order);
-            const isUpdating = updatingOrders.has(order._id || order.id);
+            const isUpdating = updatingOrders.has(order._id);
             const showActions = shouldShowActions(order);
             const availableActions = getAvailableActions(order);
 
             return (
               <div
-                key={order._id || order.id || index}
+                key={order._id || order.id || Math.random()}
                 className={`border rounded-xl p-4 ${statusConfig.bgColor} ${statusConfig.borderColor} hover:shadow-md transition-all duration-200`}
               >
                 {/* Order Header */}
@@ -541,7 +548,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
                           key={action.status}
                           onClick={() =>
                             handleStatusUpdate(
-                              order._id || order.id,
+                              order._id,
                               order.orderStatus,
                               action.status
                             )
@@ -590,7 +597,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
       </div>
 
       {/* View Mode Info Footer */}
-      {showAllOrders && (
+      {viewMode === "all" && (
         <div className="mt-4 pt-3 border-t border-gray-200">
           <div className="flex items-center justify-center gap-2 text-xs text-gray-500">
             <FaList className="text-xs" />
