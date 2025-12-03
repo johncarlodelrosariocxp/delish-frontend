@@ -30,13 +30,19 @@ axiosWrapper.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`;
     }
 
-    // ✅ SAFE headers only - browsers block Origin and Referer
+    // ✅ Use lowercase headers to match CORS configuration
     if (IS_VERCEL) {
+      config.headers["x-frontend-source"] = "vercel";
+      config.headers["x-frontend-url"] = FRONTEND_URL;
+      // Also include uppercase for compatibility
       config.headers["X-Frontend-Source"] = "vercel";
       config.headers["X-Frontend-URL"] = FRONTEND_URL;
     }
 
+    // Log request details
     console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
+    console.log("Headers:", config.headers);
+
     return config;
   },
   (error) => {
@@ -49,12 +55,15 @@ axiosWrapper.interceptors.request.use(
 axiosWrapper.interceptors.response.use(
   (response) => {
     console.log(`✅ ${response.status} ${response.config.url}`);
+    console.log("Response headers:", response.headers);
 
     // Auto-save token from auth responses
     if (response.data?.token) {
       localStorage.setItem("authToken", response.data.token);
+      console.log("🔐 Token saved to localStorage");
     } else if (response.data?.data?.token) {
       localStorage.setItem("authToken", response.data.data.token);
+      console.log("🔐 Token saved to localStorage");
     }
 
     return response;
@@ -65,26 +74,33 @@ axiosWrapper.interceptors.response.use(
 
     console.error(`❌ API Error [${status}]:`, error.message);
     console.error("URL:", url);
+    console.error("Full error:", error);
 
     // Handle network/CORS errors
     if (
       error.code === "ERR_NETWORK" ||
       error.code === "ECONNREFUSED" ||
-      error.message.includes("CORS")
+      error.message.includes("CORS") ||
+      error.message.includes("cross-origin")
     ) {
       console.error("🌐 Network/CORS Issue Detected!");
       console.error("Frontend:", FRONTEND_URL);
       console.error("Backend:", API_BASE_URL);
+      console.error("Error code:", error.code);
 
       error.userMessage = `Connection failed. Please check:
       1. Backend server is running (${API_BASE_URL})
       2. CORS is configured on backend
-      3. Network connection is stable`;
+      3. Network connection is stable
+      
+      Frontend: ${FRONTEND_URL}
+      Backend: ${API_BASE_URL}`;
     }
 
     // Clear token on 401
     if (status === 401) {
       localStorage.removeItem("authToken");
+      console.log("🔓 Token removed due to 401");
       if (!window.location.pathname.includes("/login")) {
         setTimeout(() => {
           window.location.href = "/login";
@@ -100,14 +116,22 @@ axiosWrapper.interceptors.response.use(
 const testBackendConnection = async () => {
   try {
     console.log("🔍 Testing connection to Render...");
+    console.log("Testing URL:", API_BASE_URL);
 
     const response = await fetch(API_BASE_URL, {
       method: "GET",
-      headers: { Accept: "application/json" },
+      headers: {
+        Accept: "application/json",
+        "x-frontend-source": "vercel",
+        "x-frontend-url": FRONTEND_URL,
+      },
+      mode: "cors", // Explicitly set CORS mode
     });
 
     const success = response.ok;
     console.log(success ? "✅ Backend reachable" : "❌ Backend not reachable");
+    console.log("Response status:", response.status);
+    console.log("Response headers:", [...response.headers.entries()]);
 
     return {
       success,
@@ -117,12 +141,34 @@ const testBackendConnection = async () => {
     };
   } catch (error) {
     console.error("❌ Connection test failed:", error.message);
+    console.error("Error details:", error);
 
     return {
       success: false,
       error: error.message,
       frontend: FRONTEND_URL,
       backend: API_BASE_URL,
+    };
+  }
+};
+
+// ✅ Test API connection with axios
+const testApiConnection = async () => {
+  try {
+    console.log("🔍 Testing API connection...");
+    const response = await axiosWrapper.get("/health");
+    console.log("✅ API connection successful:", response.data);
+    return {
+      success: true,
+      data: response.data,
+      status: response.status,
+    };
+  } catch (error) {
+    console.error("❌ API connection test failed:", error.message);
+    return {
+      success: false,
+      error: error.message,
+      code: error.code,
     };
   }
 };
@@ -136,22 +182,41 @@ const removeAuthToken = () => localStorage.removeItem("authToken");
 // ✅ Quick connection test on page load
 if (typeof window !== "undefined") {
   setTimeout(() => {
-    if (IS_VERCEL && window.location.pathname === "/login") {
+    if (
+      window.location.pathname === "/login" ||
+      window.location.pathname === "/"
+    ) {
+      console.log("🔄 Running connection tests...");
       testBackendConnection().then((result) => {
         if (!result.success) {
-          console.warn("⚠️  Backend connection issue detected");
+          console.warn("⚠️ Backend connection issue detected");
+          // Try API test as well
+          testApiConnection();
         }
       });
     }
-  }, 2000);
+  }, 1000);
 }
 
-// ✅ SINGLE EXPORT SECTION - No duplicate exports
+// ✅ Debug function to check current configuration
+const debugConfig = () => {
+  return {
+    frontend: FRONTEND_URL,
+    backend: API_BASE_URL,
+    isVercel: IS_VERCEL,
+    tokenExists: !!localStorage.getItem("authToken"),
+    userAgent: navigator.userAgent,
+  };
+};
+
+// ✅ SINGLE EXPORT SECTION
 export default axiosWrapper;
 export {
   axiosWrapper,
   API_BASE_URL,
   testBackendConnection,
+  testApiConnection,
+  debugConfig,
   isAuthenticated,
   getAuthToken,
   setAuthToken,
