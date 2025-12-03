@@ -5,63 +5,63 @@ import { enqueueSnackbar } from "notistack";
 import { useDispatch } from "react-redux";
 import { setUser } from "../../redux/slices/userSlice";
 import { useNavigate } from "react-router-dom";
+import PropTypes from "prop-types";
 
-const Login = () => {
+const Login = ({ setIsRegister }) => {
   const navigate = useNavigate();
   const dispatch = useDispatch();
 
   const [formData, setFormData] = useState({ email: "", password: "" });
   const [showForgotPassword, setShowForgotPassword] = useState(false);
   const [forgotPasswordEmail, setForgotPasswordEmail] = useState("");
-  const [backendUrl, setBackendUrl] = useState("");
-  const [isBackendConnected, setIsBackendConnected] = useState(false);
+  const [backendStatus, setBackendStatus] = useState("checking");
+  const [isProduction, setIsProduction] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
 
-  // Test backend connection on load
+  // Detect environment and check backend
   useEffect(() => {
-    const testBackend = async () => {
-      console.log("🔧 ===== LOGIN DEBUG INFO =====");
-      console.log("🌐 Frontend URL:", window.location.origin);
+    // Check if production
+    setIsProduction(import.meta.env.PROD);
 
-      // Try to connect to Render backend
-      const RENDER_URL = "https://delish-backend-1.onrender.com";
-
-      try {
-        console.log("🔗 Testing connection to:", RENDER_URL);
-        const response = await fetch(RENDER_URL);
-        const data = await response.json();
-
-        console.log("✅ Backend connected! Status:", response.status);
-        console.log("📊 Backend response:", data);
-
-        setBackendUrl(RENDER_URL);
-        setIsBackendConnected(true);
-
-        // Show success message
-        enqueueSnackbar("✅ Connected to production backend", {
-          variant: "success",
-          autoHideDuration: 3000,
-        });
-      } catch (error) {
-        console.error("❌ Cannot connect to backend:", error.message);
-        console.log("⚠️ Backend might be down or CORS issue");
-        setIsBackendConnected(false);
-
-        // Show error message
-        enqueueSnackbar(
-          `❌ Cannot connect to backend server. Please check deployment.`,
-          {
-            variant: "error",
-            autoHideDuration: 5000,
-          }
-        );
-      }
-
-      console.log("🚀 =============================");
+    // Check if mobile device
+    const checkMobile = () => {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        navigator.userAgent
+      );
     };
+    setIsMobile(checkMobile());
 
-    testBackend();
+    // Check backend connection
+    checkBackendConnection();
   }, []);
 
+  // Check backend connection
+  const checkBackendConnection = async () => {
+    try {
+      const apiUrl = import.meta.env.VITE_API_URL || "http://localhost:8000";
+      const response = await fetch(`${apiUrl}/health`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      if (response.ok) {
+        setBackendStatus("connected");
+        console.log("✅ Backend is running");
+      } else {
+        setBackendStatus("error");
+        console.log("❌ Backend returned error status");
+      }
+    } catch (error) {
+      setBackendStatus("disconnected");
+      console.log("❌ Backend connection failed:", error.message);
+    }
+  };
+
+  // =============================
+  // 📌 Handlers
+  // =============================
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
@@ -70,43 +70,55 @@ const Login = () => {
   const handleSubmit = useCallback(
     (e) => {
       e.preventDefault();
+
+      // Basic validation
+      if (!formData.email || !formData.password) {
+        enqueueSnackbar("Please fill in all fields", { variant: "error" });
+        return;
+      }
+
+      // Email validation
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(formData.email)) {
+        enqueueSnackbar("Please enter a valid email address", {
+          variant: "error",
+        });
+        return;
+      }
+
+      // Check backend before submitting
+      if (backendStatus !== "connected") {
+        enqueueSnackbar(
+          "Backend server is not running. Please start the backend server first.",
+          {
+            variant: "error",
+            autoHideDuration: 8000,
+          }
+        );
+        return;
+      }
+
       loginMutation.mutate(formData);
     },
-    [formData]
+    [formData, backendStatus]
   );
 
   // =============================
-  // 📌 Login Mutation - COMPLETELY FIXED VERSION
+  // 📌 Login Mutation
   // =============================
   const loginMutation = useMutation({
     mutationFn: (reqData) => login(reqData),
     onSuccess: (res) => {
-      console.log("🔐 Full login response:", res);
-      console.log("🔐 Response data:", res.data);
-      console.log("🔐 Response structure:", JSON.stringify(res.data, null, 2));
-
       try {
-        // SAFE: Get token from multiple possible locations
+        // Get token from response
         const token = res.data?.token || res.data?.data?.token;
-        console.log("✅ Token found:", token ? "YES" : "NO");
-
-        if (!token) {
-          throw new Error("No token received in response");
-        }
-
-        // SAFE: Get user from multiple possible locations
         const user = res.data?.data?.user || res.data?.user || res.data?.data;
-        console.log("✅ User data found:", user ? "YES" : "NO");
 
         if (res.data?.success && token) {
-          console.log("✅ Login successful! Processing...");
-
           // Save token to localStorage
           localStorage.setItem("authToken", token);
-          localStorage.setItem("token", token);
-          console.log("✅ Token saved to localStorage");
 
-          // Extract user data SAFELY with fallbacks
+          // Extract user data with fallbacks
           const userData = {
             _id: user?._id || "unknown-id",
             name: user?.name || "User",
@@ -115,8 +127,6 @@ const Login = () => {
             role: user?.role || "cashier",
             token: token,
           };
-
-          console.log("✅ Processed user data:", userData);
 
           // Save user in Redux
           dispatch(setUser(userData));
@@ -127,388 +137,333 @@ const Login = () => {
           // Force authentication check
           window.dispatchEvent(new Event("storage"));
 
+          enqueueSnackbar("Login successful! Redirecting...", {
+            variant: "success",
+            autoHideDuration: 3000,
+          });
+
           // Navigate after a short delay
           setTimeout(() => {
-            console.log(
-              "🔍 Final auth check - Token:",
-              localStorage.getItem("authToken")
-            );
-            console.log(
-              "🔍 Final auth check - User:",
-              localStorage.getItem("user")
-            );
             navigate("/", { replace: true });
-            console.log("🚀 Navigated to home");
-          }, 500);
+          }, 1500);
         } else {
-          console.error("❌ Login failed - no success flag");
           enqueueSnackbar(res.data?.message || "Login failed", {
             variant: "error",
           });
         }
       } catch (error) {
-        console.error("❌ Error in onSuccess handler:", error);
-        console.error("❌ Error details:", {
-          message: error.message,
-          stack: error.stack,
-          response: res.data,
+        console.error("Error in login handler:", error);
+        enqueueSnackbar("Login processing error. Please try again.", {
+          variant: "error",
         });
-
-        // Even if there's an error, if we have a token, try to continue
-        const token = localStorage.getItem("authToken");
-        if (token) {
-          console.log("⚠️ Continuing with token despite error");
-          setTimeout(() => {
-            navigate("/", { replace: true });
-          }, 500);
-        } else {
-          enqueueSnackbar("Login processing error: " + error.message, {
-            variant: "error",
-          });
-        }
       }
     },
     onError: (error) => {
-      console.error("❌ Login mutation error:", {
-        message: error.message,
-        code: error.code,
-        status: error.response?.status,
-        url: error.config?.url,
-        responseData: error.response?.data,
-      });
-
       let errorMessage = "Wrong password or email";
-      let helpMessage = "";
 
       if (error?.code === "NETWORK_ERROR" || error?.code === "ERR_NETWORK") {
         errorMessage = "Cannot connect to backend server";
-        helpMessage = `Please check if backend is running at: https://delish-backend-1.onrender.com`;
       } else if (error?.response?.status === 404) {
         errorMessage = "Login endpoint not found";
-        helpMessage =
-          "Backend API endpoint is not available. Check deployment.";
       } else if (error?.response?.status === 401) {
         errorMessage = "Invalid email or password";
-        helpMessage = "Use: admin@delish.com / password123";
       } else if (error?.response?.data?.message) {
         errorMessage = error.response.data.message;
       }
 
       enqueueSnackbar(errorMessage, {
         variant: "error",
-        autoHideDuration: 6000,
+        autoHideDuration: 5000,
       });
-
-      if (helpMessage) {
-        setTimeout(() => {
-          enqueueSnackbar(helpMessage, {
-            variant: "info",
-            autoHideDuration: 8000,
-          });
-        }, 1000);
-      }
     },
   });
 
-  // Emergency: Create user directly
-  const handleEmergencyCreateUser = async () => {
-    try {
-      console.log("🚨 Creating emergency user...");
-
-      const response = await fetch(
-        "https://delish-backend-1.onrender.com/api/force-create-user",
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({
-            name: "Admin User",
-            email: "admin@delish.com",
-            phone: "1234567890",
-            password: "password123",
-            role: "admin",
-          }),
-        }
-      );
-
-      const data = await response.json();
-      console.log("Emergency user result:", data);
-
-      if (data.success) {
-        enqueueSnackbar(
-          "✅ Emergency user created! Try logging in with admin@delish.com / password123",
-          {
-            variant: "success",
-            autoHideDuration: 8000,
-          }
-        );
-
-        // Auto-fill the form
-        setFormData({
-          email: "admin@delish.com",
-          password: "password123",
-        });
-      } else {
-        enqueueSnackbar("Failed to create user: " + data.message, {
-          variant: "error",
-        });
-      }
-    } catch (error) {
-      console.error("Emergency user failed:", error);
-      enqueueSnackbar("❌ Cannot create user: " + error.message, {
-        variant: "error",
-      });
+  // Get backend status color
+  const getBackendStatusColor = () => {
+    switch (backendStatus) {
+      case "connected":
+        return "bg-green-900 border-green-700 text-green-300";
+      case "disconnected":
+        return "bg-red-900 border-red-700 text-red-300";
+      case "error":
+        return "bg-yellow-900 border-yellow-700 text-yellow-300";
+      default:
+        return "bg-blue-900 border-blue-700 text-blue-300";
     }
   };
 
-  // Quick login test function
-  const handleQuickLoginTest = async () => {
-    try {
-      console.log("🧪 Testing quick login...");
-
-      const response = await fetch(
-        "https://delish-backend-1.onrender.com/api/user/login",
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            email: "admin@delish.com",
-            password: "password123",
-          }),
-        }
-      );
-
-      const data = await response.json();
-      console.log(
-        "Quick test response structure:",
-        JSON.stringify(data, null, 2)
-      );
-
-      if (data.success && data.token) {
-        // Auto-fill form with test credentials
-        setFormData({
-          email: "admin@delish.com",
-          password: "password123",
-        });
-
-        enqueueSnackbar("✅ Test credentials ready! Click Sign In", {
-          variant: "success",
-        });
-      } else {
-        enqueueSnackbar(
-          "❌ Test failed: " + (data.message || "Unknown error"),
-          {
-            variant: "error",
-          }
-        );
-      }
-    } catch (error) {
-      console.error("Quick test failed:", error);
-      enqueueSnackbar("❌ Test failed: " + error.message, {
-        variant: "error",
-      });
+  const getBackendStatusText = () => {
+    switch (backendStatus) {
+      case "connected":
+        return "✅ Backend Connected";
+      case "disconnected":
+        return "❌ Backend Disconnected";
+      case "error":
+        return "⚠️ Backend Error";
+      default:
+        return "🔍 Checking Backend...";
     }
   };
 
+  // =============================
+  // 📌 Render
+  // =============================
   return (
     <div className="w-full max-w-md mx-auto p-6">
-      {/* Production Status Banner */}
-      <div className="mb-6 p-4 bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-blue-300">
-              🚀 Production Mode
-            </h3>
-            <p className="text-blue-400 text-sm">
-              Backend:{" "}
-              <code className="bg-blue-900 px-2 py-1 rounded">
-                https://delish-backend-1.onrender.com
-              </code>
-            </p>
-          </div>
-          <button
-            onClick={handleEmergencyCreateUser}
-            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded"
-            title="Create emergency admin user"
-          >
-            Create Test User
-          </button>
-        </div>
-
-        {isBackendConnected ? (
-          <div className="mt-2 p-2 bg-green-900 bg-opacity-20 border border-green-700 rounded">
-            <p className="text-green-300 text-sm">✅ Backend connected</p>
-          </div>
-        ) : (
-          <div className="mt-2 p-2 bg-red-900 bg-opacity-20 border border-red-700 rounded">
-            <p className="text-red-300 text-sm">❌ Backend not connected</p>
-            <p className="text-red-400 text-xs">Check Render dashboard</p>
-          </div>
+      {/* Backend Status Indicator */}
+      <div
+        className={`mb-4 p-3 rounded-lg border text-center text-sm ${getBackendStatusColor()}`}
+      >
+        <p>{getBackendStatusText()}</p>
+        {backendStatus !== "connected" && (
+          <p className="text-xs mt-1 opacity-80">
+            Start backend: <code>cd delish-backend && npm start</code>
+          </p>
         )}
       </div>
 
+      {/* Environment Indicator */}
+      <div
+        className={`mb-6 p-3 rounded-lg border text-center text-sm ${
+          isProduction
+            ? "bg-green-900 bg-opacity-20 border-green-700 text-green-300"
+            : "bg-blue-900 bg-opacity-20 border-blue-700 text-blue-300"
+        }`}
+      >
+        <p>
+          {isProduction ? "🚀 PRODUCTION" : "🔧 DEVELOPMENT"} |
+          {isMobile ? " 📱 MOBILE" : " 💻 DESKTOP"}
+        </p>
+      </div>
+
       {!showForgotPassword ? (
-        <form onSubmit={handleSubmit}>
-          <div>
-            <label className="block text-[#ababab] mb-2 text-sm font-medium">
-              Email
-            </label>
-            <input
-              type="email"
-              name="email"
-              value={formData.email}
-              onChange={handleChange}
-              placeholder="admin@delish.com"
-              className="w-full p-3 bg-[#1f1f1f] border border-gray-700 rounded-lg text-white mb-4"
-              required
-            />
+        <>
+          <div className="text-center mb-6">
+            <h2 className="text-2xl font-bold text-white mb-2">Welcome Back</h2>
+            <p className="text-[#ababab] text-sm">
+              Sign in to your Delish POS account
+            </p>
           </div>
 
-          <div>
-            <label className="block text-[#ababab] mb-2 text-sm font-medium">
-              Password
-            </label>
-            <input
-              type="password"
-              name="password"
-              value={formData.password}
-              onChange={handleChange}
-              placeholder="password123"
-              className="w-full p-3 bg-[#1f1f1f] border border-gray-700 rounded-lg text-white mb-4"
-              required
-            />
-          </div>
+          <form onSubmit={handleSubmit}>
+            {/* Email Field */}
+            <div>
+              <label className="block text-[#ababab] mb-2 text-sm font-medium">
+                Email
+              </label>
+              <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f] border border-gray-700 focus-within:border-yellow-400 transition-colors">
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  placeholder="Enter your email"
+                  className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
+                  required
+                  disabled={
+                    loginMutation.isLoading || backendStatus !== "connected"
+                  }
+                />
+              </div>
+            </div>
 
-          <button
-            type="submit"
-            disabled={loginMutation.isLoading}
-            className="w-full p-4 bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold rounded-lg mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loginMutation.isLoading ? "Signing in..." : "Sign In"}
-          </button>
+            {/* Password Field */}
+            <div className="mt-4">
+              <label className="block text-[#ababab] mb-2 text-sm font-medium">
+                Password
+              </label>
+              <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f] border border-gray-700 focus-within:border-yellow-400 transition-colors">
+                <input
+                  type="password"
+                  name="password"
+                  value={formData.password}
+                  onChange={handleChange}
+                  placeholder="Enter your password"
+                  className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
+                  required
+                  disabled={
+                    loginMutation.isLoading || backendStatus !== "connected"
+                  }
+                />
+              </div>
+            </div>
 
-          {/* Quick Actions */}
-          <div className="mt-4 space-y-2">
+            {/* Forgot Password Link */}
+            <div className="text-right mt-2">
+              <button
+                type="button"
+                onClick={() => setShowForgotPassword(true)}
+                className="text-yellow-400 hover:text-yellow-300 text-xs font-medium"
+                disabled={loginMutation.isLoading}
+              >
+                Forgot Password?
+              </button>
+            </div>
+
+            {/* Submit Button */}
             <button
-              type="button"
-              onClick={() =>
-                setFormData({
-                  email: "admin@delish.com",
-                  password: "password123",
-                })
+              type="submit"
+              disabled={
+                loginMutation.isLoading || backendStatus !== "connected"
               }
-              className="w-full p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded"
+              className="w-full rounded-lg mt-6 py-4 text-lg bg-yellow-400 text-gray-900 font-bold hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-yellow-500/25"
             >
-              Fill Test Credentials
+              {loginMutation.isLoading ? (
+                <span className="flex items-center justify-center">
+                  <svg
+                    className="animate-spin -ml-1 mr-3 h-5 w-5 text-gray-900"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                  >
+                    <circle
+                      className="opacity-25"
+                      cx="12"
+                      cy="12"
+                      r="10"
+                      stroke="currentColor"
+                      strokeWidth="4"
+                    ></circle>
+                    <path
+                      className="opacity-75"
+                      fill="currentColor"
+                      d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                    ></path>
+                  </svg>
+                  Signing In...
+                </span>
+              ) : backendStatus !== "connected" ? (
+                "Start Backend First"
+              ) : (
+                "Sign In"
+              )}
             </button>
-            <button
-              type="button"
-              onClick={handleQuickLoginTest}
-              className="w-full p-2 bg-blue-800 hover:bg-blue-700 text-blue-300 text-sm rounded"
-            >
-              Test Login Connection
-            </button>
-          </div>
 
-          {/* Forgot Password Link */}
-          <div className="text-center mt-4">
-            <button
-              type="button"
-              onClick={() => setShowForgotPassword(true)}
-              className="text-yellow-400 hover:text-yellow-300 text-sm font-medium"
-            >
-              Forgot Password?
-            </button>
-          </div>
-        </form>
+            {/* Switch to Register */}
+            <div className="text-center mt-4">
+              <p className="text-[#ababab] text-sm">
+                Don't have an account?{" "}
+                <button
+                  type="button"
+                  onClick={() => setIsRegister(true)}
+                  disabled={loginMutation.isLoading}
+                  className="text-yellow-400 hover:text-yellow-300 font-medium"
+                >
+                  Create Account
+                </button>
+              </p>
+            </div>
+
+            {/* Test Credentials Hint */}
+            <div className="mt-4 p-3 bg-gray-800 rounded-lg">
+              <p className="text-gray-400 text-xs text-center">
+                💡 <strong>Demo Credentials:</strong>
+                <br />
+                Email: admin@delish.com
+                <br />
+                Password: password123
+              </p>
+            </div>
+          </form>
+        </>
       ) : (
         <div className="text-center">
-          <h2 className="text-xl font-bold text-white mb-4">Forgot Password</h2>
-          <p className="text-gray-400 mb-4">
+          <h2 className="text-2xl font-bold text-white mb-2">
+            Forgot Password
+          </h2>
+          <p className="text-[#ababab] text-sm mb-6">
             Enter your email to receive a reset link.
           </p>
-          <input
-            type="email"
-            value={forgotPasswordEmail}
-            onChange={(e) => setForgotPasswordEmail(e.target.value)}
-            placeholder="your@email.com"
-            className="w-full p-3 bg-[#1f1f1f] border border-gray-700 rounded-lg text-white mb-4"
-          />
-          <div className="flex gap-2">
+
+          <div className="mb-6">
+            <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f] border border-gray-700 focus-within:border-yellow-400 transition-colors">
+              <input
+                type="email"
+                value={forgotPasswordEmail}
+                onChange={(e) => setForgotPasswordEmail(e.target.value)}
+                placeholder="your@email.com"
+                className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
+              />
+            </div>
+          </div>
+
+          <div className="flex gap-3">
             <button
               type="button"
               onClick={() => setShowForgotPassword(false)}
-              className="flex-1 p-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+              className="flex-1 py-3 px-4 bg-[#1f1f1f] text-[#ababab] border border-gray-700 hover:border-yellow-400 rounded-lg font-medium transition-all"
             >
               Cancel
             </button>
             <button
               type="button"
-              onClick={handleEmergencyCreateUser}
-              className="flex-1 p-3 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+              onClick={() => {
+                enqueueSnackbar("Reset link sent to your email", {
+                  variant: "info",
+                });
+                setShowForgotPassword(false);
+              }}
+              className="flex-1 py-3 px-4 bg-yellow-400 text-gray-900 font-bold hover:bg-yellow-500 rounded-lg transition-colors"
             >
-              Create Test User
+              Send Reset Link
+            </button>
+          </div>
+
+          <div className="mt-6">
+            <button
+              type="button"
+              onClick={() => setShowForgotPassword(false)}
+              className="text-yellow-400 hover:text-yellow-300 text-sm font-medium"
+            >
+              ← Back to Login
             </button>
           </div>
         </div>
       )}
 
-      {/* Debug Info */}
-      <div className="mt-6 p-3 bg-gray-900 rounded-lg text-xs text-gray-400">
-        <p className="font-semibold mb-1">Debug Info:</p>
-        <p>Token location check order:</p>
-        <ol className="ml-4 list-decimal">
-          <li>
-            <code>res.data.token</code>
-          </li>
-          <li>
-            <code>res.data.data?.token</code>
-          </li>
-        </ol>
-        <p>User location check order:</p>
-        <ol className="ml-4 list-decimal">
-          <li>
-            <code>res.data.data?.user</code>
-          </li>
-          <li>
-            <code>res.data.user</code>
-          </li>
-          <li>
-            <code>res.data.data</code>
-          </li>
-        </ol>
-        <p className="mt-2">Test Credentials:</p>
-        <p>Email: admin@delish.com</p>
-        <p>Password: password123</p>
-        <button
-          onClick={async () => {
-            try {
-              const res = await fetch(
-                "https://delish-backend-1.onrender.com/api/user/login",
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    email: "admin@delish.com",
-                    password: "password123",
-                  }),
-                }
-              );
-              const data = await res.json();
-              console.log("Response structure:", JSON.stringify(data, null, 2));
-              alert("Check console for response structure");
-            } catch (error) {
-              console.error("Test failed:", error);
-            }
-          }}
-          className="mt-2 px-3 py-1 bg-purple-700 hover:bg-purple-800 text-white text-xs rounded"
-        >
-          Log Response Structure
-        </button>
+      {/* Troubleshooting Guide */}
+      {backendStatus !== "connected" && (
+        <div className="mt-4 p-3 bg-red-900 bg-opacity-20 border border-red-700 rounded-lg">
+          <p className="text-red-300 text-xs">
+            🔧 <strong>To fix this issue:</strong>
+            <br />
+            1. Open terminal in <code>delish-backend</code> folder
+            <br />
+            2. Run: <code>npm start</code>
+            <br />
+            3. Wait for "POS Server is listening on port 8000" message
+            <br />
+            4. Refresh this page
+          </p>
+        </div>
+      )}
+
+      {/* Environment-specific Help Text */}
+      <div className="mt-4 p-3 bg-gray-800 rounded-lg">
+        <p className="text-gray-400 text-xs text-center">
+          {isProduction ? (
+            <>
+              🚀 <strong>Production Mode</strong>
+              <br />
+              Ensure backend is deployed and running
+            </>
+          ) : (
+            <>
+              💡 <strong>Development Tips:</strong>
+              <br />• Backend running on port 8000
+              <br />• Same WiFi network for mobile
+              <br />• Use computer IP for mobile access
+            </>
+          )}
+        </p>
       </div>
     </div>
   );
+};
+
+// PropTypes validation
+Login.propTypes = {
+  setIsRegister: PropTypes.func.isRequired,
 };
 
 export default memo(Login);
