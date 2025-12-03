@@ -41,7 +41,11 @@ const Bill = ({ orderId }) => {
 
   // Safe access to user data from auth state
   const userState = useSelector((state) => state.auth);
-  const user = userState?.user || userState?.data?.user || { name: "Admin" };
+  const user = userState?.user ||
+    userState?.data?.user || {
+      _id: "000000000000000000000001",
+      name: "Admin",
+    };
 
   const currentOrder =
     orders.find((order) => order.id === orderId) ||
@@ -1080,7 +1084,7 @@ const Bill = ({ orderId }) => {
         orderDate: new Date().toISOString(),
         cashier: user?.name || "Admin",
         pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null,
-        user: user?._id || "system", // Add user field
+        user: user?._id || "000000000000000000000001", // Valid ObjectId
       };
 
       setOrderInfo(invoiceOrderInfo);
@@ -1171,8 +1175,6 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    // REMOVED CUSTOMER NAME VALIDATION - Use default "Walk-in"
-
     // Validate PWD/SSS discount if applied
     if (pwdSssDiscountApplied) {
       if (!pwdSssDetails.name.trim()) {
@@ -1203,12 +1205,12 @@ const Bill = ({ orderId }) => {
       customerData.tableId ||
       null;
 
-    // Prepare bills data - ALL REQUIRED FIELDS
+    // Prepare bills data with ALL REQUIRED FIELDS
     const bills = {
       total: Number(totals.baseGrossTotal.toFixed(2)),
       tax: Number(totals.vatAmount.toFixed(2)),
       discount: Number(totals.totalDiscountAmount.toFixed(2)),
-      totalWithTax: Number(totals.total.toFixed(2)),
+      totalWithTax: Number(totals.total.toFixed(2)), // Required
       pwdSssDiscount: Number(totals.pwdSssDiscountAmount.toFixed(2)),
       pwdSssDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
       employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
@@ -1242,14 +1244,14 @@ const Bill = ({ orderId }) => {
     // Prepare COMPLETE order data with ALL REQUIRED FIELDS
     const orderData = {
       customerDetails: {
-        name: customerData.customerName?.trim() || "Walk-in", // Use default if empty
-        phone: customerData.customerPhone?.trim() || "Not provided",
-        guests: safeNumber(customerData.guests) || 1,
+        name: customerData.customerName?.trim() || "Walk-in", // Required
+        phone: customerData.customerPhone?.trim() || "Not provided", // Required
+        guests: safeNumber(customerData.guests) || 1, // Required
         email: customerData.customerEmail || "",
         address: customerData.customerAddress || "",
       },
-      orderStatus: "Completed",
-      bills: bills,
+      orderStatus: "Completed", // Required
+      bills: bills, // Already contains all required fields
       items: items,
       table: tableId,
       paymentMethod: paymentMethod,
@@ -1262,13 +1264,13 @@ const Bill = ({ orderId }) => {
         type: isDrinkItem(item) ? "drink" : "food",
       })),
       cashier: cashierName,
-      user: user?._id || "system", // REQUIRED FIELD
+      user: user?._id || "000000000000000000000001", // Required - Valid ObjectId
       orderDate: new Date().toISOString(),
       totalAmount: Number(totals.total.toFixed(2)),
       notes: customerData.notes || "",
     };
 
-    console.log("Sending order data:", orderData);
+    console.log("Sending order data:", JSON.stringify(orderData, null, 2));
 
     // Handle payment methods
     if (paymentMethod === "Online") {
