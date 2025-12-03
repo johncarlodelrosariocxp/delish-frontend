@@ -30,11 +30,8 @@ const Menu = () => {
   const [activeTab, setActiveTab] = useState("active");
   const [printingOrderId, setPrintingOrderId] = useState(null);
 
-  // Filter orders correctly
+  // Filter orders - only active and completed
   const activeOrders = orders.filter((order) => order.status === "active");
-  const processingOrders = orders.filter(
-    (order) => order.status === "processing"
-  );
 
   const handleAddNewOrder = () => {
     dispatch(createNewOrder());
@@ -281,19 +278,6 @@ const Menu = () => {
         </button>
       </div>
 
-      {/* Warning for processing orders */}
-      {processingOrders.length > 0 && (
-        <div className="bg-yellow-50 border-b border-yellow-200 px-3 py-2">
-          <div className="max-w-7xl mx-auto flex items-center justify-center gap-2">
-            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-yellow-600"></div>
-            <p className="text-yellow-700 text-sm font-medium">
-              ⏳ {processingOrders.length} order
-              {processingOrders.length > 1 ? "s" : ""} being processed...
-            </p>
-          </div>
-        </div>
-      )}
-
       {/* Order Tabs - Only show for active orders */}
       {activeTab === "active" && (
         <div className="bg-gray-200 px-3 pb-1 flex items-center gap-2 overflow-x-auto">
@@ -332,30 +316,6 @@ const Menu = () => {
             </div>
           ))}
 
-          {/* Show processing orders with different styling */}
-          {processingOrders.map((order) => (
-            <div
-              key={order.id}
-              className="flex items-center gap-2 px-3 py-2 rounded-t-lg min-w-0 flex-shrink-0 bg-yellow-100 border-t border-l border-r border-yellow-200 cursor-not-allowed"
-            >
-              <span className="text-sm font-medium whitespace-nowrap text-yellow-700">
-                Order {order.number}
-              </span>
-              {order.items.length > 0 && (
-                <span className="bg-yellow-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
-                  {order.items.reduce(
-                    (total, item) => total + item.quantity,
-                    0
-                  )}
-                </span>
-              )}
-              <div className="flex items-center gap-1">
-                <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-yellow-600"></div>
-                <span className="text-yellow-600 text-xs">Processing...</span>
-              </div>
-            </div>
-          ))}
-
           {/* Add New Order Button */}
           <button
             onClick={handleAddNewOrder}
@@ -370,7 +330,7 @@ const Menu = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col md:flex-col lg:flex-row gap-3 p-3 pb-20 lg:pb-3">
         {activeTab === "active" ? (
-          activeOrders.length === 0 && processingOrders.length === 0 ? (
+          activeOrders.length === 0 ? (
             // No active orders state
             <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 rounded-lg p-8">
               <div className="text-center">
@@ -384,47 +344,6 @@ const Menu = () => {
                 <button
                   onClick={handleAddNewOrder}
                   className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors font-semibold"
-                >
-                  Create New Order
-                </button>
-              </div>
-            </div>
-          ) : activeOrders.length === 0 && processingOrders.length > 0 ? (
-            // Only processing orders, no active ones
-            <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 rounded-lg p-8">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mx-auto mb-4"></div>
-                <h3 className="text-xl font-semibold text-gray-600 mb-2">
-                  Orders Being Processed
-                </h3>
-                <p className="text-gray-500 mb-4">
-                  Your orders are being completed. Please wait...
-                </p>
-                <div className="space-y-2 max-w-md mx-auto">
-                  {processingOrders.map((order) => (
-                    <div
-                      key={order.id}
-                      className="bg-yellow-50 border border-yellow-200 rounded-lg p-3"
-                    >
-                      <div className="flex justify-between items-center">
-                        <span className="font-medium">
-                          Order {order.number}
-                        </span>
-                        <span className="text-sm text-yellow-600">
-                          {order.items.length} items
-                        </span>
-                      </div>
-                      {order.customer?.customerName && (
-                        <p className="text-sm text-gray-600 mt-1">
-                          Customer: {order.customer.customerName}
-                        </p>
-                      )}
-                    </div>
-                  ))}
-                </div>
-                <button
-                  onClick={handleAddNewOrder}
-                  className="mt-6 bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors font-semibold"
                 >
                   Create New Order
                 </button>
