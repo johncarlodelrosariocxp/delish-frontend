@@ -63,6 +63,13 @@ const Bill = ({ orderId }) => {
   const [cashAmount, setCashAmount] = useState(0);
   const [showCashModal, setShowCashModal] = useState(false);
   const [showOnlineOptions, setShowOnlineOptions] = useState(false);
+  const [mixedPayment, setMixedPayment] = useState({
+    isMixed: false,
+    cashAmount: 0,
+    onlineAmount: 0,
+    onlineMethod: null,
+  });
+  const [showMixedPaymentModal, setShowMixedPaymentModal] = useState(false);
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -233,8 +240,15 @@ const Bill = ({ orderId }) => {
 
       // Calculate change
       const cashAmountNum = safeNumber(cashAmount);
-      const change =
-        paymentMethod === "Cash" ? Math.max(0, cashAmountNum - total) : 0;
+      const onlineAmountNum = safeNumber(mixedPayment.onlineAmount);
+
+      let change = 0;
+      if (paymentMethod === "Cash") {
+        change = Math.max(0, cashAmountNum - total);
+      } else if (mixedPayment.isMixed) {
+        const totalPaid = cashAmountNum + onlineAmountNum;
+        change = Math.max(0, totalPaid - total);
+      }
 
       return {
         baseGrossTotal,
@@ -249,6 +263,7 @@ const Bill = ({ orderId }) => {
         totalDiscountAmount,
         subtotalAfterPwdSeniorAndRedemption,
         cashAmount: cashAmountNum,
+        onlineAmount: onlineAmountNum,
         change,
       };
     } catch (error) {
@@ -266,6 +281,7 @@ const Bill = ({ orderId }) => {
         totalDiscountAmount: 0,
         subtotalAfterPwdSeniorAndRedemption: 0,
         cashAmount: 0,
+        onlineAmount: 0,
         change: 0,
       };
     }
@@ -604,9 +620,73 @@ const Bill = ({ orderId }) => {
   const handleOnlinePaymentSelect = (method) => {
     setPaymentMethod(method);
     setShowOnlineOptions(false);
-    enqueueSnackbar(`Payment method set to ${method}`, {
-      variant: "success",
-    });
+
+    // Check if cash was already entered and offer mixed payment
+    if (cashAmount > 0 && cashAmount < totals.total) {
+      const remaining = totals.total - cashAmount;
+      setShowMixedPaymentModal(true);
+      setMixedPayment({
+        isMixed: true,
+        cashAmount: cashAmount,
+        onlineAmount: remaining,
+        onlineMethod: method,
+      });
+    } else {
+      enqueueSnackbar(`Payment method set to ${method}`, {
+        variant: "success",
+      });
+    }
+  };
+
+  // Handle mixed payment selection
+  const handleMixedPaymentSelect = () => {
+    const remaining = totals.total - cashAmount;
+    if (remaining > 0) {
+      setShowMixedPaymentModal(true);
+    }
+  };
+
+  // Handle mixed payment confirmation
+  const handleMixedPaymentConfirm = () => {
+    if (!mixedPayment.onlineMethod) {
+      enqueueSnackbar("Please select an online payment method", {
+        variant: "warning",
+      });
+      return;
+    }
+
+    if (mixedPayment.onlineAmount <= 0) {
+      enqueueSnackbar("Please enter valid online payment amount", {
+        variant: "warning",
+      });
+      return;
+    }
+
+    const totalPaid = mixedPayment.cashAmount + mixedPayment.onlineAmount;
+    if (totalPaid < totals.total) {
+      enqueueSnackbar("Total payment is less than order total", {
+        variant: "error",
+      });
+      return;
+    }
+
+    setPaymentMethod(`Mixed (Cash + ${mixedPayment.onlineMethod})`);
+    setShowMixedPaymentModal(false);
+    setShowCashModal(false);
+
+    enqueueSnackbar(
+      `Mixed payment set: ₱${mixedPayment.cashAmount.toFixed(
+        2
+      )} Cash + ₱${mixedPayment.onlineAmount.toFixed(2)} ${
+        mixedPayment.onlineMethod
+      }`,
+      {
+        variant: "success",
+      }
+    );
+
+    // Continue with order placement
+    handlePlaceOrder();
   };
 
   // Handle denomination button click
@@ -614,8 +694,40 @@ const Bill = ({ orderId }) => {
     setCashAmount((prev) => safeNumber(prev) + amount);
   };
 
+  // Handle cash amount change for mixed payment
+  const handleMixedPaymentCashChange = (e) => {
+    const newCashAmount = safeNumber(e.target.value);
+    setCashAmount(newCashAmount);
+
+    // Calculate remaining amount
+    const remaining = Math.max(0, totals.total - newCashAmount);
+    setMixedPayment((prev) => ({
+      ...prev,
+      cashAmount: newCashAmount,
+      onlineAmount: remaining,
+    }));
+  };
+
   // Prepare order data for submission
   const prepareOrderData = () => {
+    // Determine payment method details
+    let paymentMethodDetails = paymentMethod;
+    let cashPaymentAmount = 0;
+    let onlinePaymentAmount = 0;
+    let onlinePaymentMethod = null;
+
+    if (paymentMethod === "Cash") {
+      cashPaymentAmount = totals.cashAmount;
+    } else if (paymentMethod === "BDO" || paymentMethod === "GCASH") {
+      onlinePaymentAmount = totals.total;
+      onlinePaymentMethod = paymentMethod;
+    } else if (mixedPayment.isMixed) {
+      cashPaymentAmount = mixedPayment.cashAmount;
+      onlinePaymentAmount = mixedPayment.onlineAmount;
+      onlinePaymentMethod = mixedPayment.onlineMethod;
+      paymentMethodDetails = `Mixed (Cash + ${onlinePaymentMethod})`;
+    }
+
     // Prepare bills data
     const bills = {
       total: Number(totals.baseGrossTotal.toFixed(2)),
@@ -628,7 +740,9 @@ const Bill = ({ orderId }) => {
       shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
       redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
       netSales: Number(totals.netSales.toFixed(2)),
-      cashAmount: Number(totals.cashAmount.toFixed(2)),
+      cashAmount: Number(cashPaymentAmount.toFixed(2)),
+      onlineAmount: Number(onlinePaymentAmount.toFixed(2)),
+      onlineMethod: onlinePaymentMethod,
       change: Number(totals.change.toFixed(2)),
     };
 
@@ -667,7 +781,13 @@ const Bill = ({ orderId }) => {
       customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
       items,
       bills,
-      paymentMethod,
+      paymentMethod: paymentMethodDetails,
+      paymentDetails: {
+        cashAmount: cashPaymentAmount,
+        onlineAmount: onlinePaymentAmount,
+        onlineMethod: onlinePaymentMethod,
+        isMixedPayment: mixedPayment.isMixed,
+      },
       paymentStatus: "Completed",
       orderStatus: "Completed",
       pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
@@ -680,7 +800,8 @@ const Bill = ({ orderId }) => {
       tableId: currentOrder?.tableId || null,
       orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
       totalAmount: Number(totals.total.toFixed(2)),
-      cashAmount: Number(totals.cashAmount.toFixed(2)),
+      cashAmount: Number(cashPaymentAmount.toFixed(2)),
+      onlineAmount: Number(onlinePaymentAmount.toFixed(2)),
       change: Number(totals.change.toFixed(2)),
     };
   };
@@ -734,9 +855,17 @@ const Bill = ({ orderId }) => {
           shareholderDiscount: totals.shareholderDiscountAmount,
           redemptionDiscount: totals.redemptionAmount,
           cashAmount: totals.cashAmount,
+          onlineAmount: totals.onlineAmount,
+          onlineMethod: mixedPayment.onlineMethod,
           change: totals.change,
         },
         paymentMethod: paymentMethod,
+        paymentDetails: {
+          cashAmount: totals.cashAmount,
+          onlineAmount: totals.onlineAmount,
+          onlineMethod: mixedPayment.onlineMethod,
+          isMixedPayment: mixedPayment.isMixed,
+        },
         orderStatus: "Completed",
         customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
         orderDate: new Date().toISOString(),
@@ -819,10 +948,18 @@ const Bill = ({ orderId }) => {
       }
     }
 
-    // Validate cash amount if payment is cash
+    // Validate payment amounts
     if (paymentMethod === "Cash") {
       if (totals.cashAmount < totals.total) {
         setShowCashModal(true);
+        return;
+      }
+    } else if (mixedPayment.isMixed) {
+      const totalPaid = mixedPayment.cashAmount + mixedPayment.onlineAmount;
+      if (totalPaid < totals.total) {
+        enqueueSnackbar("Total payment is less than order total", {
+          variant: "error",
+        });
         return;
       }
     }
@@ -844,12 +981,23 @@ const Bill = ({ orderId }) => {
 
   // Handle cash amount submission
   const handleCashSubmit = () => {
-    if (totals.cashAmount >= totals.total) {
+    const cashAmountNum = safeNumber(cashAmount);
+
+    if (cashAmountNum >= totals.total) {
+      // Full cash payment
       setShowCashModal(false);
-      // Continue with order placement
       handlePlaceOrder();
+    } else if (cashAmountNum > 0) {
+      // Partial cash payment - offer mixed payment
+      const remaining = totals.total - cashAmountNum;
+      setShowMixedPaymentModal(true);
+      setMixedPayment((prev) => ({
+        ...prev,
+        cashAmount: cashAmountNum,
+        onlineAmount: remaining,
+      }));
     } else {
-      enqueueSnackbar("Cash amount must be greater than or equal to total", {
+      enqueueSnackbar("Please enter a valid cash amount", {
         variant: "error",
       });
     }
@@ -912,7 +1060,7 @@ const Bill = ({ orderId }) => {
                 onChange={(e) => setCashAmount(e.target.value)}
                 className="w-full px-3 py-3 border border-gray-300 rounded-lg text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none mb-4"
                 placeholder="Enter cash amount"
-                min={totals.total}
+                min="0"
                 step="0.01"
                 autoFocus
               />
@@ -962,6 +1110,15 @@ const Bill = ({ orderId }) => {
                   ₱{safeNumber(cashAmount).toFixed(2)}
                 </span>
               </div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-600">Remaining:</span>
+                <span className="text-lg font-bold text-orange-600">
+                  ₱
+                  {Math.max(0, totals.total - safeNumber(cashAmount)).toFixed(
+                    2
+                  )}
+                </span>
+              </div>
               <div className="flex items-center justify-between mb-4">
                 <span className="text-sm text-gray-600">Change:</span>
                 <span className="text-lg font-bold text-green-600">
@@ -971,21 +1128,177 @@ const Bill = ({ orderId }) => {
                   )}
                 </span>
               </div>
+
+              {safeNumber(cashAmount) < totals.total && (
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    <span className="font-semibold">Note:</span> Cash amount is
+                    insufficient. You can pay the remaining ₱
+                    {(totals.total - safeNumber(cashAmount)).toFixed(2)} online.
+                  </p>
+                </div>
+              )}
             </div>
 
             <div className="flex gap-2">
               <button
                 onClick={() => setShowCashModal(false)}
-                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
               >
                 Cancel
               </button>
               <button
                 onClick={handleCashSubmit}
-                disabled={totals.cashAmount < totals.total}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors"
               >
-                Confirm
+                {safeNumber(cashAmount) >= totals.total
+                  ? "Confirm Full Payment"
+                  : "Continue with Partial Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mixed Payment Modal */}
+      {showMixedPaymentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+              Mixed Payment - Complete Payment Online
+            </h3>
+
+            <div className="mb-4">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Cash Amount
+                </label>
+                <input
+                  type="number"
+                  value={cashAmount}
+                  onChange={handleMixedPaymentCashChange}
+                  className="w-full px-3 py-3 border border-gray-300 rounded-lg text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg mb-4">
+                <div className="flex justify-between mb-1">
+                  <span className="text-sm text-gray-600">Order Total:</span>
+                  <span className="text-sm font-bold text-gray-900">
+                    ₱{totals.total.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span className="text-sm text-gray-600">Cash Payment:</span>
+                  <span className="text-sm font-bold text-gray-900">
+                    ₱{safeNumber(cashAmount).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between mb-2">
+                  <span className="text-sm text-gray-600">Remaining:</span>
+                  <span className="text-sm font-bold text-orange-600">
+                    ₱
+                    {Math.max(0, totals.total - safeNumber(cashAmount)).toFixed(
+                      2
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t pt-2">
+                  <span className="text-sm text-gray-600">Change Due:</span>
+                  <span className="text-sm font-bold text-green-600">
+                    ₱
+                    {Math.max(0, safeNumber(cashAmount) - totals.total).toFixed(
+                      2
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Pay Remaining Online with:
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() =>
+                      setMixedPayment((prev) => ({
+                        ...prev,
+                        onlineMethod: "BDO",
+                      }))
+                    }
+                    className={`px-4 py-3 rounded-lg font-semibold text-sm ${
+                      mixedPayment.onlineMethod === "BDO"
+                        ? "bg-blue-600 text-white"
+                        : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    } transition-colors`}
+                  >
+                    BDO
+                  </button>
+                  <button
+                    onClick={() =>
+                      setMixedPayment((prev) => ({
+                        ...prev,
+                        onlineMethod: "GCASH",
+                      }))
+                    }
+                    className={`px-4 py-3 rounded-lg font-semibold text-sm ${
+                      mixedPayment.onlineMethod === "GCASH"
+                        ? "bg-green-600 text-white"
+                        : "bg-green-100 text-green-700 hover:bg-green-200"
+                    } transition-colors`}
+                  >
+                    GCASH
+                  </button>
+                </div>
+              </div>
+
+              {mixedPayment.onlineMethod && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">
+                        Online Payment ({mixedPayment.onlineMethod})
+                      </p>
+                      <p className="text-xs text-blue-600">
+                        Amount: ₱
+                        {Math.max(
+                          0,
+                          totals.total - safeNumber(cashAmount)
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-blue-800">
+                        ₱
+                        {Math.max(
+                          0,
+                          totals.total - safeNumber(cashAmount)
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowMixedPaymentModal(false);
+                  setShowCashModal(true);
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleMixedPaymentConfirm}
+                disabled={!mixedPayment.onlineMethod}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirm Mixed Payment
               </button>
             </div>
           </div>
@@ -1506,22 +1819,33 @@ const Bill = ({ orderId }) => {
             </h1>
           </div>
 
-          {paymentMethod === "Cash" && totals.cashAmount > 0 && (
-            <>
-              <div className="flex justify-between items-center border-t pt-2">
-                <p className="text-xs text-gray-600 font-medium">Cash</p>
-                <p className="text-md text-gray-800 font-bold">
-                  ₱{totals.cashAmount.toFixed(2)}
-                </p>
-              </div>
-              <div className="flex justify-between items-center">
-                <p className="text-xs text-gray-600 font-medium">Change</p>
-                <p className="text-md text-green-600 font-bold">
-                  ₱{totals.change.toFixed(2)}
-                </p>
-              </div>
-            </>
-          )}
+          {(paymentMethod === "Cash" || mixedPayment.isMixed) &&
+            totals.cashAmount > 0 && (
+              <>
+                <div className="flex justify-between items-center border-t pt-2">
+                  <p className="text-xs text-gray-600 font-medium">Cash</p>
+                  <p className="text-md text-gray-800 font-bold">
+                    ₱{totals.cashAmount.toFixed(2)}
+                  </p>
+                </div>
+                {mixedPayment.isMixed && totals.onlineAmount > 0 && (
+                  <div className="flex justify-between items-center">
+                    <p className="text-xs text-gray-600 font-medium">
+                      Online ({mixedPayment.onlineMethod})
+                    </p>
+                    <p className="text-md text-blue-800 font-bold">
+                      ₱{totals.onlineAmount.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+                <div className="flex justify-between items-center">
+                  <p className="text-xs text-gray-600 font-medium">Change</p>
+                  <p className="text-md text-green-600 font-bold">
+                    ₱{totals.change.toFixed(2)}
+                  </p>
+                </div>
+              </>
+            )}
         </div>
 
         {/* 🎟 DISCOUNT & REDEMPTION BUTTONS - IN ONE ROW */}
@@ -1587,12 +1911,12 @@ const Bill = ({ orderId }) => {
             onClick={() => setPaymentMethod("Cash")}
             disabled={isProcessing}
             className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
-              paymentMethod === "Cash"
+              paymentMethod === "Cash" || mixedPayment.isMixed
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-gray-200 text-gray-600 hover:bg-gray-300"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            Cash
+            {mixedPayment.isMixed ? "✓ Mixed Payment" : "Cash"}
           </button>
 
           <button
