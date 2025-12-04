@@ -35,6 +35,8 @@ export default defineConfig({
         scope: "/",
         start_url: "/",
         id: "/",
+        prefer_related_applications: false,
+        related_applications: [],
         icons: [
           {
             src: "/icon-192x192.png",
@@ -55,7 +57,7 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2}"],
+        globPatterns: ["**/*.{js,css,html,ico,png,svg,woff2,json}"],
         navigateFallback: "/index.html",
         navigateFallbackAllowlist: [/^(?!\/__).*/],
         runtimeCaching: [
@@ -98,12 +100,17 @@ export default defineConfig({
         clientsClaim: true,
         skipWaiting: true,
         cleanupOutdatedCaches: true,
+        directoryIndex: "index.html",
       },
       devOptions: {
         enabled: true,
         type: "module",
         navigateFallback: "index.html",
+        suppressWarnings: false,
       },
+      includeManifestIcons: true,
+      manifestFilename: "manifest.json",
+      strategies: "generateSW",
     }),
   ],
   resolve: {
@@ -126,7 +133,7 @@ export default defineConfig({
     minify: "terser",
     terserOptions: {
       compress: {
-        drop_console: true,
+        drop_console: false,
         drop_debugger: true,
       },
     },
@@ -136,6 +143,7 @@ export default defineConfig({
           react: ["react", "react-dom"],
           router: ["react-router-dom"],
           redux: ["@reduxjs/toolkit", "react-redux"],
+          // Remove vendor chunk to avoid the error
         },
         entryFileNames: "assets/[name]-[hash].js",
         chunkFileNames: "assets/[name]-[hash].js",
@@ -147,6 +155,5 @@ export default defineConfig({
     port: 4173,
     host: true,
   },
-  // Key fix: Add this for SPA routing
   base: "/",
 });
