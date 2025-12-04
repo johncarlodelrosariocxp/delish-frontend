@@ -6,8 +6,6 @@ import {
   MdClose,
   MdCheckCircle,
   MdPrint,
-  MdBluetooth,
-  MdBluetoothDisabled,
 } from "react-icons/md";
 import MenuContainer from "../components/menu/MenuContainer";
 import CustomerInfo from "../components/menu/CustomerInfo";
@@ -23,9 +21,6 @@ import {
 const Menu = () => {
   useEffect(() => {
     document.title = "POS | Menu";
-
-    // Initialize Bluetooth printer
-    initializeBluetooth();
   }, []);
 
   const dispatch = useDispatch();
@@ -34,208 +29,9 @@ const Menu = () => {
   );
   const [activeTab, setActiveTab] = useState("active");
   const [printingOrderId, setPrintingOrderId] = useState(null);
-  const [bluetoothDevice, setBluetoothDevice] = useState(null);
-  const [isBluetoothConnected, setIsBluetoothConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [printMethod, setPrintMethod] = useState("browser"); // "browser", "bluetooth", "clipboard"
 
   // Filter orders - only active and completed
   const activeOrders = orders.filter((order) => order.status === "active");
-
-  // Initialize Bluetooth functionality
-  const initializeBluetooth = () => {
-    // Check if browser supports Web Bluetooth API
-    if (navigator.bluetooth) {
-      console.log("Web Bluetooth API is supported");
-
-      // Check for saved Bluetooth device
-      const savedDeviceId = localStorage.getItem("bluetoothDeviceId");
-      if (savedDeviceId) {
-        // Try to reconnect to saved device
-        reconnectBluetoothDevice(savedDeviceId);
-      }
-    } else {
-      console.warn("Web Bluetooth API not supported. Using fallback printing.");
-    }
-  };
-
-  // Reconnect to previously paired Bluetooth device
-  const reconnectBluetoothDevice = async (deviceId) => {
-    try {
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: ["000018f0-0000-1000-8000-00805f9b34fb"] }], // Common thermal printer service
-      });
-
-      if (device.id === deviceId) {
-        const server = await device.gatt.connect();
-        setBluetoothDevice(device);
-        setIsBluetoothConnected(true);
-        console.log("Reconnected to Bluetooth printer:", device.name);
-      }
-    } catch (error) {
-      console.error("Failed to reconnect to Bluetooth device:", error);
-      localStorage.removeItem("bluetoothDeviceId");
-    }
-  };
-
-  // Connect to Bluetooth thermal printer
-  const connectBluetoothPrinter = async () => {
-    if (!navigator.bluetooth) {
-      alert(
-        "Bluetooth is not supported in your browser. Please use Chrome, Edge, or Opera."
-      );
-      return;
-    }
-
-    setIsConnecting(true);
-
-    try {
-      console.log("Requesting Bluetooth Device...");
-
-      // Request Bluetooth device (thermal printers typically use these services)
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { namePrefix: "BT" }, // Common thermal printer naming pattern
-          { namePrefix: "Blue" },
-          { namePrefix: "Printer" },
-          { namePrefix: "POS" },
-        ],
-        optionalServices: [
-          "000018f0-0000-1000-8000-00805f9b34fb", // Common printer service
-          "00001101-0000-1000-8000-00805f9b34fb", // Serial Port Profile (SPP)
-          "00001800-0000-1000-8000-00805f9b34fb", // Generic Access
-          "00001801-0000-1000-8000-00805f9b34fb", // Generic Attribute
-        ],
-      });
-
-      console.log("Connecting to GATT Server...");
-      const server = await device.gatt.connect();
-
-      // Save device ID for reconnection
-      localStorage.setItem("bluetoothDeviceId", device.id);
-
-      setBluetoothDevice(device);
-      setIsBluetoothConnected(true);
-      setIsConnecting(false);
-
-      console.log("Connected to Bluetooth device:", device.name);
-
-      // Listen for device disconnection
-      device.addEventListener("gattserverdisconnected", () => {
-        console.log("Bluetooth device disconnected");
-        setIsBluetoothConnected(false);
-        setBluetoothDevice(null);
-      });
-    } catch (error) {
-      setIsConnecting(false);
-      console.error("Bluetooth connection error:", error);
-
-      if (error.name === "NotFoundError") {
-        alert(
-          "No Bluetooth printer found. Please make sure your printer is turned on and in pairing mode."
-        );
-      } else if (error.name === "SecurityError") {
-        alert(
-          "Bluetooth permission denied. Please enable Bluetooth permissions in your browser settings."
-        );
-      } else {
-        alert(`Bluetooth connection failed: ${error.message}`);
-      }
-    }
-  };
-
-  // Disconnect Bluetooth printer
-  const disconnectBluetoothPrinter = () => {
-    if (bluetoothDevice && bluetoothDevice.gatt.connected) {
-      bluetoothDevice.gatt.disconnect();
-    }
-    setBluetoothDevice(null);
-    setIsBluetoothConnected(false);
-    localStorage.removeItem("bluetoothDeviceId");
-  };
-
-  // Send data to Bluetooth printer (ESC/POS commands)
-  const sendToBluetoothPrinter = async (data) => {
-    if (!bluetoothDevice || !isBluetoothConnected) {
-      throw new Error("Bluetooth printer not connected");
-    }
-
-    try {
-      const server = await bluetoothDevice.gatt.connect();
-
-      // Try to find the printer service
-      const services = await server.getPrimaryServices();
-      let printerService = null;
-      let printerCharacteristic = null;
-
-      for (const service of services) {
-        const characteristics = await service.getCharacteristics();
-        for (const characteristic of characteristics) {
-          // Look for write characteristic
-          if (characteristic.properties.write) {
-            printerService = service;
-            printerCharacteristic = characteristic;
-            break;
-          }
-        }
-        if (printerCharacteristic) break;
-      }
-
-      if (!printerCharacteristic) {
-        throw new Error("No writable characteristic found");
-      }
-
-      // Convert string to ArrayBuffer (ESC/POS commands)
-      const encoder = new TextEncoder();
-      const encodedData = encoder.encode(data);
-
-      // Send data in chunks to avoid packet size issues
-      const chunkSize = 20; // Adjust based on your printer
-      for (let i = 0; i < encodedData.length; i += chunkSize) {
-        const chunk = encodedData.slice(i, i + chunkSize);
-        await printerCharacteristic.writeValue(chunk);
-        // Small delay between chunks
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-
-      console.log("Data sent to Bluetooth printer successfully");
-      return true;
-    } catch (error) {
-      console.error("Error sending to Bluetooth printer:", error);
-      setIsBluetoothConnected(false);
-      throw error;
-    }
-  };
-
-  // ESC/POS commands for thermal printer
-  const escPosCommands = {
-    // Initialize printer
-    initialize: "\x1B\x40",
-
-    // Text formatting
-    alignLeft: "\x1B\x61\x00",
-    alignCenter: "\x1B\x61\x01",
-    alignRight: "\x1B\x61\x02",
-
-    // Font size
-    normalText: "\x1D\x21\x00",
-    doubleHeight: "\x1D\x21\x01",
-    doubleWidth: "\x1D\x21\x10",
-    doubleSize: "\x1D\x21\x11",
-
-    // Barcode
-    barcodeHeight: "\x1D\x68\x64",
-    barcodeWidth: "\x1D\x77\x03",
-    barcodeTextBelow: "\x1D\x48\x02",
-
-    // Cut paper (partial/full)
-    cutPartial: "\x1D\x56\x41\x10",
-    cutFull: "\x1D\x56\x42\x10",
-
-    // Line feed
-    lineFeed: "\x0A",
-    multipleLineFeed: (lines) => `\x1B\x64${String.fromCharCode(lines)}`,
-  };
 
   const handleAddNewOrder = () => {
     dispatch(createNewOrder());
@@ -243,6 +39,7 @@ const Menu = () => {
   };
 
   const handleSwitchOrder = (orderId) => {
+    // Only allow switching to active orders
     const order = orders.find((order) => order.id === orderId);
     if (order && order.status === "active") {
       dispatch(switchOrder(orderId));
@@ -252,6 +49,7 @@ const Menu = () => {
 
   const handleCloseOrder = (orderId, event) => {
     event.stopPropagation();
+    // Only close if there's more than one active order
     if (activeOrders.length > 1) {
       dispatch(closeOrder(orderId));
     }
@@ -280,222 +78,45 @@ const Menu = () => {
     });
   };
 
-  // Generate ESC/POS formatted receipt for thermal printer
-  const generateEscPosReceipt = (order) => {
-    let receipt = "";
-
-    // Initialize printer
-    receipt += escPosCommands.initialize;
-
-    // Header - Center aligned, double size
-    receipt += escPosCommands.alignCenter;
-    receipt += escPosCommands.doubleSize;
-    receipt += "DELISH RESTAURANT\n";
-    receipt += escPosCommands.normalText;
-    receipt += "===============================\n";
-
-    // Order info
-    receipt += escPosCommands.alignLeft;
-    receipt += `Order: #${order.id?.slice(-8) || order.number}\n`;
-    receipt += `Date: ${formatDate(order.completedAt || Date.now())}\n`;
-    receipt += `Customer: ${order.customer?.customerName || "Walk-in"}\n`;
-    receipt += "--------------------------------\n";
-
-    // Items header
-    receipt += escPosCommands.alignCenter;
-    receipt += "ORDER ITEMS\n";
-    receipt += escPosCommands.alignLeft;
-    receipt += "--------------------------------\n";
-
-    // Items
-    order.items?.forEach((item) => {
-      const itemName =
-        item.name.length > 24 ? item.name.substring(0, 21) + "..." : item.name;
-      const quantity = item.quantity || 1;
-      const pricePerQuantity = item.pricePerQuantity || item.price || 0;
-      const total = quantity * pricePerQuantity;
-
-      receipt += `${itemName}\n`;
-      receipt += `  ${quantity}x ${formatCurrency(pricePerQuantity)}\n`;
-      receipt += `  ${formatCurrency(total)}${
-        item.isRedeemed ? " (REDEEMED)" : ""
-      }\n`;
-      if (item.isPwdSssDiscounted) {
-        receipt += "  PWD/SSS 20% Discount Applied\n";
-      }
-      receipt += "\n";
-    });
-
-    receipt += "--------------------------------\n";
-
-    // Calculate totals
-    const subtotal =
-      order.items?.reduce((sum, item) => {
-        return (
-          sum +
-          (item.quantity || 1) * (item.pricePerQuantity || item.price || 0)
-        );
-      }, 0) || 0;
-
-    const vat = order.bills?.tax || subtotal * 0.12;
-    const total = order.bills?.total || subtotal + vat;
-
-    // Totals - Right aligned for better formatting
-    receipt += escPosCommands.alignRight;
-    receipt += `SUBTOTAL: ${formatCurrency(subtotal)}\n`;
-
-    if (order.bills?.pwdSssDiscount > 0) {
-      receipt += `PWD/SSS DISC: -${formatCurrency(
-        order.bills.pwdSssDiscount
-      )}\n`;
-    }
-
-    if (order.bills?.redemptionDiscount > 0) {
-      receipt += `REDEMPTION: -${formatCurrency(
-        order.bills.redemptionDiscount
-      )}\n`;
-    }
-
-    if (order.bills?.employeeDiscount > 0) {
-      receipt += `EMP DISC: -${formatCurrency(order.bills.employeeDiscount)}\n`;
-    }
-
-    if (order.bills?.shareholderDiscount > 0) {
-      receipt += `SH DISC: -${formatCurrency(
-        order.bills.shareholderDiscount
-      )}\n`;
-    }
-
-    receipt += `VAT (12%): ${formatCurrency(vat)}\n`;
-    receipt += "===============================\n";
-    receipt += escPosCommands.doubleHeight;
-    receipt += `TOTAL: ${formatCurrency(total)}\n`;
-    receipt += escPosCommands.normalText;
-    receipt += "===============================\n";
-
-    // Payment info
-    receipt += escPosCommands.alignLeft;
-    receipt += `Payment: ${order.paymentMethod || "Cash"}\n`;
-    receipt += "Status: COMPLETED\n";
-    receipt += escPosCommands.lineFeed;
-    receipt += "Thank you for dining with us!\n";
-    receipt += "Visit us again soon!\n";
-    receipt += escPosCommands.lineFeed;
-    receipt += escPosCommands.lineFeed;
-    receipt += escPosCommands.lineFeed;
-
-    // Cut paper (partial cut)
-    receipt += escPosCommands.cutPartial;
-
-    return receipt;
-  };
-
-  // Print completed order receipt with selected method
+  // Print completed order receipt
   const handlePrintOrder = async (order, event) => {
     event.stopPropagation();
     setPrintingOrderId(order.id);
 
     try {
-      let receiptText = "";
+      // Create receipt text
+      const receiptText = generateReceiptText(order);
 
-      if (printMethod === "bluetooth") {
-        // Generate ESC/POS formatted receipt
-        receiptText = generateEscPosReceipt(order);
+      // Create a hidden textarea with the receipt content
+      const textArea = document.createElement("textarea");
+      textArea.value = receiptText;
+      textArea.style.position = "fixed";
+      textArea.style.left = "-9999px";
+      textArea.style.top = "0";
+      document.body.appendChild(textArea);
+      textArea.select();
 
-        try {
-          await sendToBluetoothPrinter(receiptText);
-          alert("Receipt sent to Bluetooth printer successfully!");
-        } catch (error) {
-          console.error(
-            "Bluetooth print failed, falling back to browser print:",
-            error
-          );
-          // Fallback to browser print
-          receiptText = generateReceiptText(order);
-          printUsingBrowser(receiptText);
-        }
-      } else if (printMethod === "browser") {
-        // Regular browser print
-        receiptText = generateReceiptText(order);
-        printUsingBrowser(receiptText);
-      } else {
-        // Clipboard fallback
-        receiptText = generateReceiptText(order);
-        copyToClipboard(receiptText);
+      try {
+        // Try to print using browser print
+        window.print();
+      } catch (error) {
+        // Copy to clipboard as last resort
+        document.execCommand("copy");
+        alert(
+          "Receipt copied to clipboard. Please paste into a text editor to print."
+        );
       }
+
+      document.body.removeChild(textArea);
     } catch (error) {
       console.error("Printing error:", error);
-      alert(`Failed to print receipt: ${error.message}`);
+      alert("Failed to print receipt");
     } finally {
       setTimeout(() => setPrintingOrderId(null), 1000);
     }
   };
 
-  // Browser print function
-  const printUsingBrowser = (receiptText) => {
-    const printWindow = window.open("", "_blank", "width=400,height=600");
-    printWindow.document.write(`
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <title>Receipt - Order ${printingOrderId}</title>
-        <style>
-          body {
-            font-family: 'Courier New', monospace;
-            font-size: 12px;
-            line-height: 1.4;
-            margin: 0;
-            padding: 10px;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-          }
-          @media print {
-            body { margin: 0; }
-          }
-        </style>
-      </head>
-      <body>
-        <pre>${receiptText}</pre>
-        <script>
-          window.onload = function() {
-            window.print();
-            setTimeout(function() {
-              window.close();
-            }, 500);
-          }
-        </script>
-      </body>
-      </html>
-    `);
-    printWindow.document.close();
-  };
-
-  // Copy to clipboard function
-  const copyToClipboard = (text) => {
-    const textArea = document.createElement("textarea");
-    textArea.value = text;
-    textArea.style.position = "fixed";
-    textArea.style.left = "-9999px";
-    textArea.style.top = "0";
-    document.body.appendChild(textArea);
-    textArea.select();
-
-    try {
-      document.execCommand("copy");
-      alert(
-        "Receipt copied to clipboard. You can paste it into any text editor or print dialog."
-      );
-    } catch (err) {
-      console.error("Failed to copy:", err);
-      alert(
-        "Failed to copy receipt to clipboard. Please try printing using another method."
-      );
-    }
-
-    document.body.removeChild(textArea);
-  };
-
-  // Original text receipt generator (unchanged)
+  // Generate receipt text for completed orders
   const generateReceiptText = (order) => {
     const lineBreak = "\n";
     const dashedLine = "--------------------------------";
@@ -617,69 +238,21 @@ const Menu = () => {
     return formatCurrency(total);
   };
 
+  // Calculate item total for display
+  const calculateItemTotal = (item) => {
+    const total =
+      (item.quantity || 1) * (item.pricePerQuantity || item.price || 0);
+    return formatCurrency(total);
+  };
+
+  // Calculate item price per quantity for display
+  const calculateItemPrice = (item) => {
+    const price = item.pricePerQuantity || item.price || 0;
+    return formatCurrency(price);
+  };
+
   return (
     <section className="bg-white min-h-screen flex flex-col">
-      {/* Bluetooth Connection Status */}
-      <div className="bg-blue-50 border-b border-blue-200 px-4 py-2 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {isBluetoothConnected ? (
-            <>
-              <MdBluetooth className="text-blue-600" />
-              <span className="text-sm text-blue-700">
-                Connected to: {bluetoothDevice?.name || "Bluetooth Printer"}
-              </span>
-            </>
-          ) : (
-            <>
-              <MdBluetoothDisabled className="text-gray-400" />
-              <span className="text-sm text-gray-600">
-                Bluetooth Printer Not Connected
-              </span>
-            </>
-          )}
-        </div>
-
-        <div className="flex items-center gap-2">
-          <select
-            value={printMethod}
-            onChange={(e) => setPrintMethod(e.target.value)}
-            className="text-sm border border-gray-300 rounded px-2 py-1 bg-white"
-          >
-            <option value="browser">Browser Print</option>
-            <option value="bluetooth">Bluetooth Printer</option>
-            <option value="clipboard">Copy to Clipboard</option>
-          </select>
-
-          {!isBluetoothConnected ? (
-            <button
-              onClick={connectBluetoothPrinter}
-              disabled={isConnecting}
-              className="flex items-center gap-1 bg-blue-600 text-white px-3 py-1 rounded text-sm hover:bg-blue-700 disabled:opacity-50"
-            >
-              {isConnecting ? (
-                <>
-                  <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-white"></div>
-                  <span>Connecting...</span>
-                </>
-              ) : (
-                <>
-                  <MdBluetooth size={14} />
-                  <span>Connect Printer</span>
-                </>
-              )}
-            </button>
-          ) : (
-            <button
-              onClick={disconnectBluetoothPrinter}
-              className="flex items-center gap-1 bg-red-600 text-white px-3 py-1 rounded text-sm hover:bg-red-700"
-            >
-              <MdBluetoothDisabled size={14} />
-              <span>Disconnect</span>
-            </button>
-          )}
-        </div>
-      </div>
-
       {/* Main Tabs */}
       <div className="bg-gray-200 px-3 pt-3 flex items-center gap-2 overflow-x-auto border-b">
         <button
@@ -786,7 +359,7 @@ const Menu = () => {
               </div>
 
               {/* Right Div - Sidebar */}
-              <div className="flex-1 lg:flex-[1] bg-gray-100 rounded-lg shadow-md mt-3 lg:mt-0 h-auto lg:h-[calc(100vh-13rem)] flex flex-col order-2">
+              <div className="flex-1 lg:flex-[1] bg-gray-100 rounded-lg shadow-md mt-3 lg:mt-0 h-auto lg:h-[calc(100vh-11rem)] flex flex-col order-2">
                 {/* Customer Info */}
                 <div className="flex-shrink-0">
                   <CustomerInfo orderId={activeOrderId} />
@@ -815,17 +388,11 @@ const Menu = () => {
               <h2 className="text-xl font-bold text-gray-900">
                 Completed Orders
               </h2>
-              <div className="flex items-center gap-4">
-                {completedOrders.length > 0 && (
-                  <span className="bg-green-100 text-green-800 text-sm font-medium px-3 py-1 rounded-full">
-                    {completedOrders.length} orders
-                  </span>
-                )}
-                <div className="text-sm text-gray-600">
-                  Print Method:{" "}
-                  <span className="font-medium capitalize">{printMethod}</span>
-                </div>
-              </div>
+              {completedOrders.length > 0 && (
+                <span className="bg-green-100 text-green-800 text-sm font-medium px-3 py-1 rounded-full">
+                  {completedOrders.length} orders
+                </span>
+              )}
             </div>
 
             {completedOrders.length === 0 ? (
@@ -843,7 +410,7 @@ const Menu = () => {
                 </button>
               </div>
             ) : (
-              <div className="space-y-4 max-h-[calc(100vh-16rem)] overflow-y-auto">
+              <div className="space-y-4 max-h-[calc(100vh-12rem)] overflow-y-auto">
                 {completedOrders.map((order) => (
                   <div
                     key={order.id}
@@ -869,7 +436,7 @@ const Menu = () => {
                           onClick={(e) => handlePrintOrder(order, e)}
                           disabled={printingOrderId === order.id}
                           className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                          title={`Print using ${printMethod}`}
+                          title="Print Receipt"
                         >
                           {printingOrderId === order.id ? (
                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
@@ -924,12 +491,7 @@ const Menu = () => {
                                   </span>
                                 )}
                               </span>
-                              <span>
-                                {formatCurrency(
-                                  (item.quantity || 1) *
-                                    (item.pricePerQuantity || item.price || 0)
-                                )}
-                              </span>
+                              <span>{calculateItemTotal(item)}</span>
                             </div>
                           ))}
                           {order.items.length > 3 && (
