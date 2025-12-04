@@ -28,7 +28,7 @@ const IconBluetooth = ({ className }) => (
   </svg>
 );
 
-// Bluetooth connection manager
+// Enhanced Bluetooth Printer Manager
 class BluetoothPrinterManager {
   constructor() {
     this.device = null;
@@ -36,10 +36,11 @@ class BluetoothPrinterManager {
     this.writeCharacteristic = null;
     this.isConnected = false;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 3;
+    this.maxReconnectAttempts = 5;
     this.reconnectDelay = 2000;
     this.reconnectTimer = null;
     this.autoReconnectEnabled = true;
+    this.isPrinting = false;
   }
 
   isBluetoothSupported() {
@@ -75,6 +76,7 @@ class BluetoothPrinterManager {
       this.device = null;
       this.server = null;
       this.writeCharacteristic = null;
+      this.isPrinting = false;
 
       if (onDisconnect) onDisconnect();
 
@@ -125,7 +127,7 @@ class BluetoothPrinterManager {
     try {
       console.log("Connecting to device:", device.name);
 
-      if (device.gatt.connected) {
+      if (device.gatt && device.gatt.connected) {
         console.log("Device already connected");
         this.device = device;
         this.isConnected = true;
@@ -143,75 +145,122 @@ class BluetoothPrinterManager {
       this.setupDeviceListeners(device, onDisconnect);
       this.savePrinter(device);
       this.reconnectAttempts = 0;
+      this.isPrinting = false;
 
       console.log("Device connected successfully");
       return true;
     } catch (error) {
       console.error("Failed to connect to device:", error);
       this.isConnected = false;
+      this.isPrinting = false;
       throw error;
     }
   }
 
   async setupPrinterServices(device) {
-    const serviceUUID_PRINTER = "000018f0-0000-1000-8000-00805f9b34fb";
-    const serviceUUID_SPP = "00001101-0000-1000-8000-00805f9b34fb";
+    // Common printer service UUIDs
+    const serviceUUIDs = [
+      "000018f0-0000-1000-8000-00805f9b34fb", // Printer service
+      "00001101-0000-1000-8000-00805f9b34fb", // SPP service (most common)
+      "00001800-0000-1000-8000-00805f9b34fb", // Generic Access
+      "00001801-0000-1000-8000-00805f9b34fb", // Generic Attribute
+      "fff0", // Some printers use short UUID
+      "ff00", // Some printers use short UUID
+    ];
 
-    const servicesToTry = [serviceUUID_PRINTER, serviceUUID_SPP];
-
-    for (const serviceUuid of servicesToTry) {
+    for (const serviceUuid of serviceUUIDs) {
       try {
+        console.log(`Trying service: ${serviceUuid}`);
         const service = await this.server.getPrimaryService(serviceUuid);
         const characteristics = await service.getCharacteristics();
 
+        console.log(`Found ${characteristics.length} characteristics`);
+
+        // Look for writable characteristic
         this.writeCharacteristic = characteristics.find(
           (char) =>
-            char.properties.write || char.properties.writeWithoutResponse
+            char.properties.write ||
+            char.properties.writeWithoutResponse ||
+            char.properties.indicate ||
+            char.properties.notify
         );
 
         if (this.writeCharacteristic) {
           console.log(
             `Found writable characteristic in service ${serviceUuid}`
           );
-          break;
+          return;
         }
       } catch (error) {
-        console.log(
-          `Service ${serviceUuid} not found or accessible:`,
-          error.message
-        );
+        console.log(`Service ${serviceUuid} not accessible:`, error.message);
       }
     }
 
-    if (!this.writeCharacteristic) {
-      throw new Error("No writable characteristic found");
-    }
+    throw new Error(
+      "No writable characteristic found. Try different printer or check pairing."
+    );
   }
 
   async sendData(data) {
     if (!this.isConnected || !this.writeCharacteristic) {
-      throw new Error("Printer not connected");
+      throw new Error("Printer not connected. Please connect first.");
     }
 
-    const encoder = new TextEncoder();
-    const dataArray = encoder.encode(data);
+    if (this.isPrinting) {
+      console.log("Printer is busy, waiting...");
+      await new Promise((resolve) => setTimeout(resolve, 500));
+    }
 
-    const CHUNK_SIZE = 20;
-    for (let i = 0; i < dataArray.length; i += CHUNK_SIZE) {
-      const chunk = dataArray.slice(i, i + CHUNK_SIZE);
-      await this.writeCharacteristic.writeValue(chunk);
+    this.isPrinting = true;
 
-      if (i + CHUNK_SIZE < dataArray.length) {
-        await new Promise((resolve) => setTimeout(resolve, 10));
+    try {
+      const encoder = new TextEncoder();
+      const dataArray = encoder.encode(data);
+
+      console.log(`Sending ${dataArray.length} bytes to printer`);
+
+      // Send in small chunks
+      const CHUNK_SIZE = 20;
+      for (let i = 0; i < dataArray.length; i += CHUNK_SIZE) {
+        const chunk = dataArray.slice(i, i + CHUNK_SIZE);
+
+        try {
+          // Try write with response first
+          if (this.writeCharacteristic.properties.write) {
+            await this.writeCharacteristic.writeValue(chunk);
+          }
+          // Try write without response
+          else if (this.writeCharacteristic.properties.writeWithoutResponse) {
+            await this.writeCharacteristic.writeValueWithoutResponse(chunk);
+          }
+          // Fallback to any available method
+          else {
+            await this.writeCharacteristic.writeValue(chunk);
+          }
+        } catch (writeError) {
+          console.error("Chunk write failed:", writeError);
+          throw new Error(
+            `Failed to send data to printer: ${writeError.message}`
+          );
+        }
+
+        // Small delay between chunks
+        if (i + CHUNK_SIZE < dataArray.length) {
+          await new Promise((resolve) => setTimeout(resolve, 50));
+        }
       }
-    }
 
-    console.log("Data sent to printer successfully");
-    return true;
+      console.log("Data sent to printer successfully");
+      return true;
+    } finally {
+      this.isPrinting = false;
+    }
   }
 
   disconnect() {
-    if (this.device && this.device.gatt.connected) {
+    this.isPrinting = false;
+
+    if (this.device && this.device.gatt && this.device.gatt.connected) {
       try {
         this.device.gatt.disconnect();
       } catch (error) {
@@ -223,7 +272,6 @@ class BluetoothPrinterManager {
     this.device = null;
     this.server = null;
     this.writeCharacteristic = null;
-    this.clearSavedPrinter();
 
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
@@ -296,11 +344,11 @@ const Bill = ({ orderId }) => {
   const [pendingPrintOrder, setPendingPrintOrder] = useState(null);
   const [autoPrintRetryCount, setAutoPrintRetryCount] = useState(0);
   const [hasAttemptedAutoConnect, setHasAttemptedAutoConnect] = useState(false);
+  const [lastPrintedOrderId, setLastPrintedOrderId] = useState(null);
 
   // Combined payment state
   const [showCombinedPaymentModal, setShowCombinedPaymentModal] =
     useState(false);
-  const [onlinePaymentAmount, setOnlinePaymentAmount] = useState(0);
   const [selectedOnlineMethod, setSelectedOnlineMethod] = useState(null);
   const [combinedPayment, setCombinedPayment] = useState({
     cashAmount: 0,
@@ -310,39 +358,49 @@ const Bill = ({ orderId }) => {
   });
 
   const connectionCheckRef = useRef(null);
+  const printTimeoutRef = useRef(null);
 
   const thermalCommands = {
-    INIT: "\x1B\x40",
-    ALIGN_LEFT: "\x1B\x61\x00",
-    ALIGN_CENTER: "\x1B\x61\x01",
-    ALIGN_RIGHT: "\x1B\x61\x02",
-    BOLD_ON: "\x1B\x45\x01",
-    BOLD_OFF: "\x1B\x45\x00",
-    UNDERLINE_ON: "\x1B\x2D\x01",
-    UNDERLINE_OFF: "\x1B\x2D\x00",
-    CUT_PARTIAL: "\x1B\x69",
-    CUT_FULL: "\x1B\x6D",
-    FEED_LINE: "\x0A",
-    FEED_N_LINES: (n) => `\x1B\x64${String.fromCharCode(n)}`,
-    TEXT_NORMAL: "\x1B\x21\x00",
-    TEXT_LARGE: "\x1B\x21\x10",
-    TEXT_DOUBLE_WIDTH: "\x1B\x21\x20",
-    TEXT_DOUBLE_SIZE: "\x1B\x21\x30",
-    DRAWER_KICK: "\x1B\x70\x00\x19\xFA",
+    INIT: "\x1B\x40", // Initialize printer
+    ALIGN_LEFT: "\x1B\x61\x00", // Left alignment
+    ALIGN_CENTER: "\x1B\x61\x01", // Center alignment
+    ALIGN_RIGHT: "\x1B\x61\x02", // Right alignment
+    BOLD_ON: "\x1B\x45\x01", // Bold on
+    BOLD_OFF: "\x1B\x45\x00", // Bold off
+    UNDERLINE_ON: "\x1B\x2D\x01", // Underline on
+    UNDERLINE_OFF: "\x1B\x2D\x00", // Underline off
+    CUT_PARTIAL: "\x1B\x69", // Partial cut
+    CUT_FULL: "\x1B\x6D", // Full cut
+    FEED_LINE: "\x0A", // Line feed
+    FEED_N_LINES: (n) => `\x1B\x64${String.fromCharCode(n)}`, // Feed n lines
+    TEXT_NORMAL: "\x1B\x21\x00", // Normal text
+    TEXT_LARGE: "\x1B\x21\x10", // Large text
+    TEXT_DOUBLE_WIDTH: "\x1B\x21\x20", // Double width
+    TEXT_DOUBLE_SIZE: "\x1B\x21\x30", // Double size
+    DRAWER_KICK: "\x1B\x70\x00\x19\xFA", // Open cash drawer
+    LINE_SPACING_24: "\x1B\x33\x18", // Line spacing 24/180 inch
+    LINE_SPACING_30: "\x1B\x33\x1E", // Line spacing 30/180 inch
+    CHARACTER_SPACING: "\x1B\x20\x00", // Character spacing
   };
 
-  // Auto-print effect
+  // Auto-print effect - FIXED
   useEffect(() => {
     const handleAutoPrint = async () => {
-      if (autoPrintEnabled && pendingPrintOrder && !isPrinting) {
+      if (
+        autoPrintEnabled &&
+        pendingPrintOrder &&
+        !isPrinting &&
+        pendingPrintOrder._id !== lastPrintedOrderId
+      ) {
         console.log("=== AUTO-PRINT TRIGGERED ===");
-        console.log("Order to print:", pendingPrintOrder);
+        console.log("Order ID to print:", pendingPrintOrder._id);
 
         try {
           setIsPrinting(true);
+          setLastPrintedOrderId(pendingPrintOrder._id);
 
-          // Wait a moment to ensure order is processed
-          await new Promise((resolve) => setTimeout(resolve, 500));
+          // Wait a moment to ensure everything is ready
+          await new Promise((resolve) => setTimeout(resolve, 1000));
 
           await printReceipt(pendingPrintOrder);
           enqueueSnackbar("Receipt auto-printed successfully!", {
@@ -352,13 +410,16 @@ const Bill = ({ orderId }) => {
           setAutoPrintRetryCount(0);
         } catch (error) {
           console.error("Auto-print failed:", error);
+          setLastPrintedOrderId(null);
 
           if (autoPrintRetryCount < 3) {
             setAutoPrintRetryCount((prev) => prev + 1);
-            // Retry after delay
+            // Retry after delay with fresh copy
             setTimeout(() => {
-              setPendingPrintOrder({ ...pendingPrintOrder });
-            }, 1000);
+              if (pendingPrintOrder) {
+                setPendingPrintOrder({ ...pendingPrintOrder });
+              }
+            }, 2000 * (autoPrintRetryCount + 1));
           } else {
             enqueueSnackbar(
               "Auto-print failed after 3 attempts. Please print manually.",
@@ -376,16 +437,25 @@ const Bill = ({ orderId }) => {
     };
 
     handleAutoPrint();
-  }, [pendingPrintOrder, autoPrintEnabled, isPrinting, autoPrintRetryCount]);
 
-  // Initialize Bluetooth connection - Improved auto-connect
+    return () => {
+      if (printTimeoutRef.current) {
+        clearTimeout(printTimeoutRef.current);
+      }
+    };
+  }, [
+    pendingPrintOrder,
+    autoPrintEnabled,
+    isPrinting,
+    autoPrintRetryCount,
+    lastPrintedOrderId,
+  ]);
+
+  // Initialize Bluetooth connection
   useEffect(() => {
     const initializeBluetooth = async () => {
       if (!printerManager.isBluetoothSupported()) {
-        enqueueSnackbar(
-          "Bluetooth is not supported in this browser. Please use Chrome/Edge.",
-          { variant: "error" }
-        );
+        console.warn("Bluetooth not supported in this browser");
         return;
       }
 
@@ -401,14 +471,14 @@ const Bill = ({ orderId }) => {
           setPrinterName(deviceName || "Bluetooth Printer");
           setHasAttemptedAutoConnect(true);
 
-          // Auto-connect in background without showing loading
+          // Auto-connect in background
           setTimeout(async () => {
             try {
               await attemptReconnection();
             } catch (error) {
               console.log("Background auto-connect failed:", error);
             }
-          }, 1000);
+          }, 1500);
         }
       } catch (error) {
         console.error("Bluetooth initialization failed:", error);
@@ -422,10 +492,10 @@ const Bill = ({ orderId }) => {
       const connected = printerManager.isConnected;
       setIsPrinterConnected(connected);
 
-      if (!connected && !isConnecting) {
+      if (!connected && !isConnecting && hasAttemptedAutoConnect) {
         attemptReconnection();
       }
-    }, 10000); // Check every 10 seconds
+    }, 15000);
 
     return () => {
       if (connectionCheckRef.current) {
@@ -475,7 +545,7 @@ const Bill = ({ orderId }) => {
   const connectToPrinter = async () => {
     if (!printerManager.isBluetoothSupported()) {
       enqueueSnackbar(
-        "Bluetooth is not supported in this browser. Please use Chrome/Edge.",
+        "Bluetooth is not supported in this browser. Please use Chrome/Edge on desktop.",
         { variant: "error" }
       );
       return false;
@@ -485,16 +555,15 @@ const Bill = ({ orderId }) => {
       setIsConnecting(true);
       console.log("Searching for Bluetooth printer...");
 
-      const serviceUUID_PRINTER = "000018f0-0000-1000-8000-00805f9b34fb";
-      const serviceUUID_SPP = "00001101-0000-1000-8000-00805f9b34fb";
-      const serviceUUID_GENERIC_ACCESS = "00001800-0000-1000-8000-00805f9b34fb";
-
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
         optionalServices: [
-          serviceUUID_PRINTER,
-          serviceUUID_SPP,
-          serviceUUID_GENERIC_ACCESS,
+          "000018f0-0000-1000-8000-00805f9b34fb", // Printer service
+          "00001101-0000-1000-8000-00805f9b34fb", // SPP service
+          "00001800-0000-1000-8000-00805f9b34fb", // Generic Access
+          "00001801-0000-1000-8000-00805f9b34fb", // Generic Attribute
+          "fff0",
+          "ff00",
         ],
       });
 
@@ -523,12 +592,15 @@ const Bill = ({ orderId }) => {
           { variant: "warning" }
         );
       } else if (error.name === "NetworkError") {
-        enqueueSnackbar(
-          "Connection failed. Check printer range and ensure no other app is connected.",
-          { variant: "error" }
-        );
+        enqueueSnackbar("Connection failed. Check printer range and battery.", {
+          variant: "error",
+        });
       } else if (error.name === "SecurityError") {
         enqueueSnackbar("Security error. Please ensure HTTPS is used.", {
+          variant: "error",
+        });
+      } else if (error.name === "InvalidStateError") {
+        enqueueSnackbar("Printer is already connected to another device.", {
           variant: "error",
         });
       } else {
@@ -550,7 +622,6 @@ const Bill = ({ orderId }) => {
 
     enqueueSnackbar("Disconnected from printer", { variant: "info" });
 
-    // Re-enable auto-reconnect after 5 seconds
     setTimeout(() => {
       printerManager.enableAutoReconnect();
     }, 5000);
@@ -591,7 +662,7 @@ const Bill = ({ orderId }) => {
 
   const sendToPrinter = async (data) => {
     let retryCount = 0;
-    const maxRetries = 2;
+    const maxRetries = 3;
 
     while (retryCount <= maxRetries) {
       try {
@@ -610,7 +681,7 @@ const Bill = ({ orderId }) => {
         }
 
         retryCount++;
-        await new Promise((resolve) => setTimeout(resolve, 500 * retryCount));
+        await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
       }
     }
 
@@ -620,7 +691,6 @@ const Bill = ({ orderId }) => {
   const printReceipt = async (orderData) => {
     console.log("=== PRINT RECEIPT START ===");
     console.log("Printer connected:", printerManager.isConnected);
-    console.log("Order data:", orderData);
 
     setIsPrinting(true);
 
@@ -629,20 +699,21 @@ const Bill = ({ orderId }) => {
       console.log("Receipt generated, sending to printer...");
 
       await sendToPrinter(receiptText);
-
       console.log("Receipt printed successfully!");
 
       // Open cash drawer for cash payments
-      if (paymentMethod === "Cash" || combinedPayment.cashAmount > 0) {
+      const shouldOpenDrawer =
+        paymentMethod === "Cash" ||
+        combinedPayment.cashAmount > 0 ||
+        (showCombinedPaymentModal && combinedPayment.cashAmount > 0);
+
+      if (shouldOpenDrawer) {
         try {
           await sendToPrinter(thermalCommands.DRAWER_KICK);
           console.log("Cash drawer command sent");
-          await new Promise((resolve) => setTimeout(resolve, 800));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
         } catch (drawerError) {
           console.warn("Could not open cash drawer:", drawerError);
-          enqueueSnackbar("Cash drawer command failed. Please open manually.", {
-            variant: "warning",
-          });
         }
       }
 
@@ -672,6 +743,7 @@ const Bill = ({ orderId }) => {
     };
 
     let receiptText = thermalCommands.INIT;
+    receiptText += thermalCommands.LINE_SPACING_24;
     receiptText += thermalCommands.ALIGN_CENTER;
     receiptText += thermalCommands.TEXT_LARGE;
     receiptText += "DELISH RESTAURANT\n";
@@ -701,15 +773,16 @@ const Bill = ({ orderId }) => {
     receiptText += thermalCommands.BOLD_OFF;
     receiptText += "--------------------------------\n";
 
-    combinedCart.forEach((item) => {
+    // Use the items from orderData or fallback to combinedCart
+    const displayItems = orderData.items || combinedCart || [];
+
+    displayItems.forEach((item) => {
       const name = item.name || "Unknown Item";
-      const quantity = item.quantity;
-      const price = safeNumber(item.pricePerQuantity);
-      const total = calculateItemTotal(item);
-      const isRedeemed = item.isRedeemed;
-      const isDiscounted = pwdSeniorDiscountItems.some(
-        (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
-      );
+      const quantity = item.quantity || 1;
+      const price = safeNumber(item.pricePerQuantity || item.price || 0);
+      const total = safeNumber(item.price || 0);
+      const isRedeemed = item.isRedeemed || false;
+      const isDiscounted = item.isPwdSeniorDiscounted || false;
 
       const qtyStr = quantity.toString().padStart(2, " ");
       let nameStr = name;
@@ -770,22 +843,15 @@ const Bill = ({ orderId }) => {
     receiptText += thermalCommands.BOLD_OFF;
     receiptText += "--------------------------------\n";
 
-    // Payment details for combined payment
+    // Payment details
+    receiptText += thermalCommands.ALIGN_LEFT;
+    receiptText += "Payment Details:\n";
+
     if (showCombinedPaymentModal) {
-      receiptText += thermalCommands.ALIGN_LEFT;
-      receiptText += "Payment Details:\n";
-
-      if (combinedPayment.cashAmount > 0) {
-        receiptText += `Cash:        ₱${combinedPayment.cashAmount.toFixed(
-          2
-        )}\n`;
-      }
-
-      if (combinedPayment.onlineAmount > 0) {
-        receiptText += `${
-          combinedPayment.onlineMethod
-        }: ₱${combinedPayment.onlineAmount.toFixed(2)}\n`;
-      }
+      receiptText += `Cash:        ₱${combinedPayment.cashAmount.toFixed(2)}\n`;
+      receiptText += `${
+        combinedPayment.onlineMethod
+      }: ₱${combinedPayment.onlineAmount.toFixed(2)}\n`;
 
       const totalPaid =
         combinedPayment.cashAmount + combinedPayment.onlineAmount;
@@ -800,11 +866,7 @@ const Bill = ({ orderId }) => {
           2
         )}\n`;
       }
-
-      receiptText += "--------------------------------\n";
     } else {
-      // Single payment method
-      receiptText += thermalCommands.ALIGN_LEFT;
       receiptText += `Payment: ${paymentMethod}\n`;
 
       if (paymentMethod === "Cash") {
@@ -812,9 +874,11 @@ const Bill = ({ orderId }) => {
         if (totals.change > 0) {
           receiptText += `Change:  ₱${totals.change.toFixed(2)}\n`;
         }
+      } else {
+        receiptText += `Amount:  ₱${totals.total.toFixed(2)}\n`;
       }
-      receiptText += "--------------------------------\n";
     }
+    receiptText += "--------------------------------\n";
 
     if (pwdSeniorDiscountApplied && pwdSeniorDetails.name) {
       receiptText += "PWD/SENIOR DETAILS:\n";
@@ -852,6 +916,7 @@ const Bill = ({ orderId }) => {
       }
 
       let testReceipt = thermalCommands.INIT;
+      testReceipt += thermalCommands.LINE_SPACING_24;
       testReceipt += thermalCommands.ALIGN_CENTER;
       testReceipt += thermalCommands.TEXT_LARGE;
       testReceipt += "TEST RECEIPT\n";
@@ -1410,7 +1475,6 @@ const Bill = ({ orderId }) => {
 
   const handleOnlinePaymentSelect = (method) => {
     if (totals.cashAmount > 0 && totals.cashAmount < totals.total) {
-      // Show combined payment modal if cash is insufficient
       setShowCombinedPaymentModal(true);
       setSelectedOnlineMethod(method);
       setCombinedPayment((prev) => ({
@@ -1446,7 +1510,7 @@ const Bill = ({ orderId }) => {
     }
   };
 
-  // FIXED: Prepare order data for combined payments
+  // Prepare order data for combined payments
   const prepareOrderData = () => {
     const bills = {
       total: Number(totals.baseGrossTotal.toFixed(2)),
@@ -1486,10 +1550,7 @@ const Bill = ({ orderId }) => {
     const customerName =
       customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer";
 
-    // FIXED: Handle combined payment correctly
     if (showCombinedPaymentModal) {
-      // For combined payment, we need to use the online method as paymentMethod
-      // and send the cash amount separately
       const totalPaid =
         combinedPayment.cashAmount + combinedPayment.onlineAmount;
 
@@ -1509,15 +1570,14 @@ const Bill = ({ orderId }) => {
           cashAmount: Number(combinedPayment.cashAmount.toFixed(2)),
           onlineAmount: Number(combinedPayment.onlineAmount.toFixed(2)),
           totalPaid: Number(totalPaid.toFixed(2)),
-          change: Number((totalPaid - totals.total).toFixed(2)),
+          change: Number(Math.max(0, totalPaid - totals.total).toFixed(2)),
         },
-        // Use the online method as the primary payment method
-        paymentMethod: combinedPayment.onlineMethod, // This should be "BDO" or "GCASH"
-        // Store additional payment info for combined payments
-        additionalPaymentInfo: {
-          cashAmount: Number(combinedPayment.cashAmount.toFixed(2)),
-          onlineAmount: Number(combinedPayment.onlineAmount.toFixed(2)),
-          isCombinedPayment: true,
+        paymentMethod: "Combined",
+        paymentBreakdown: {
+          cash: Number(combinedPayment.cashAmount.toFixed(2)),
+          online: Number(combinedPayment.onlineAmount.toFixed(2)),
+          onlineMethod: combinedPayment.onlineMethod,
+          total: Number(totals.total.toFixed(2)),
         },
         paymentStatus: "Completed",
         orderStatus: "Completed",
@@ -1533,7 +1593,6 @@ const Bill = ({ orderId }) => {
         totalAmount: Number(totals.total.toFixed(2)),
       };
     } else {
-      // Regular single payment method
       return {
         customerDetails: {
           name: customerName,
@@ -1545,8 +1604,20 @@ const Bill = ({ orderId }) => {
         customerType: customerType,
         customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
         items,
-        bills,
-        paymentMethod: paymentMethod, // "Cash", "BDO", or "GCASH"
+        bills: {
+          ...bills,
+          cashAmount:
+            paymentMethod === "Cash" ? Number(totals.cashAmount.toFixed(2)) : 0,
+          onlineAmount:
+            paymentMethod !== "Cash" ? Number(totals.total.toFixed(2)) : 0,
+          totalPaid:
+            paymentMethod === "Cash"
+              ? Number(totals.cashAmount.toFixed(2))
+              : Number(totals.total.toFixed(2)),
+          change:
+            paymentMethod === "Cash" ? Number(totals.change.toFixed(2)) : 0,
+        },
+        paymentMethod: paymentMethod,
         paymentStatus: "Completed",
         orderStatus: "Completed",
         pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
@@ -1575,7 +1646,6 @@ const Bill = ({ orderId }) => {
 
       const { data } = res.data;
 
-      // FIXED: Create proper invoice order info
       const invoiceOrderInfo = {
         ...data,
         customerDetails: {
@@ -1616,7 +1686,6 @@ const Bill = ({ orderId }) => {
           totalPaid: totals.totalPaid,
           change: totals.change,
         },
-        // For display purposes in the invoice modal
         paymentMethod: showCombinedPaymentModal
           ? `Cash + ${combinedPayment.onlineMethod}`
           : paymentMethod,
@@ -1637,21 +1706,28 @@ const Bill = ({ orderId }) => {
 
       enqueueSnackbar("Order placed successfully!", { variant: "success" });
 
-      // Show invoice immediately
       setShowInvoice(true);
       setIsProcessing(false);
 
-      // SET PENDING PRINT ORDER - This will trigger auto-print via useEffect
+      // SET PENDING PRINT ORDER - This will trigger auto-print
       if (autoPrintEnabled) {
         console.log("Setting pending print order for auto-print...");
         setPendingPrintOrder(data);
+
+        printTimeoutRef.current = setTimeout(() => {
+          if (!isPrinting && pendingPrintOrder) {
+            console.log("Backup print trigger");
+            setPendingPrintOrder({ ...data });
+          }
+        }, 3000);
       }
 
-      // Auto-close invoice after 8 seconds (gives time for printing)
       setTimeout(() => {
-        setShowInvoice(false);
-        navigate("/menu");
-      }, 8000);
+        if (showInvoice) {
+          setShowInvoice(false);
+          navigate("/menu");
+        }
+      }, 10000);
     },
     onError: (error) => {
       console.error("Order placement error:", error);
@@ -1710,7 +1786,6 @@ const Bill = ({ orderId }) => {
 
     if (paymentMethod === "Cash" && !showCombinedPaymentModal) {
       if (totals.cashAmount < totals.total) {
-        // Show combined payment option
         setShowCombinedPaymentModal(true);
         setCombinedPayment({
           cashAmount: totals.cashAmount,
@@ -1762,7 +1837,6 @@ const Bill = ({ orderId }) => {
       setShowCashModal(false);
       handlePlaceOrder();
     } else {
-      // Show combined payment option
       setShowCombinedPaymentModal(true);
       setCombinedPayment({
         cashAmount: totals.cashAmount,
@@ -1873,7 +1947,7 @@ const Bill = ({ orderId }) => {
                 onChange={(e) => setCashAmount(e.target.value)}
                 className="w-full px-3 py-3 border border-gray-300 rounded-lg text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none mb-4"
                 placeholder="Enter cash amount"
-                min={totals.total}
+                min={0}
                 step="0.01"
                 autoFocus
               />
@@ -1943,8 +2017,7 @@ const Bill = ({ orderId }) => {
               </button>
               <button
                 onClick={handleCashSubmit}
-                disabled={totals.cashAmount < totals.total}
-                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors"
               >
                 {totals.cashAmount < totals.total
                   ? "Add Online Payment"
@@ -1994,6 +2067,7 @@ const Bill = ({ orderId }) => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     placeholder="Enter cash amount"
                     max={totals.total}
+                    min={0}
                     step="0.01"
                   />
                   <div className="flex gap-2 mt-2">
@@ -2068,6 +2142,7 @@ const Bill = ({ orderId }) => {
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     placeholder="Enter online payment amount"
                     max={totals.total}
+                    min={0}
                     step="0.01"
                   />
                 </div>
@@ -2174,235 +2249,6 @@ const Bill = ({ orderId }) => {
         </div>
       )}
 
-      {/* PWD/Senior Selection Modal */}
-      {showPwdSeniorSelection && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
-            <h3 className="text-lg font-semibold mb-4 text-gray-900">
-              PWD/Senior Discount Application
-            </h3>
-
-            <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-              <h4 className="text-sm font-semibold text-blue-800 mb-3">
-                PWD/Senior Holder Information
-              </h4>
-              <div className="space-y-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Discount Type
-                  </label>
-                  <div className="flex gap-3">
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="type"
-                        value="PWD"
-                        checked={pwdSeniorDetails.type === "PWD"}
-                        onChange={handlePwdSeniorDetailsChange}
-                        className="mr-2"
-                      />
-                      <span className="text-sm">PWD</span>
-                    </label>
-                    <label className="flex items-center">
-                      <input
-                        type="radio"
-                        name="type"
-                        value="Senior"
-                        checked={pwdSeniorDetails.type === "Senior"}
-                        onChange={handlePwdSeniorDetailsChange}
-                        className="mr-2"
-                      />
-                      <span className="text-sm">Senior Citizen</span>
-                    </label>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    Full Name *
-                  </label>
-                  <input
-                    type="text"
-                    name="name"
-                    value={pwdSeniorDetails.name}
-                    onChange={handlePwdSeniorDetailsChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    placeholder="Enter PWD/Senior holder name"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">
-                    ID Number *
-                  </label>
-                  <input
-                    type="text"
-                    name="idNumber"
-                    value={pwdSeniorDetails.idNumber}
-                    onChange={handlePwdSeniorDetailsChange}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    placeholder="Enter PWD/Senior ID number"
-                    required
-                  />
-                </div>
-              </div>
-            </div>
-
-            <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-              <div className="flex justify-between items-center mb-2">
-                <span className="text-sm font-medium text-yellow-800">
-                  Selected Items:
-                </span>
-                <span className="text-sm font-bold text-yellow-800">
-                  {pwdSeniorDiscountItems.length}/3
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="text-xs text-yellow-700">
-                  Drinks:{" "}
-                  {
-                    pwdSeniorDiscountItems.filter((item) => isDrinkItem(item))
-                      .length
-                  }
-                  /1
-                </div>
-                <div className="text-xs text-yellow-700">
-                  Food:{" "}
-                  {
-                    pwdSeniorDiscountItems.filter((item) => isFoodItem(item))
-                      .length
-                  }
-                  /2
-                </div>
-              </div>
-            </div>
-
-            <div className="space-y-3 mb-6 max-h-[300px] overflow-y-auto">
-              <p className="text-sm font-medium text-gray-700 mb-2">
-                Select items for 20% discount (1-3 items allowed):
-              </p>
-              {combinedCart.map((item, index) => {
-                const itemKey = getItemKey(item);
-                const isSelected = pwdSeniorDiscountItems.some(
-                  (selected) => getItemKey(selected) === itemKey
-                );
-                const isDrink = isDrinkItem(item);
-                const isFood = isFoodItem(item);
-                const isEligible = isDrink || isFood;
-
-                if (!isEligible) return null;
-
-                const itemType = isDrink ? "Drink" : "Food";
-                const itemValue = calculateItemTotalPrice(item);
-                const discountAmount = itemValue * pwdSeniorDiscountRate;
-                const discountedValue = itemValue - discountAmount;
-
-                return (
-                  <div
-                    key={itemKey}
-                    className={`flex items-center justify-between p-3 rounded-lg border cursor-pointer transition-colors ${
-                      isSelected
-                        ? "bg-green-50 border-green-300"
-                        : "bg-gray-50 border-gray-200 hover:bg-gray-100"
-                    }`}
-                    onClick={() => toggleItemSelection(item)}
-                  >
-                    <div className="flex items-center flex-1">
-                      <div
-                        className={`w-5 h-5 rounded-full border mr-3 flex-shrink-0 ${
-                          isSelected
-                            ? "bg-green-500 border-green-500"
-                            : "border-gray-400"
-                        }`}
-                      >
-                        {isSelected && (
-                          <div className="w-2 h-2 rounded-full bg-white"></div>
-                        )}
-                      </div>
-                      <div className="flex-1">
-                        <p className="text-sm font-medium text-gray-900">
-                          {item.name}
-                        </p>
-                        <div className="flex justify-between items-center">
-                          <p className="text-xs text-gray-500">
-                            {itemType} • {item.quantity}x ₱
-                            {safeNumber(item.pricePerQuantity).toFixed(2)}
-                          </p>
-                          <p className="text-xs font-semibold text-gray-700">
-                            ₱{itemValue.toFixed(2)}
-                          </p>
-                        </div>
-                        {isSelected && (
-                          <p className="text-xs text-green-600 mt-1">
-                            After 20% discount (-₱{discountAmount.toFixed(2)}):
-                            ₱{discountedValue.toFixed(2)}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-
-              {combinedCart.filter(
-                (item) => isDrinkItem(item) || isFoodItem(item)
-              ).length === 0 && (
-                <p className="text-gray-500 text-sm text-center py-4">
-                  No drinks or food items found in cart.
-                </p>
-              )}
-            </div>
-
-            <div className="flex justify-between items-center pt-4 border-t">
-              <div>
-                <p className="text-sm font-medium text-gray-900">
-                  Selected Value: ₱
-                  {pwdSeniorDiscountItems
-                    .reduce(
-                      (sum, item) => sum + calculateItemTotalPrice(item),
-                      0
-                    )
-                    .toFixed(2)}
-                </p>
-                <p className="text-xs text-gray-600">
-                  After 20% discount (-₱
-                  {(
-                    pwdSeniorDiscountItems.reduce(
-                      (sum, item) => sum + calculateItemTotalPrice(item),
-                      0
-                    ) * pwdSeniorDiscountRate
-                  ).toFixed(2)}
-                  ): ₱
-                  {(
-                    pwdSeniorDiscountItems.reduce(
-                      (sum, item) => sum + calculateItemTotalPrice(item),
-                      0
-                    ) *
-                    (1 - pwdSeniorDiscountRate)
-                  ).toFixed(2)}
-                </p>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={handleCancelPwdSeniorSelection}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleApplyPwdSeniorSelection}
-                  className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={pwdSeniorDiscountItems.length === 0}
-                >
-                  Apply Discount
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Custom Invoice Modal */}
       {showInvoice && orderInfo && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -2481,7 +2327,6 @@ const Bill = ({ orderId }) => {
                 )}
               </button>
 
-              {/* Bluetooth Print Button */}
               <button
                 onClick={handlePrintViaBluetooth}
                 disabled={!isPrinterConnected || isPrinting}

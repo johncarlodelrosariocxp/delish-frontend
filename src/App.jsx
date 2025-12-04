@@ -22,6 +22,29 @@ import FullScreenLoader from "./components/shared/FullScreenLoader";
 import PropTypes from "prop-types";
 import { setUser } from "./redux/slices/userSlice";
 
+// Custom hook for landscape detection
+const useLandscape = () => {
+  const [isLandscape, setIsLandscape] = useState(
+    window.innerWidth > window.innerHeight
+  );
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsLandscape(window.innerWidth > window.innerHeight);
+    };
+
+    window.addEventListener("resize", handleResize);
+    window.addEventListener("orientationchange", handleResize);
+
+    return () => {
+      window.removeEventListener("resize", handleResize);
+      window.removeEventListener("orientationchange", handleResize);
+    };
+  }, []);
+
+  return isLandscape;
+};
+
 // Debug component - remove after testing
 function DebugAuth() {
   const user = useSelector((state) => state.user);
@@ -83,10 +106,11 @@ const registerServiceWorker = async () => {
   return null;
 };
 
-// Install Prompt Component
+// Install Prompt Component (Landscape Optimized)
 const InstallPrompt = () => {
   const [showPrompt, setShowPrompt] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
+  const isLandscape = useLandscape();
 
   useEffect(() => {
     // Check if already installed
@@ -127,13 +151,13 @@ const InstallPrompt = () => {
     let message = "";
     if (isIOS) {
       message =
-        'To install:\n1. Tap the Share button (square with arrow up)\n2. Scroll down and tap "Add to Home Screen"';
+        'To install:\n1. Tap the Share button (square with arrow up)\n2. Scroll down and tap "Add to Home Screen"\n\nDelish POS works best in landscape mode!';
     } else if (isAndroid) {
       message =
-        'To install:\n1. Tap the menu (⋮) in your browser\n2. Select "Install app" or "Add to Home Screen"';
+        'To install:\n1. Tap the menu (⋮) in your browser\n2. Select "Install app" or "Add to Home Screen"\n\nDelish POS works best in landscape mode!';
     } else {
       message =
-        "To install:\nClick the install icon (📱) in your browser address bar";
+        "To install:\nClick the install icon (📱) in your browser address bar\n\nDelish POS works best in landscape mode!";
     }
 
     alert(message);
@@ -144,14 +168,13 @@ const InstallPrompt = () => {
     localStorage.setItem("install_prompt_declined", Date.now());
   };
 
-  if (isStandalone || !showPrompt) return null;
+  if (isStandalone || !showPrompt || !isLandscape) return null;
 
   return (
     <div
       style={{
         position: "fixed",
         bottom: "20px",
-        left: "20px",
         right: "20px",
         backgroundColor: "white",
         borderRadius: "12px",
@@ -159,8 +182,8 @@ const InstallPrompt = () => {
         boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
         zIndex: 10000,
         border: "1px solid #e5e7eb",
-        maxWidth: "500px",
-        margin: "0 auto",
+        maxWidth: "400px",
+        width: "auto",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -211,6 +234,47 @@ const InstallPrompt = () => {
   );
 };
 
+// Landscape Warning Component
+const LandscapeWarning = () => {
+  const isLandscape = useLandscape();
+
+  if (isLandscape) return null;
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "#1f2937",
+        color: "white",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 99999,
+        textAlign: "center",
+        padding: "20px",
+      }}
+    >
+      <div style={{ fontSize: "48px", marginBottom: "20px" }}>🔄</div>
+      <h1 style={{ fontSize: "24px", marginBottom: "10px" }}>
+        Rotate Your Device
+      </h1>
+      <p style={{ fontSize: "16px", marginBottom: "30px", maxWidth: "400px" }}>
+        Delish POS is optimized for landscape mode. Please rotate your device to
+        landscape orientation.
+      </p>
+      <p style={{ fontSize: "14px", color: "#9ca3af", marginTop: "20px" }}>
+        If rotation doesn't work automatically, try locking your screen
+        rotation.
+      </p>
+    </div>
+  );
+};
+
 function Layout() {
   const dispatch = useDispatch();
   const isLoading = useLoadData();
@@ -220,8 +284,9 @@ function Layout() {
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [autoSaveInterval, setAutoSaveInterval] = useState(null);
+  const isLandscape = useLandscape();
 
-  // ✅ FIXED: Check both Redux state AND localStorage as fallback
+  // ✅ Check both Redux state AND localStorage as fallback
   const isAuthenticated = user.isAuth || localStorage.getItem("token");
 
   // Setup data persistence when authenticated
@@ -371,104 +436,116 @@ function Layout() {
   return (
     <>
       <DebugAuth /> {/* Remove this line after debugging */}
-      {/* Offline Indicator */}
-      {isOffline && (
-        <div
-          style={{
-            position: "fixed",
-            top: 0,
-            left: 0,
-            right: 0,
-            backgroundColor: "#EF4444",
-            color: "white",
-            textAlign: "center",
-            padding: "8px",
-            fontSize: "14px",
-            zIndex: 9999,
-            fontWeight: "bold",
-          }}
-        >
-          ⚠️ You are offline. Some features may be limited.
-        </div>
+      {/* Landscape Warning */}
+      <LandscapeWarning />
+      {/* Only show app content in landscape mode */}
+      {isLandscape && (
+        <>
+          {/* Offline Indicator */}
+          {isOffline && (
+            <div
+              style={{
+                position: "fixed",
+                top: 0,
+                left: 0,
+                right: 0,
+                backgroundColor: "#EF4444",
+                color: "white",
+                textAlign: "center",
+                padding: "8px",
+                fontSize: "14px",
+                zIndex: 9999,
+                fontWeight: "bold",
+              }}
+            >
+              ⚠️ You are offline. Some features may be limited.
+            </div>
+          )}
+
+          {/* Auto-save Indicator */}
+          {hasUnsavedChanges && (
+            <div
+              style={{
+                position: "fixed",
+                bottom: 10,
+                left: 10,
+                backgroundColor: "#F59E0B",
+                color: "white",
+                padding: "5px 10px",
+                borderRadius: "5px",
+                fontSize: "12px",
+                zIndex: 9998,
+              }}
+            >
+              ⚡ Auto-saving...
+            </div>
+          )}
+
+          {/* Install Prompt for Mobile */}
+          <InstallPrompt />
+
+          {/* Header - only show in landscape and when authenticated */}
+          {!hideHeaderRoutes.includes(location.pathname) && isAuthenticated && (
+            <Header />
+          )}
+
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <ProtectedRoutes>
+                  <Home markDataChanged={markDataChanged} />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/auth"
+              element={isAuthenticated ? <Navigate to="/" replace /> : <Auth />}
+            />
+            <Route
+              path="/orders"
+              element={
+                <ProtectedRoutes>
+                  <Orders markDataChanged={markDataChanged} />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/tables"
+              element={
+                <ProtectedRoutes>
+                  <Tables markDataChanged={markDataChanged} />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/menu"
+              element={
+                <ProtectedRoutes>
+                  <Menu markDataChanged={markDataChanged} />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoutes>
+                  <Dashboard markDataChanged={markDataChanged} />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/inventory"
+              element={
+                <ProtectedRoutes>
+                  <Inventory markDataChanged={markDataChanged} />
+                </ProtectedRoutes>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </>
       )}
-      {/* Auto-save Indicator */}
-      {hasUnsavedChanges && (
-        <div
-          style={{
-            position: "fixed",
-            bottom: 10,
-            left: 10,
-            backgroundColor: "#F59E0B",
-            color: "white",
-            padding: "5px 10px",
-            borderRadius: "5px",
-            fontSize: "12px",
-            zIndex: 9998,
-          }}
-        >
-          ⚡ Changes not saved
-        </div>
-      )}
-      {/* Install Prompt for Mobile */}
-      <InstallPrompt />
-      {!hideHeaderRoutes.includes(location.pathname) && isAuthenticated && (
-        <Header />
-      )}
-      <Routes>
-        <Route
-          path="/"
-          element={
-            <ProtectedRoutes>
-              <Home markDataChanged={markDataChanged} />
-            </ProtectedRoutes>
-          }
-        />
-        <Route
-          path="/auth"
-          element={isAuthenticated ? <Navigate to="/" replace /> : <Auth />}
-        />
-        <Route
-          path="/orders"
-          element={
-            <ProtectedRoutes>
-              <Orders markDataChanged={markDataChanged} />
-            </ProtectedRoutes>
-          }
-        />
-        <Route
-          path="/tables"
-          element={
-            <ProtectedRoutes>
-              <Tables markDataChanged={markDataChanged} />
-            </ProtectedRoutes>
-          }
-        />
-        <Route
-          path="/menu"
-          element={
-            <ProtectedRoutes>
-              <Menu markDataChanged={markDataChanged} />
-            </ProtectedRoutes>
-          }
-        />
-        <Route
-          path="/dashboard"
-          element={
-            <ProtectedRoutes>
-              <Dashboard markDataChanged={markDataChanged} />
-            </ProtectedRoutes>
-          }
-        />
-        <Route
-          path="/inventory"
-          element={
-            <ProtectedRoutes>
-              <Inventory markDataChanged={markDataChanged} />
-            </ProtectedRoutes>
-          }
-        />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
     </>
   );
 }
@@ -476,8 +553,9 @@ function Layout() {
 function ProtectedRoutes({ children, markDataChanged }) {
   const user = useSelector((state) => state.user);
   const dispatch = useDispatch();
+  const isLandscape = useLandscape();
 
-  // ✅ FIXED: Check both Redux state AND localStorage as fallback
+  // ✅ Check both Redux state AND localStorage as fallback
   const isAuthenticated = user.isAuth || localStorage.getItem("token");
 
   // Attempt to restore session from localStorage if Redux doesn't have it
@@ -501,6 +579,11 @@ function ProtectedRoutes({ children, markDataChanged }) {
       }
     }
   }, [user.isAuth, dispatch]);
+
+  // Don't show anything if not in landscape
+  if (!isLandscape) {
+    return null;
+  }
 
   if (!isAuthenticated) {
     return <Navigate to="/auth" replace />;
