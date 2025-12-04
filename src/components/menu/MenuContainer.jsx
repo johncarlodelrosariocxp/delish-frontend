@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { menus, bentoItems, cheesecakeFlavorOptions } from "../../constants";
+import { menus } from "../../constants";
 import { GrRadialSelected } from "react-icons/gr";
 import { useDispatch } from "react-redux";
 import { addItemsToOrder } from "../../redux/slices/orderSlice";
@@ -12,8 +12,6 @@ const MenuContainer = ({ orderId }) => {
   const [selectedBentoItem, setSelectedBentoItem] = useState(null);
   const [selectedBentoBase, setSelectedBentoBase] = useState(null);
   const [availableFlavors, setAvailableFlavors] = useState([]);
-
-  // New state for Keto Slice
   const [selectedKetoItem, setSelectedKetoItem] = useState(null);
   const [selectedKetoBase, setSelectedKetoBase] = useState(null);
   const [availableKetoFlavors, setAvailableKetoFlavors] = useState([]);
@@ -48,12 +46,13 @@ const MenuContainer = ({ orderId }) => {
     setSelectedKetoBase(baseVariant);
 
     // Get all flavor options for Keto items
-    const allFlavors = cheesecakeFlavorOptions.map((flavor) => ({
-      ...flavor,
-      basePrice: baseVariant.price,
-      description: `${item.name} (${baseVariant.label}) with ${flavor.label} flavor`,
-      totalPrice: baseVariant.price + (flavor.price - 220),
-    }));
+    const allFlavors =
+      item.flavorOptions?.map((flavor) => ({
+        ...flavor,
+        basePrice: baseVariant.price,
+        description: `${item.name} (${baseVariant.label}) with ${flavor.label} flavor`,
+        totalPrice: baseVariant.price + (flavor.price - 220),
+      })) || [];
 
     setAvailableKetoFlavors(allFlavors);
     setShowKetoFlavors(true);
@@ -96,12 +95,13 @@ const MenuContainer = ({ orderId }) => {
     setSelectedBentoBase(baseVariant);
 
     // Get all flavor options for Bento items
-    const allFlavors = cheesecakeFlavorOptions.map((flavor) => ({
-      ...flavor,
-      basePrice: baseVariant.price,
-      description: `${item.name} (${baseVariant.label}) with ${flavor.label} flavor`,
-      totalPrice: baseVariant.price + (flavor.price - 220),
-    }));
+    const allFlavors =
+      item.flavorOptions?.map((flavor) => ({
+        ...flavor,
+        basePrice: baseVariant.price,
+        description: `${item.name} (${baseVariant.label}) with ${flavor.label} flavor`,
+        totalPrice: baseVariant.price + (flavor.price - 220),
+      })) || [];
 
     setAvailableFlavors(allFlavors);
     setShowBentoFlavors(true);
@@ -141,48 +141,15 @@ const MenuContainer = ({ orderId }) => {
   const isRegularCheesecakes = selected.name === "Regular Cheesecakes";
   const isKetoCheesecakes = selected.name === "Keto Cheesecakes";
   const isBentoMini = selected.name === "Bento & Mini";
-  const isSliceItem = (item) =>
-    item.name.includes("Slice") || item.name.includes("Slices");
-
-  // Check if item is a Bento item
-  const isBentoItem = (item) => {
-    return item.category === "Bento & Mini";
-  };
-
-  // Check if item is a Keto Slice item
-  const isKetoSliceItem = (item) => {
-    return isKetoCheesecakes && item.name === "Keto Cheesecake - Slices";
-  };
-
-  // Check if item is a Regular Slice item
-  const isRegularSliceItem = (item) => {
-    return isRegularCheesecakes && item.name === "Regular Cheesecake - Slice";
-  };
-
-  // Get base options for Bento items
-  const getBentoBaseOptions = (item) => {
-    return item.variants.filter((variant) => variant.type === "base");
-  };
-
-  // Get base options for Keto items
-  const getKetoBaseOptions = (item) => {
-    if (isKetoSliceItem(item)) {
-      return item.variants.filter((variant) => variant.type === "base");
-    }
-    return item.variants;
-  };
-
-  // Get base options for Regular slice items
-  const getRegularSliceBaseOptions = (item) => {
-    if (isRegularSliceItem(item)) {
-      return item.variants.filter((variant) => variant.type === "base");
-    }
-    return item.variants;
-  };
+  const isRegularSliceItem = (item) =>
+    isRegularCheesecakes && item.name === "Regular Cheesecake - Slice";
+  const isKetoSliceItem = (item) =>
+    isKetoCheesecakes && item.name === "Keto Cheesecake - Slices";
+  const isBentoItem = (item) => item.category === "Bento & Mini";
 
   return (
     <div className="w-full h-[calc(100vh-8rem)] flex bg-gray-50">
-      {/* 🟡 Category Sidebar - 2 Columns */}
+      {/* 🟡 Category Sidebar */}
       <div className="w-48 sm:w-56 md:w-60 lg:w-64 bg-white shadow-md overflow-y-auto flex-shrink-0">
         <div className="grid grid-cols-2 gap-2 p-3">
           {menus.map((menu) => (
@@ -499,7 +466,7 @@ const MenuContainer = ({ orderId }) => {
                     : ""
                 }`}
               >
-                {/* 🏷️ Name */}
+                {/* Name */}
                 <div className="flex justify-between items-start gap-2">
                   <h1 className="text-gray-900 text-sm sm:text-[0.9rem] font-bold leading-tight flex-1 line-clamp-2">
                     {item.name}
@@ -516,11 +483,10 @@ const MenuContainer = ({ orderId }) => {
                   </h1>
                 </div>
 
-                {/* 💵 Variants */}
+                {/* Variants */}
                 <div className="space-y-2">
                   {isBentoMini && isBentoItem(item)
-                    ? // Bento & Mini items - Show base options
-                      getBentoBaseOptions(item).map((variant) => (
+                    ? item.variants.map((variant) => (
                         <div
                           key={variant.label}
                           className="flex flex-col gap-2"
@@ -536,7 +502,6 @@ const MenuContainer = ({ orderId }) => {
                           </div>
 
                           <div className="flex gap-2">
-                            {/* Add Base Only Button */}
                             <button
                               onClick={() => handleBentoBaseOnly(item, variant)}
                               className="flex-1 bg-green-500 text-white py-2 rounded-lg shadow hover:bg-green-600 transition-colors font-semibold text-sm"
@@ -544,7 +509,6 @@ const MenuContainer = ({ orderId }) => {
                               Add Base
                             </button>
 
-                            {/* Choose Flavor Button */}
                             <button
                               onClick={() =>
                                 handleBentoFlavorClick(item, variant)
@@ -557,8 +521,7 @@ const MenuContainer = ({ orderId }) => {
                         </div>
                       ))
                     : isKetoSliceItem(item)
-                    ? // Keto Cheesecake Slice - Show base options
-                      getKetoBaseOptions(item).map((variant) => (
+                    ? item.variants.map((variant) => (
                         <div
                           key={variant.label}
                           className="flex flex-col gap-2"
@@ -574,7 +537,6 @@ const MenuContainer = ({ orderId }) => {
                           </div>
 
                           <div className="flex gap-2">
-                            {/* Add Base Only Button */}
                             <button
                               onClick={() => handleKetoBaseOnly(item, variant)}
                               className="flex-1 bg-green-500 text-white py-2 rounded-lg shadow hover:bg-green-600 transition-colors font-semibold text-sm"
@@ -582,7 +544,6 @@ const MenuContainer = ({ orderId }) => {
                               Add Base
                             </button>
 
-                            {/* Choose Flavor Button */}
                             <button
                               onClick={() => handleKetoBaseClick(item, variant)}
                               className="flex-1 bg-purple-500 text-white py-2 rounded-lg shadow hover:bg-purple-600 transition-colors font-semibold text-sm"
@@ -593,8 +554,7 @@ const MenuContainer = ({ orderId }) => {
                         </div>
                       ))
                     : isRegularSliceItem(item)
-                    ? // Regular Cheesecake Slice - Show base options
-                      getRegularSliceBaseOptions(item).map((variant) => (
+                    ? item.variants.map((variant) => (
                         <div
                           key={variant.label}
                           className="flex flex-col gap-2"
@@ -609,7 +569,6 @@ const MenuContainer = ({ orderId }) => {
                             </span>
                           </div>
 
-                          {/* Special handling for Regular Cheesecake Slice */}
                           {variant.label === "Slice" ? (
                             <button
                               onClick={() => handleSelectSlice(item, variant)}
@@ -633,8 +592,7 @@ const MenuContainer = ({ orderId }) => {
                           )}
                         </div>
                       ))
-                    : // Regular items (non-Bento, non-Keto Slice, non-Regular Slice)
-                      item.variants.map((variant) => (
+                    : item.variants.map((variant) => (
                         <div
                           key={variant.label}
                           className="flex flex-col gap-2"
