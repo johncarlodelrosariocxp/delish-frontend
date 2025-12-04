@@ -174,16 +174,9 @@ export const regularCheesecakes = [
     id: 3,
     name: "Regular Cheesecake - Slice",
     category: "Cheesecake",
-    variants: [
-      { label: "Slice", price: 230, type: "base" },
-      ...cheesecakeFlavorOptions.map((flavor) => ({
-        ...flavor,
-        type: "flavor",
-        baseLabel: "Slice",
-        basePrice: 230,
-        totalPrice: flavor.price,
-      })),
-    ],
+    variants: [{ label: "Original", price: 230 }],
+    hasFlavorSelection: true,
+    flavorOptions: cheesecakeFlavorOptions,
   },
   {
     id: 4,
@@ -241,16 +234,9 @@ export const ketoCheesecakes = [
     id: 3,
     name: "Keto Cheesecake - Slices",
     category: "Keto Cheesecake",
-    variants: [
-      { label: "Slice", price: 330, type: "base" },
-      ...cheesecakeFlavorOptions.map((flavor) => ({
-        ...flavor,
-        type: "flavor",
-        baseLabel: "Slice",
-        basePrice: 330,
-        totalPrice: flavor.price,
-      })),
-    ],
+    variants: [{ label: "Original", price: 330 }],
+    hasFlavorSelection: true,
+    flavorOptions: cheesecakeFlavorOptions,
   },
   {
     id: 4,
@@ -262,13 +248,9 @@ export const ketoCheesecakes = [
     id: 5,
     name: "Keto Cheesecake - Mini",
     category: "Keto Cheesecake",
-    variants: [
-      { label: "Original", price: 160 },
-      ...ketoMiniFlavorOptions.map((flavor) => ({
-        ...flavor,
-        description: `Keto Cheesecake - Mini (${flavor.label})`,
-      })),
-    ],
+    variants: [{ label: "Original", price: 160 }],
+    hasFlavorSelection: true,
+    flavorOptions: ketoMiniFlavorOptions,
   },
   {
     id: 6,
@@ -280,104 +262,76 @@ export const ketoCheesecakes = [
 
 // 🍱 Bento & Mini Items - ALL with flavor selection
 export const bentoItems = [
-  // Bento Combo - Regular base with all flavor options
+  // Bento Combo - with original and all flavor options
   {
     id: 1,
     name: "Bento Combo",
     category: "Bento & Mini",
+    variants: [{ label: "Original", price: 500 }],
     hasFlavorSelection: true,
-    baseOptions: [{ label: "Regular", price: 500, type: "size" }],
-    variants: [
-      { label: "Regular", price: 500, type: "base", hasFlavors: true },
-      ...cheesecakeFlavorOptions.map((flavor) => ({
-        ...flavor,
-        type: "flavor",
-        baseLabel: "Regular",
-        basePrice: 500,
-        description: `Bento Combo (Regular) with ${flavor.label} flavor`,
-        totalPrice: 500 + (flavor.price - 220),
-      })),
-    ],
+    flavorOptions: cheesecakeFlavorOptions,
   },
 
-  // Bento - Single base with all flavor options
+  // Bento - with original and all flavor options
   {
     id: 2,
     name: "Bento",
     category: "Bento & Mini",
+    variants: [{ label: "Original", price: 350 }],
     hasFlavorSelection: true,
-    baseOptions: [{ label: "Single", price: 350, type: "size" }],
-    variants: [
-      { label: "Single", price: 350, type: "base", hasFlavors: true },
-      ...cheesecakeFlavorOptions.map((flavor) => ({
-        ...flavor,
-        type: "flavor",
-        baseLabel: "Single",
-        basePrice: 350,
-        description: `Bento (Single) with ${flavor.label} flavor`,
-        totalPrice: 350 + (flavor.price - 220),
-      })),
-    ],
+    flavorOptions: cheesecakeFlavorOptions,
   },
 
-  // Mini Box 6s - Box base with all flavor options
+  // Mini Box 6s - with original and all flavor options
   {
     id: 3,
     name: "Mini Box 6s",
     category: "Bento & Mini",
+    variants: [{ label: "Original", price: 450 }],
     hasFlavorSelection: true,
-    baseOptions: [{ label: "Box", price: 450, type: "size" }],
-    variants: [
-      { label: "Box", price: 450, type: "base", hasFlavors: true },
-      ...cheesecakeFlavorOptions.map((flavor) => ({
-        ...flavor,
-        type: "flavor",
-        baseLabel: "Box",
-        basePrice: 450,
-        description: `Mini Box 6s (Box) with ${flavor.label} flavor`,
-        totalPrice: 450 + (flavor.price - 220),
-      })),
-    ],
+    flavorOptions: cheesecakeFlavorOptions,
   },
 
-  // Mini Box 4s - Box base with all flavor options
+  // Mini Box 4s - with original and all flavor options
   {
     id: 4,
     name: "Mini Box 4s",
     category: "Bento & Mini",
+    variants: [{ label: "Original", price: 350 }],
     hasFlavorSelection: true,
-    baseOptions: [{ label: "Box", price: 350, type: "size" }],
-    variants: [
-      { label: "Box", price: 350, type: "base", hasFlavors: true },
-      ...cheesecakeFlavorOptions.map((flavor) => ({
-        ...flavor,
-        type: "flavor",
-        baseLabel: "Box",
-        basePrice: 350,
-        description: `Mini Box 4s (Box) with ${flavor.label} flavor`,
-        totalPrice: 350 + (flavor.price - 220),
-      })),
-    ],
+    flavorOptions: cheesecakeFlavorOptions,
   },
 
-  // Mini Cake - Single base with all flavor options
+  // Mini Cake - with original and all flavor options
   {
     id: 5,
     name: "Mini Cake",
     category: "Bento & Mini",
+    variants: [{ label: "Original", price: 85 }],
     hasFlavorSelection: true,
-    baseOptions: [{ label: "Single", price: 85, type: "size" }],
-    variants: [
-      { label: "Single", price: 85, type: "base", hasFlavors: true },
-      ...cheesecakeFlavorOptions.map((flavor) => ({
-        ...flavor,
-        type: "flavor",
-        baseLabel: "Single",
-        basePrice: 85,
-        description: `Mini Cake (Single) with ${flavor.label} flavor`,
-        totalPrice: 85 + (flavor.price - 220),
-      })),
-    ],
+    flavorOptions: cheesecakeFlavorOptions,
+  },
+];
+
+// 🥐 Pastries (New Category)
+export const pastryItems = [
+  {
+    id: 1,
+    name: "Egg Tart",
+    category: "Pastries",
+    variants: [{ label: "Regular", price: 20 }],
+  },
+  {
+    id: 2,
+    name: "Banana Bread",
+    category: "Pastries",
+    variants: [{ label: "Regular", price: 20 }],
+  },
+  {
+    id: 3,
+    name: "Cookies",
+    category: "Pastries",
+    variants: [{ label: "Regular", price: 50 }],
   },
 ];
 
@@ -938,6 +892,12 @@ export const addOnsItems = [
     category: "Add-ons",
     variants: [{ label: "Substitute", price: 35 }],
   },
+  {
+    id: 5,
+    name: "Upsize",
+    category: "Add-ons",
+    variants: [{ label: "Regular", price: 15 }],
+  },
 ];
 
 // 📊 Menu Sections (Updated with all categories)
@@ -958,69 +918,76 @@ export const menus = [
   },
   {
     id: 3,
+    name: "Pastries",
+    bgColor: "#FF9800",
+    icon: "🥐",
+    items: pastryItems,
+  },
+  {
+    id: 4,
     name: "Snacks",
     bgColor: "#FF5252",
     icon: "🍟",
     items: snackItems,
   },
   {
-    id: 4,
+    id: 5,
     name: "Regular Cheesecakes",
     bgColor: "#f6b100",
     icon: "🍰",
     items: regularCheesecakes,
   },
   {
-    id: 5,
+    id: 6,
     name: "Keto Cheesecakes",
     bgColor: "#9C27B0",
     icon: "🥑",
     items: ketoCheesecakes,
   },
   {
-    id: 6,
+    id: 7,
     name: "Bento & Mini",
     bgColor: "#FF9800",
     icon: "🍱",
     items: bentoItems,
   },
   {
-    id: 7,
+    id: 8,
     name: "Hot Coffee",
     bgColor: "#8B4513",
     icon: "☕",
     items: hotCoffeeItems,
   },
   {
-    id: 8,
+    id: 9,
     name: "Iced Coffee",
     bgColor: "#025cca",
     icon: "🧊",
     items: icedCoffeeItems,
   },
   {
-    id: 9,
+    id: 10,
     name: "Frappe",
     bgColor: "#8a2be2",
     icon: "🥤",
     items: frappeItems,
   },
   {
-    id: 10,
+    id: 11,
     name: "Smoothies",
     bgColor: "#ff4081",
     icon: "🍓",
     items: smoothieItems,
   },
   {
-    id: 11,
+    id: 12,
     name: "Iced Tea",
     bgColor: "#ff9800",
     icon: "🍹",
     items: icedTeaItems,
   },
   {
-    id: 12,
+    id: 13,
     name: "Add-ons",
     bgColor: "#607D8B",
     icon: "➕",
@@ -1149,6 +1116,11 @@ export const isSnackItem = (item) => {
   return item.category === "Snacks";
 };
 
+// Function to check if item has Pastry selection
+export const isPastryItem = (item) => {
+  return item.category === "Pastries";
+};
+
 // Function to get all Keto Mini flavors
 export const getAllKetoMiniFlavors = () => {
   return ketoMiniFlavorOptions;
@@ -1160,6 +1132,16 @@ export const getKetoMiniWithFlavors = () => {
     (item) => item.name === "Keto Cheesecake - Mini"
   );
   return ketoMiniItem || null;
+};
+
+// Function to check if item has flavor selection (for cheesecake items)
+export const hasFlavorSelection = (item) => {
+  return item.hasFlavorSelection || false;
+};
+
+// Function to get flavor options for an item
+export const getFlavorOptions = (item) => {
+  return item.flavorOptions || [];
 };
 
 // 🛍️ Popular Dishes (sample data - adjust as needed)

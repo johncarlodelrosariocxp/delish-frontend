@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   removeItemFromOrder,
@@ -16,15 +16,223 @@ import { useMutation } from "@tanstack/react-query";
 import Invoice from "../invoice/Invoice";
 import { useNavigate } from "react-router-dom";
 
-function loadScript(src) {
-  return new Promise((resolve) => {
-    const script = document.createElement("script");
-    script.src = src;
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
+// Bluetooth connection manager
+class BluetoothPrinterManager {
+  constructor() {
+    this.device = null;
+    this.server = null;
+    this.writeCharacteristic = null;
+    this.isConnected = false;
+    this.connectionPromise = null;
+    this.reconnectAttempts = 0;
+    this.maxReconnectAttempts = 5;
+    this.reconnectDelay = 2000; // 2 seconds
+    this.reconnectTimer = null;
+  }
+
+  // Check if Bluetooth is supported
+  isBluetoothSupported() {
+    return (
+      navigator.bluetooth &&
+      typeof navigator.bluetooth.requestDevice === "function"
+    );
+  }
+
+  // Get saved printer info
+  getSavedPrinter() {
+    const deviceId = localStorage.getItem("bluetoothPrinterId");
+    const deviceName = localStorage.getItem("bluetoothPrinterName");
+    return { deviceId, deviceName };
+  }
+
+  // Save printer info
+  savePrinter(device) {
+    localStorage.setItem("bluetoothPrinterId", device.id);
+    localStorage.setItem(
+      "bluetoothPrinterName",
+      device.name || "Bluetooth Printer"
+    );
+  }
+
+  // Clear saved printer
+  clearSavedPrinter() {
+    localStorage.removeItem("bluetoothPrinterId");
+    localStorage.removeItem("bluetoothPrinterName");
+  }
+
+  // Setup device listeners
+  setupDeviceListeners(device, onDisconnect) {
+    device.addEventListener("gattserverdisconnected", () => {
+      console.log("Bluetooth device disconnected");
+      this.isConnected = false;
+      this.device = null;
+      this.server = null;
+      this.writeCharacteristic = null;
+
+      if (onDisconnect) onDisconnect();
+
+      // Auto-reconnect
+      this.attemptReconnection(onDisconnect);
+    });
+  }
+
+  // Attempt reconnection
+  async attemptReconnection(onDisconnect) {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log("Max reconnection attempts reached");
+      this.reconnectAttempts = 0;
+      return;
+    }
+
+    this.reconnectAttempts++;
+    console.log(
+      `Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`
+    );
+
+    // Wait before retry
+    await new Promise((resolve) => setTimeout(resolve, this.reconnectDelay));
+
+    try {
+      const { deviceId } = this.getSavedPrinter();
+      if (!deviceId) {
+        console.log("No saved printer to reconnect to");
+        return;
+      }
+
+      console.log("Attempting to reconnect to saved printer...");
+      const devices = await navigator.bluetooth.getDevices();
+      const savedDevice = devices.find((d) => d.id === deviceId);
+
+      if (savedDevice) {
+        await this.connectToDevice(savedDevice, onDisconnect);
+      }
+    } catch (error) {
+      console.error("Reconnection failed:", error);
+      // Try again
+      this.attemptReconnection(onDisconnect);
+    }
+  }
+
+  // Connect to a specific device
+  async connectToDevice(device, onDisconnect) {
+    try {
+      console.log("Connecting to device:", device.name);
+
+      if (device.gatt.connected) {
+        console.log("Device already connected");
+        this.device = device;
+        this.isConnected = true;
+        await this.setupPrinterServices(device);
+        this.setupDeviceListeners(device, onDisconnect);
+        return true;
+      }
+
+      const server = await device.gatt.connect();
+      this.device = device;
+      this.server = server;
+      this.isConnected = true;
+
+      await this.setupPrinterServices(device);
+      this.setupDeviceListeners(device, onDisconnect);
+      this.savePrinter(device);
+      this.reconnectAttempts = 0; // Reset on successful connection
+
+      console.log("Device connected successfully");
+      return true;
+    } catch (error) {
+      console.error("Failed to connect to device:", error);
+      this.isConnected = false;
+      throw error;
+    }
+  }
+
+  // Setup printer services
+  async setupPrinterServices(device) {
+    const serviceUUID_PRINTER = "000018f0-0000-1000-8000-00805f9b34fb";
+    const serviceUUID_SPP = "00001101-0000-1000-8000-00805f9b34fb";
+    const serviceUUID_GENERIC_ACCESS = "00001800-0000-1000-8000-00805f9b34fb";
+
+    const servicesToTry = [serviceUUID_PRINTER, serviceUUID_SPP];
+
+    for (const serviceUuid of servicesToTry) {
+      try {
+        const service = await this.server.getPrimaryService(serviceUuid);
+        const characteristics = await service.getCharacteristics();
+
+        this.writeCharacteristic = characteristics.find(
+          (char) =>
+            char.properties.write || char.properties.writeWithoutResponse
+        );
+
+        if (this.writeCharacteristic) {
+          console.log(
+            `Found writable characteristic in service ${serviceUuid}`
+          );
+          break;
+        }
+      } catch (error) {
+        console.log(
+          `Service ${serviceUuid} not found or accessible:`,
+          error.message
+        );
+      }
+    }
+
+    if (!this.writeCharacteristic) {
+      throw new Error("No writable characteristic found");
+    }
+  }
+
+  // Send data to printer
+  async sendData(data) {
+    if (!this.isConnected || !this.writeCharacteristic) {
+      throw new Error("Printer not connected");
+    }
+
+    const encoder = new TextEncoder();
+    const dataArray = encoder.encode(data);
+
+    // Split into chunks for reliability
+    const CHUNK_SIZE = 20;
+    for (let i = 0; i < dataArray.length; i += CHUNK_SIZE) {
+      const chunk = dataArray.slice(i, i + CHUNK_SIZE);
+      await this.writeCharacteristic.writeValue(chunk);
+
+      // Small delay between chunks
+      if (i + CHUNK_SIZE < dataArray.length) {
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+    }
+
+    console.log("Data sent to printer successfully");
+    return true;
+  }
+
+  // Disconnect
+  disconnect() {
+    if (this.device && this.device.gatt.connected) {
+      try {
+        this.device.gatt.disconnect();
+      } catch (error) {
+        console.error("Error disconnecting:", error);
+      }
+    }
+
+    this.isConnected = false;
+    this.device = null;
+    this.server = null;
+    this.writeCharacteristic = null;
+    this.clearSavedPrinter();
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
 }
+
+// Create a global printer manager instance
+const printerManager = new BluetoothPrinterManager();
 
 const Bill = ({ orderId }) => {
   const dispatch = useDispatch();
@@ -75,59 +283,151 @@ const Bill = ({ orderId }) => {
   const [showOnlineOptions, setShowOnlineOptions] = useState(false);
 
   // Bluetooth printer state
-  const [bluetoothDevice, setBluetoothDevice] = useState(null);
   const [isPrinterConnected, setIsPrinterConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [autoPrintEnabled, setAutoPrintEnabled] = useState(true); // Auto-print enabled by default
+  const [autoPrintEnabled, setAutoPrintEnabled] = useState(true);
+  const [printerName, setPrinterName] = useState("");
 
-  // Bluetooth printer setup
+  // Refs
+  const connectionCheckRef = useRef(null);
+
+  // Thermal printer ESC/POS commands
+  const thermalCommands = {
+    INIT: "\x1B\x40",
+    ALIGN_LEFT: "\x1B\x61\x00",
+    ALIGN_CENTER: "\x1B\x61\x01",
+    ALIGN_RIGHT: "\x1B\x61\x02",
+    BOLD_ON: "\x1B\x45\x01",
+    BOLD_OFF: "\x1B\x45\x00",
+    UNDERLINE_ON: "\x1B\x2D\x01",
+    UNDERLINE_OFF: "\x1B\x2D\x00",
+    CUT_PARTIAL: "\x1B\x69",
+    CUT_FULL: "\x1B\x6D",
+    FEED_LINE: "\x0A",
+    FEED_N_LINES: (n) => `\x1B\x64${String.fromCharCode(n)}`,
+    TEXT_NORMAL: "\x1B\x21\x00",
+    TEXT_LARGE: "\x1B\x21\x10",
+    TEXT_DOUBLE_WIDTH: "\x1B\x21\x20",
+    TEXT_DOUBLE_SIZE: "\x1B\x21\x30",
+    DRAWER_KICK: "\x1B\x70\x00\x19\xFA",
+  };
+
+  // Initialize Bluetooth connection
   useEffect(() => {
-    // Check for existing Bluetooth connection
-    if (navigator.bluetooth) {
-      checkExistingConnection();
-    }
+    const initializeBluetooth = async () => {
+      if (!printerManager.isBluetoothSupported()) {
+        enqueueSnackbar(
+          "Bluetooth is not supported in this browser. Please use Chrome/Edge.",
+          { variant: "error" }
+        );
+        return;
+      }
+
+      try {
+        setIsConnecting(true);
+
+        // Check for saved printer
+        const { deviceId, deviceName } = printerManager.getSavedPrinter();
+
+        if (deviceId) {
+          console.log("Found saved printer:", deviceName);
+          setPrinterName(deviceName || "Bluetooth Printer");
+
+          // Try to reconnect
+          await attemptReconnection();
+        } else {
+          console.log("No saved printer found");
+          setIsConnecting(false);
+        }
+      } catch (error) {
+        console.error("Bluetooth initialization failed:", error);
+        setIsConnecting(false);
+      }
+    };
+
+    initializeBluetooth();
+
+    // Setup periodic connection check
+    connectionCheckRef.current = setInterval(checkConnectionStatus, 5000);
+
+    return () => {
+      if (connectionCheckRef.current) {
+        clearInterval(connectionCheckRef.current);
+      }
+    };
   }, []);
 
-  const checkExistingConnection = async () => {
-    try {
-      // Check if there's a previously connected device
-      const savedDeviceId = localStorage.getItem("bluetoothPrinterId");
-      if (savedDeviceId) {
-        // Try to reconnect to the saved device
-        const devices = await navigator.bluetooth.getDevices();
-        const savedDevice = devices.find(
-          (device) => device.id === savedDeviceId
-        );
+  // Check connection status
+  const checkConnectionStatus = () => {
+    const connected = printerManager.isConnected;
+    setIsPrinterConnected(connected);
 
-        if (savedDevice && savedDevice.gatt.connected) {
-          setBluetoothDevice(savedDevice);
-          setIsPrinterConnected(true);
-          console.log("Reconnected to saved printer:", savedDevice.name);
-        }
-      }
-    } catch (error) {
-      console.log("No existing printer connection or error checking:", error);
+    if (!connected && printerManager.getSavedPrinter().deviceId) {
+      // Try to reconnect automatically
+      attemptReconnection();
     }
   };
 
-  // Connect to Bluetooth printer - IMPROVED
+  // Attempt reconnection
+  const attemptReconnection = async () => {
+    if (isConnecting || printerManager.isConnected) return;
+
+    try {
+      setIsConnecting(true);
+      const { deviceId } = printerManager.getSavedPrinter();
+
+      if (deviceId) {
+        const devices = await navigator.bluetooth.getDevices();
+        const savedDevice = devices.find((d) => d.id === deviceId);
+
+        if (savedDevice) {
+          await printerManager.connectToDevice(
+            savedDevice,
+            handleDisconnection
+          );
+          setIsPrinterConnected(true);
+          setPrinterName(savedDevice.name || "Bluetooth Printer");
+
+          enqueueSnackbar("Reconnected to printer successfully!", {
+            variant: "success",
+          });
+        }
+      }
+    } catch (error) {
+      console.error("Reconnection failed:", error);
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  // Handle disconnection
+  const handleDisconnection = () => {
+    setIsPrinterConnected(false);
+    enqueueSnackbar("Printer disconnected. Attempting to reconnect...", {
+      variant: "warning",
+    });
+
+    // Auto-reconnect after delay
+    setTimeout(() => {
+      attemptReconnection();
+    }, 2000);
+  };
+
+  // Manual connection to printer
   const connectToPrinter = async () => {
-    if (!navigator.bluetooth) {
+    if (!printerManager.isBluetoothSupported()) {
       enqueueSnackbar(
         "Bluetooth is not supported in this browser. Please use Chrome/Edge.",
-        {
-          variant: "error",
-        }
+        { variant: "error" }
       );
-      return null;
+      return false;
     }
 
     try {
       setIsConnecting(true);
       console.log("Searching for Bluetooth printer...");
 
-      // Common UUIDs for thermal printers
       const serviceUUID_PRINTER = "000018f0-0000-1000-8000-00805f9b34fb";
       const serviceUUID_SPP = "00001101-0000-1000-8000-00805f9b34fb";
       const serviceUUID_GENERIC_ACCESS = "00001800-0000-1000-8000-00805f9b34fb";
@@ -141,68 +441,23 @@ const Bill = ({ orderId }) => {
         ],
       });
 
-      console.log("Connecting to GATT server...");
-      const server = await device.gatt.connect();
-
-      let writeCharacteristic = null;
-      const servicesToTry = [serviceUUID_PRINTER, serviceUUID_SPP];
-
-      // Search for the writable characteristic across common services
-      for (const serviceUuid of servicesToTry) {
-        try {
-          console.log(`Trying service: ${serviceUuid}`);
-          const service = await server.getPrimaryService(serviceUuid);
-          const characteristics = await service.getCharacteristics();
-
-          writeCharacteristic = characteristics.find(
-            (char) =>
-              char.properties.write || char.properties.writeWithoutResponse
-          );
-
-          if (writeCharacteristic) {
-            console.log(
-              `Found writable characteristic in service ${serviceUuid}`
-            );
-            break;
-          }
-        } catch (error) {
-          console.log(`Service ${serviceUuid} not found or accessible.`);
-        }
-      }
-
-      if (!writeCharacteristic) {
-        throw new Error(
-          "No writable characteristic found. Printer uses a non-standard protocol."
-        );
-      }
-
-      setBluetoothDevice({ device, server, writeCharacteristic });
-      setIsPrinterConnected(true);
-      setIsConnecting(false);
-
-      // Save device ID for future connections
-      localStorage.setItem("bluetoothPrinterId", device.id);
-
-      enqueueSnackbar(
-        `Connected to printer: ${device.name || "Bluetooth Printer"}`,
-        {
-          variant: "success",
-        }
+      console.log("Connecting to device:", device.name);
+      const connected = await printerManager.connectToDevice(
+        device,
+        handleDisconnection
       );
 
-      // Handle device disconnection
-      device.addEventListener("gattserverdisconnected", () => {
-        setIsPrinterConnected(false);
-        setBluetoothDevice(null);
-        enqueueSnackbar("Bluetooth printer disconnected", {
-          variant: "warning",
-        });
-        console.log("Bluetooth device disconnected");
-      });
+      if (connected) {
+        setIsPrinterConnected(true);
+        setPrinterName(device.name || "Bluetooth Printer");
 
-      return { device, server, writeCharacteristic };
+        enqueueSnackbar(
+          `Connected to printer: ${device.name || "Bluetooth Printer"}`,
+          { variant: "success" }
+        );
+        return true;
+      }
     } catch (error) {
-      setIsConnecting(false);
       console.error("Bluetooth connection failed:", error);
 
       if (error.name === "NotFoundError") {
@@ -224,87 +479,93 @@ const Bill = ({ orderId }) => {
           variant: "error",
         });
       }
-      return null;
+      return false;
+    } finally {
+      setIsConnecting(false);
     }
   };
 
-  // Disconnect from Bluetooth printer
+  // Disconnect from printer
   const disconnectBluetooth = () => {
-    if (bluetoothDevice) {
-      try {
-        bluetoothDevice.device.gatt.disconnect();
-        setIsPrinterConnected(false);
-        setBluetoothDevice(null);
-        localStorage.removeItem("bluetoothPrinterId");
-        enqueueSnackbar("Disconnected from printer", { variant: "info" });
-      } catch (error) {
-        console.error("Error disconnecting:", error);
-      }
-    }
+    printerManager.disconnect();
+    setIsPrinterConnected(false);
+    setPrinterName("");
+
+    enqueueSnackbar("Disconnected from printer", { variant: "info" });
   };
 
-  // Thermal printer ESC/POS commands - FIXED
-  const thermalCommands = {
-    INIT: "\x1B\x40", // Initialize printer
-    ALIGN_LEFT: "\x1B\x61\x00", // Left alignment
-    ALIGN_CENTER: "\x1B\x61\x01", // Center alignment
-    ALIGN_RIGHT: "\x1B\x61\x02", // Right alignment
-    BOLD_ON: "\x1B\x45\x01", // Bold on
-    BOLD_OFF: "\x1B\x45\x00", // Bold off
-    UNDERLINE_ON: "\x1B\x2D\x01", // Underline on
-    UNDERLINE_OFF: "\x1B\x2D\x00", // Underline off
-    CUT_PARTIAL: "\x1B\x69", // Partial cut
-    CUT_FULL: "\x1B\x6D", // Full cut
-    FEED_LINE: "\x0A", // Line feed
-    FEED_N_LINES: (n) => `\x1B\x64${String.fromCharCode(n)}`, // Feed n lines
-    TEXT_NORMAL: "\x1B\x21\x00", // Normal text
-    TEXT_LARGE: "\x1B\x21\x10", // Double height
-    TEXT_DOUBLE_WIDTH: "\x1B\x21\x20", // Double width
-    TEXT_DOUBLE_SIZE: "\x1B\x21\x30", // Double height & width
-    DRAWER_KICK: "\x1B\x70\x00\x19\xFA", // Kick drawer (pin 2)
-  };
-
-  // Send data to printer - IMPROVED
-  const sendToPrinter = async (data) => {
-    try {
-      if (!bluetoothDevice || !isPrinterConnected) {
-        throw new Error("Not connected to Bluetooth device");
-      }
-
-      const encoder = new TextEncoder();
-      const dataArray = encoder.encode(data);
-
-      // Split large data into chunks to avoid buffer overflow
-      const CHUNK_SIZE = 20; // Small chunks for reliability
-      for (let i = 0; i < dataArray.length; i += CHUNK_SIZE) {
-        const chunk = dataArray.slice(i, i + CHUNK_SIZE);
-        await bluetoothDevice.writeCharacteristic.writeValue(chunk);
-        // Small delay between chunks
-        await new Promise((resolve) => setTimeout(resolve, 10));
-      }
-
-      console.log("Data sent to printer successfully");
+  // Ensure printer is connected before any operation
+  const ensurePrinterConnected = async () => {
+    if (printerManager.isConnected) {
       return true;
-    } catch (error) {
-      console.error("Error sending data to printer:", error);
-      throw error;
     }
+
+    console.log("Printer not connected, attempting to connect...");
+
+    // First try auto-reconnection
+    const { deviceId } = printerManager.getSavedPrinter();
+    if (deviceId) {
+      try {
+        const devices = await navigator.bluetooth.getDevices();
+        const savedDevice = devices.find((d) => d.id === deviceId);
+
+        if (savedDevice) {
+          await printerManager.connectToDevice(
+            savedDevice,
+            handleDisconnection
+          );
+          setIsPrinterConnected(true);
+          setPrinterName(savedDevice.name || "Bluetooth Printer");
+          return true;
+        }
+      } catch (error) {
+        console.error("Auto-reconnection failed:", error);
+      }
+    }
+
+    // If auto-reconnection fails, prompt user
+    enqueueSnackbar("Printer not connected. Please connect to printer.", {
+      variant: "warning",
+    });
+    return false;
   };
 
-  // Print receipt to Bluetooth printer - IMPROVED
+  // Send data to printer with retry logic
+  const sendToPrinter = async (data) => {
+    let retryCount = 0;
+    const maxRetries = 2;
+
+    while (retryCount <= maxRetries) {
+      try {
+        // Ensure connection
+        const connected = await ensurePrinterConnected();
+        if (!connected) {
+          throw new Error("Printer not connected");
+        }
+
+        await printerManager.sendData(data);
+        return true;
+      } catch (error) {
+        console.error(`Send attempt ${retryCount + 1} failed:`, error);
+
+        if (retryCount === maxRetries) {
+          throw new Error(`Failed to send data to printer: ${error.message}`);
+        }
+
+        retryCount++;
+        await new Promise((resolve) => setTimeout(resolve, 500 * retryCount));
+      }
+    }
+
+    return false;
+  };
+
+  // Print receipt
   const printReceipt = async (orderData) => {
     setIsPrinting(true);
     console.log("Starting print process...");
 
     try {
-      // Ensure we're connected
-      if (!isPrinterConnected) {
-        const connected = await connectToPrinter();
-        if (!connected) {
-          throw new Error("Failed to connect to printer");
-        }
-      }
-
       // Generate receipt text
       const receiptText = generateThermalText(orderData);
       console.log("Receipt generated, sending to printer...");
@@ -319,7 +580,7 @@ const Bill = ({ orderId }) => {
         try {
           await sendToPrinter(thermalCommands.DRAWER_KICK);
           console.log("Cash drawer command sent");
-          await new Promise((resolve) => setTimeout(resolve, 500)); // Wait for drawer to open
+          await new Promise((resolve) => setTimeout(resolve, 800));
         } catch (drawerError) {
           console.warn("Could not open cash drawer:", drawerError);
           enqueueSnackbar("Cash drawer command failed. Please open manually.", {
@@ -337,9 +598,9 @@ const Bill = ({ orderId }) => {
     }
   };
 
-  // Generate thermal printer text - IMPROVED FOR 58mm PRINTERS
+  // Generate thermal printer text
   const generateThermalText = (orderData) => {
-    const LINE_WIDTH = 32; // Standard 58mm thermal printer width
+    const LINE_WIDTH = 32;
 
     // Helper function to center text
     const centerText = (text, width = LINE_WIDTH) => {
@@ -502,7 +763,7 @@ const Bill = ({ orderId }) => {
 
   // Test print function
   const handleTestPrint = async () => {
-    if (!navigator.bluetooth) {
+    if (!printerManager.isBluetoothSupported()) {
       enqueueSnackbar("Bluetooth not supported", { variant: "error" });
       return;
     }
@@ -511,9 +772,10 @@ const Bill = ({ orderId }) => {
       setIsPrinting(true);
       console.log("Starting test print...");
 
-      // Connect if not connected
-      if (!isPrinterConnected) {
-        await connectToPrinter();
+      // Ensure connection
+      const connected = await ensurePrinterConnected();
+      if (!connected) {
+        throw new Error("Failed to connect to printer");
       }
 
       // Create test receipt
@@ -1248,6 +1510,10 @@ const Bill = ({ orderId }) => {
       if (autoPrintEnabled) {
         try {
           console.log("Auto-printing receipt...");
+
+          // Add small delay to ensure everything is ready
+          await new Promise((resolve) => setTimeout(resolve, 300));
+
           await printReceipt(data);
 
           enqueueSnackbar("Receipt printed successfully!", {
@@ -1393,8 +1659,6 @@ const Bill = ({ orderId }) => {
   if (!currentOrder) {
     return (
       <div className="w-full min-h-screen overflow-y-auto bg-gray-100 px-4 py-6 pb-24">
-        {" "}
-        {/* Added pb-24 for bottom padding */}
         <div className="max-w-[600px] mx-auto text-center">
           <div className="bg-white rounded-lg p-8 shadow-md">
             <h2 className="text-gray-900 text-lg font-semibold mb-4">
@@ -1411,8 +1675,6 @@ const Bill = ({ orderId }) => {
 
   return (
     <div className="w-full min-h-screen overflow-y-auto bg-gray-100 px-4 py-6 pb-24">
-      {" "}
-      {/* Added pb-24 for bottom padding */}
       {/* Cash Modal */}
       {showCashModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1510,6 +1772,7 @@ const Bill = ({ orderId }) => {
           </div>
         </div>
       )}
+
       {/* Online Payment Options Modal */}
       {showOnlineOptions && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1540,6 +1803,7 @@ const Bill = ({ orderId }) => {
           </div>
         </div>
       )}
+
       {/* PWD/Senior Selection Modal */}
       {showPwdSeniorSelection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1769,19 +2033,26 @@ const Bill = ({ orderId }) => {
           </div>
         </div>
       )}
+
       <div className="max-w-[600px] mx-auto space-y-4">
         {/* Printer Status */}
         <div className="bg-white rounded-lg p-4 shadow-md">
           <div className="flex justify-between items-center mb-3">
             <div className="flex items-center gap-2">
               <div
-                className={`w-3 h-3 rounded-full ${
-                  isPrinterConnected ? "bg-green-500" : "bg-red-500"
+                className={`w-3 h-3 rounded-full animate-pulse ${
+                  isPrinterConnected
+                    ? "bg-green-500"
+                    : isConnecting
+                    ? "bg-yellow-500"
+                    : "bg-red-500"
                 }`}
               ></div>
               <span className="text-sm text-gray-700">
                 {isPrinterConnected
-                  ? "Printer Connected"
+                  ? "✓ Printer Connected"
+                  : isConnecting
+                  ? "Connecting..."
                   : "Printer Disconnected"}
               </span>
             </div>
@@ -1811,6 +2082,7 @@ const Bill = ({ orderId }) => {
               </button>
             </div>
           </div>
+
           <div className="flex items-center justify-between">
             <span className="text-sm text-gray-700">Auto-print receipts:</span>
             <label className="relative inline-flex items-center cursor-pointer">
@@ -1823,10 +2095,17 @@ const Bill = ({ orderId }) => {
               <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
             </label>
           </div>
-          {bluetoothDevice?.device?.name && (
-            <p className="text-xs text-gray-500 mt-2">
-              Connected to: {bluetoothDevice.device.name}
-            </p>
+
+          {printerName && (
+            <div className="mt-2">
+              <p className="text-xs text-gray-500">
+                Connected to:{" "}
+                <span className="font-medium text-gray-700">{printerName}</span>
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                Printer will automatically reconnect if disconnected
+              </p>
+            </div>
           )}
         </div>
 
