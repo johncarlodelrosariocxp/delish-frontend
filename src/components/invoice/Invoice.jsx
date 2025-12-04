@@ -9,7 +9,7 @@ const IconCheck = (props) => (
     viewBox="0 0 512 512"
     fill="currentColor"
   >
-    <path d="M470.6 105.4c12.5 12.5 12.5 32.8 0 45.3l-256 256c-12.5 12.5-32.8 12.5-45.3 0l-128-128c-12.5-12.5-12.5-32.8 0-45.3s32.8-12.5 45.3 0L192 338.7 425.4 105.4c12.5-12.5 32.8-12.5 45.3 0z" />
+    <path d="M470.6 105.4c12.5 12.5 12.5 32.8 0 45.3l-256 256c-12.5 12.5-32.8 12.5-45.3 0l-128-128c-12.5 12.5-12.5 32.8 0-45.3s32.8-12.5 45.3 0L192 338.7 425.4 105.4c12.5-12.5 32.8-12.5 45.3 0z" />
   </svg>
 );
 const IconPrint = (props) => (
@@ -104,14 +104,21 @@ const IconIdCard = (props) => (
 );
 // -----------------------------------------------------------------
 
+// Safe number conversion helper
+const safeNumber = (value) => {
+  const num = Number(value);
+  return isNaN(num) ? 0 : num;
+};
+
 const Invoice = ({ orderInfo, setShowInvoice }) => {
   const invoiceRef = useRef(null);
   const [bluetoothDevice, setBluetoothDevice] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Thermal printer ESC/POS commands
+  // Thermal printer ESC/POS commands (same as in Bill)
   const thermalCommands = {
     INIT: "\x1B\x40", // Initialize printer
     ALIGN_LEFT: "\x1B\x61\x00", // Left alignment
@@ -119,13 +126,17 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     ALIGN_RIGHT: "\x1B\x61\x02", // Right alignment
     BOLD_ON: "\x1B\x45\x01", // Bold on
     BOLD_OFF: "\x1B\x45\x00", // Bold off
-    CUT: "\x1D\x56\x41\x10", // Full cut
-    FEED_LINE: "\x0A", // Feed line (LF)
+    UNDERLINE_ON: "\x1B\x2D\x01", // Underline on
+    UNDERLINE_OFF: "\x1B\x2D\x00", // Underline off
+    CUT_PARTIAL: "\x1B\x69", // Partial cut
+    CUT_FULL: "\x1B\x6D", // Full cut
+    FEED_LINE: "\x0A", // Line feed
+    FEED_N_LINES: (n) => `\x1B\x64${String.fromCharCode(n)}`, // Feed n lines
     TEXT_NORMAL: "\x1B\x21\x00", // Normal text
     TEXT_LARGE: "\x1B\x21\x10", // Double height
-    // Cash drawer commands (POS58D_UB specific)
-    DRAWER_KICK_2: "\x1B\x70\x00\x19\xFA", // Kick drawer pin 2
-    DRAWER_KICK_5: "\x1B\x70\x01\x19\xFA", // Kick drawer pin 5
+    TEXT_DOUBLE_WIDTH: "\x1B\x21\x20", // Double width
+    TEXT_DOUBLE_SIZE: "\x1B\x21\x30", // Double height & width
+    DRAWER_KICK: "\x1B\x70\x00\x19\xFA", // Kick drawer (pin 2)
   };
 
   useEffect(() => {
@@ -135,17 +146,19 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     }
   }, [errorMessage]);
 
-  const alertUser = (message) => {
+  const alertUser = (message, variant = "error") => {
     setErrorMessage(message);
+    console.log(`${variant.toUpperCase()}: ${message}`);
   };
 
   // Connect to Bluetooth printer
   const connectBluetooth = async () => {
     if (!navigator.bluetooth) {
       alertUser(
-        "Bluetooth is not supported in this browser. Please use Chrome/Edge on Desktop or Chrome/Samsung Internet on Android."
+        "Bluetooth is not supported in this browser. Please use Chrome/Edge.",
+        "error"
       );
-      return;
+      return null;
     }
 
     try {
@@ -197,41 +210,53 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
       if (!writeCharacteristic) {
         throw new Error(
-          "No writable characteristic found in common services. Printer uses a non-standard protocol."
+          "No writable characteristic found. Printer uses a non-standard protocol."
         );
       }
 
       setBluetoothDevice({ device, server, writeCharacteristic });
       setIsConnected(true);
       setIsConnecting(false);
-      alertUser(`Successfully connected to Bluetooth printer: ${device.name}!`);
+
+      // Save device ID for future connections
+      localStorage.setItem("bluetoothPrinterId", device.id);
+
+      alertUser(
+        `Connected to printer: ${device.name || "Bluetooth Printer"}`,
+        "success"
+      );
 
       // Handle device disconnection
       device.addEventListener("gattserverdisconnected", () => {
         setIsConnected(false);
         setBluetoothDevice(null);
-        alertUser("Bluetooth device disconnected.");
+        alertUser("Bluetooth printer disconnected", "warning");
         console.log("Bluetooth device disconnected");
       });
+
+      return { device, server, writeCharacteristic };
     } catch (error) {
       setIsConnecting(false);
       console.error("Bluetooth connection failed:", error);
 
       if (error.name === "NotFoundError") {
         alertUser(
-          "Connection cancelled or no device found. Ensure the printer is ON and unpaired from OS settings."
+          "No printer selected. Ensure printer is ON and in pairing mode.",
+          "warning"
         );
       } else if (error.name === "NetworkError") {
         alertUser(
-          "Connection failed (NetworkError). Check printer range and ensure no other app is connected."
+          "Connection failed. Check printer range and ensure no other app is connected.",
+          "error"
         );
       } else if (error.name === "SecurityError") {
-        alertUser(
-          "Security error. Please ensure the page is served over HTTPS."
-        );
+        alertUser("Security error. Please ensure HTTPS is used.", {
+          variant: "error",
+        });
       } else {
-        alertUser(`Connection failed: ${error.message}`);
+        alertUser(`Connection failed: ${error.message}`, "error");
       }
+      return null;
     }
   };
 
@@ -242,79 +267,304 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         bluetoothDevice.device.gatt.disconnect();
         setIsConnected(false);
         setBluetoothDevice(null);
-        alertUser("Disconnected from Bluetooth printer.");
+        localStorage.removeItem("bluetoothPrinterId");
+        alertUser("Disconnected from printer", "info");
       } catch (error) {
         console.error("Error disconnecting:", error);
       }
     }
   };
 
-  // Send drawer command via Bluetooth
-  const sendDrawerCommandViaBluetooth = async () => {
+  // Send data to printer
+  const sendToPrinter = async (data) => {
     try {
       if (!bluetoothDevice || !isConnected) {
         throw new Error("Not connected to Bluetooth device");
       }
 
       const encoder = new TextEncoder();
-      const drawerCommand = encoder.encode(thermalCommands.DRAWER_KICK_2);
-      await bluetoothDevice.writeCharacteristic.writeValue(drawerCommand);
-      console.log("Cash drawer command sent successfully");
+      const dataArray = encoder.encode(data);
+
+      // Split large data into chunks to avoid buffer overflow
+      const CHUNK_SIZE = 20; // Small chunks for reliability
+      for (let i = 0; i < dataArray.length; i += CHUNK_SIZE) {
+        const chunk = dataArray.slice(i, i + CHUNK_SIZE);
+        await bluetoothDevice.writeCharacteristic.writeValue(chunk);
+        // Small delay between chunks
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      console.log("Data sent to printer successfully");
+      return true;
     } catch (error) {
-      console.error("Bluetooth drawer command failed:", error);
+      console.error("Error sending data to printer:", error);
       throw error;
     }
   };
 
-  // Function to open cash drawer
-  const openCashDrawer = async () => {
-    try {
-      console.log("Attempting to open cash drawer...");
+  // Print receipt to Bluetooth printer
+  const printReceipt = async () => {
+    setIsPrinting(true);
+    console.log("Starting print process...");
 
-      if (bluetoothDevice && isConnected) {
-        await sendDrawerCommandViaBluetooth();
-        alertUser("Cash drawer opened successfully!");
-      } else {
-        // If not connected, try to connect first
-        alertUser(
-          "Not connected to printer. Please connect to Bluetooth first or open drawer manually."
-        );
+    try {
+      // Ensure we're connected
+      if (!isConnected) {
+        const connected = await connectBluetooth();
+        if (!connected) {
+          throw new Error("Failed to connect to printer");
+        }
       }
+
+      // Generate receipt text (EXACT same format as in Bill)
+      const receiptText = generateThermalText();
+      console.log("Receipt generated, sending to printer...");
+
+      // Send to printer
+      await sendToPrinter(receiptText);
+
+      console.log("Receipt printed successfully!");
+
+      // Open cash drawer if payment is cash
+      if (orderInfo.paymentMethod === "Cash") {
+        try {
+          await sendToPrinter(thermalCommands.DRAWER_KICK);
+          console.log("Cash drawer command sent");
+          await new Promise((resolve) => setTimeout(resolve, 500)); // Wait for drawer to open
+        } catch (drawerError) {
+          console.warn("Could not open cash drawer:", drawerError);
+          alertUser(
+            "Cash drawer command failed. Please open manually.",
+            "warning"
+          );
+        }
+      }
+
+      return true;
     } catch (error) {
-      console.error("Failed to open cash drawer:", error);
-      alertUser(
-        "Failed to send drawer command. Please open the cash drawer manually."
-      );
+      console.error("Print receipt error:", error);
+      throw error;
+    } finally {
+      setIsPrinting(false);
     }
+  };
+
+  // Generate thermal printer text - EXACT SAME FORMAT AS IN BILL
+  const generateThermalText = () => {
+    const LINE_WIDTH = 32; // Standard 58mm thermal printer width
+
+    // Helper function to center text
+    const centerText = (text, width = LINE_WIDTH) => {
+      if (text.length >= width) return text;
+      const padding = Math.floor((width - text.length) / 2);
+      return (
+        " ".repeat(padding) + text + " ".repeat(width - text.length - padding)
+      );
+    };
+
+    // Helper function to right-align text
+    const rightText = (text, width = LINE_WIDTH) => {
+      if (text.length >= width) return text;
+      return " ".repeat(width - text.length) + text;
+    };
+
+    // Extract data from orderInfo
+    const orderId =
+      orderInfo._id?.slice(-8) ||
+      (orderInfo.orderDate
+        ? Math.floor(new Date(orderInfo.orderDate).getTime())
+            .toString()
+            .slice(-6)
+        : "N/A");
+
+    const cashier = orderInfo.cashier || "Admin";
+    const customerType = orderInfo.customerType || "walk-in";
+    const paymentMethod = orderInfo.paymentMethod || "Cash";
+
+    // Get totals from bills
+    const totals = {
+      baseGrossTotal: safeNumber(orderInfo.bills?.total || 0),
+      pwdSeniorDiscountAmount: safeNumber(
+        orderInfo.bills?.pwdSeniorDiscount || 0
+      ),
+      redemptionAmount: safeNumber(orderInfo.bills?.redemptionDiscount || 0),
+      employeeDiscountAmount: safeNumber(
+        orderInfo.bills?.employeeDiscount || 0
+      ),
+      shareholderDiscountAmount: safeNumber(
+        orderInfo.bills?.shareholderDiscount || 0
+      ),
+      vatAmount: safeNumber(orderInfo.bills?.tax || 0),
+      total: safeNumber(orderInfo.bills?.totalWithTax || 0),
+      cashAmount: safeNumber(orderInfo.bills?.cashAmount || 0),
+      change: safeNumber(orderInfo.bills?.change || 0),
+      netSales: safeNumber(orderInfo.bills?.netSales || 0),
+    };
+
+    // Get PWD/Senior details
+    const pwdSeniorDetails = orderInfo.pwdSeniorDetails;
+    const pwdSeniorDiscountApplied = !!pwdSeniorDetails;
+
+    // Get items (combined if needed)
+    const items = orderInfo.items || [];
+
+    let receiptText = thermalCommands.INIT;
+
+    // Set alignment and text size for header
+    receiptText += thermalCommands.ALIGN_CENTER;
+    receiptText += thermalCommands.TEXT_LARGE;
+    receiptText += "DELISH RESTAURANT\n";
+    receiptText += thermalCommands.TEXT_NORMAL;
+    receiptText += "--------------------------------\n";
+    receiptText += "Order Receipt\n";
+    receiptText += "--------------------------------\n\n";
+
+    // Order information
+    receiptText += thermalCommands.ALIGN_LEFT;
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += `Order #: ${orderId}\n`;
+    receiptText += thermalCommands.BOLD_OFF;
+    receiptText += `Date: ${new Date().toLocaleDateString("en-PH")}\n`;
+    receiptText += `Time: ${new Date().toLocaleTimeString("en-PH", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })}\n`;
+    receiptText += `Cashier: ${cashier}\n`;
+    receiptText += `Customer: ${
+      customerType === "walk-in" ? "Dine-in" : "Take-out"
+    }\n`;
+    receiptText += "--------------------------------\n\n";
+
+    // Items header
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += "QTY  ITEM                AMOUNT\n";
+    receiptText += thermalCommands.BOLD_OFF;
+    receiptText += "--------------------------------\n";
+
+    // Items list - format EXACTLY like in Bill
+    items.forEach((item) => {
+      const name = item.name || "Unknown Item";
+      const quantity = item.quantity || 1;
+      const price = safeNumber(
+        item.pricePerQuantity || item.originalPrice || 0
+      );
+      const total = safeNumber(item.price || 0);
+      const isRedeemed = item.isRedeemed || item.isFree || false;
+      const isPwdSeniorDiscounted = item.isPwdSeniorDiscounted || false;
+
+      // Format quantity (2 chars)
+      const qtyStr = quantity.toString().padStart(2, " ");
+
+      // Format item name (max 20 chars)
+      let nameStr = name;
+      if (nameStr.length > 20) {
+        nameStr = nameStr.substring(0, 17) + "...";
+      } else {
+        nameStr = nameStr.padEnd(20, " ");
+      }
+
+      // Format amount (8 chars)
+      const amountStr = (isRedeemed ? "FREE" : `₱${total.toFixed(2)}`).padStart(
+        8,
+        " "
+      );
+
+      receiptText += `${qtyStr}   ${nameStr}${amountStr}\n`;
+
+      // Add notes for redeemed or discounted items
+      if (isRedeemed) {
+        receiptText += "     *REDEEMED\n";
+      } else if (isPwdSeniorDiscounted) {
+        const originalTotal = price * quantity;
+        const discountAmount = originalTotal * 0.2; // 20% discount
+        receiptText += `     *PWD/SENIOR -₱${discountAmount.toFixed(2)}\n`;
+      }
+    });
+
+    receiptText += "--------------------------------\n";
+
+    // Totals - right aligned (EXACT same format as Bill)
+    receiptText += thermalCommands.ALIGN_RIGHT;
+    receiptText += `SUBTOTAL:   ₱${totals.baseGrossTotal.toFixed(2)}\n`;
+
+    if (totals.pwdSeniorDiscountAmount > 0) {
+      receiptText += `PWD/SENIOR: -₱${totals.pwdSeniorDiscountAmount.toFixed(
+        2
+      )}\n`;
+    }
+
+    if (totals.redemptionAmount > 0) {
+      receiptText += `REDEMPTION: -₱${totals.redemptionAmount.toFixed(2)}\n`;
+    }
+
+    if (totals.employeeDiscountAmount > 0) {
+      receiptText += `EMP DISC:   -₱${totals.employeeDiscountAmount.toFixed(
+        2
+      )}\n`;
+    }
+
+    if (totals.shareholderDiscountAmount > 0) {
+      receiptText += `SHAREHOLDER:-₱${totals.shareholderDiscountAmount.toFixed(
+        2
+      )}\n`;
+    }
+
+    receiptText += `VAT (12%):  ₱${totals.vatAmount.toFixed(2)}\n`;
+    receiptText += "--------------------------------\n";
+
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += `TOTAL:      ₱${totals.total.toFixed(2)}\n`;
+    receiptText += thermalCommands.BOLD_OFF;
+    receiptText += "--------------------------------\n";
+
+    // Payment info
+    receiptText += thermalCommands.ALIGN_LEFT;
+    receiptText += `Payment: ${paymentMethod}\n`;
+
+    if (paymentMethod === "Cash" && totals.cashAmount > 0) {
+      receiptText += `Cash:    ₱${totals.cashAmount.toFixed(2)}\n`;
+      receiptText += `Change:  ₱${totals.change.toFixed(2)}\n`;
+    }
+
+    // PWD/Senior details if applied
+    if (pwdSeniorDiscountApplied && pwdSeniorDetails?.name) {
+      receiptText += "--------------------------------\n";
+      receiptText += "PWD/SENIOR DETAILS:\n";
+      receiptText += `Name: ${pwdSeniorDetails.name}\n`;
+      receiptText += `ID #: ${pwdSeniorDetails.idNumber || ""}\n`;
+      receiptText += `Type: ${pwdSeniorDetails.type || "PWD"}\n`;
+    }
+
+    receiptText += "--------------------------------\n";
+
+    // Footer
+    receiptText += thermalCommands.ALIGN_CENTER;
+    receiptText += "Thank you for dining with us!\n";
+    receiptText += "Please visit again!\n\n";
+    receiptText += "This receipt is your official\n";
+    receiptText += "proof of purchase.\n\n";
+
+    // Feed 3 lines and cut
+    receiptText += thermalCommands.FEED_N_LINES(3);
+    receiptText += thermalCommands.CUT_PARTIAL;
+
+    return receiptText;
   };
 
   // Print via Bluetooth
   const printViaBluetooth = async () => {
     try {
-      if (!bluetoothDevice || !isConnected) {
-        alertUser("Please connect to Bluetooth printer first.");
+      if (!isConnected) {
+        alertUser("Please connect to Bluetooth printer first.", "warning");
         return;
       }
 
-      // Generate receipt *with* the drawer command included (true)
-      const receiptText = generateThermalText(true);
-
-      const encoder = new TextEncoder();
-      const data = encoder.encode(receiptText);
-
-      console.log("Sending data to printer (including drawer kick)...");
-      // Split the data into chunks (e.g., 20 bytes) to prevent overflow on some printers
-      const chunkSize = 20;
-      for (let i = 0; i < data.length; i += chunkSize) {
-        const chunk = data.slice(i, i + chunkSize);
-        await bluetoothDevice.writeCharacteristic.writeValue(chunk);
-      }
-
-      console.log("Print job sent successfully!");
-      alertUser("Receipt printed successfully! Cash drawer should open.");
+      await printReceipt();
+      alertUser("Receipt printed successfully!", "success");
     } catch (error) {
       console.error("Bluetooth printing failed:", error);
-      alertUser(`Printing error: ${error.message}. Please try again.`);
+      alertUser(`Printing error: ${error.message}. Please try again.`, "error");
     }
   };
 
@@ -326,7 +576,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Order Receipt - DELISH CHEESECAKE CAFE</title>
+          <title>Order Receipt - DELISH RESTAURANT</title>
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <style>
             /* Thermal printer friendly styles */
@@ -336,7 +586,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 padding: 0 !important;
                 font-family: 'Courier New', monospace !important;
                 font-size: 10px !important;
-                width: 80mm !important; /* Standard thermal width */
+                width: 80mm !important;
                 background: white !important;
                 color: black !important;
                 -webkit-print-color-adjust: exact !important;
@@ -349,231 +599,229 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               .text-center { text-align: center !important; }
               .text-right { text-align: right !important; }
               .text-bold { font-weight: bold !important; }
-              .border-top { 
-                border-top: 1px dashed #000 !important; 
-                margin: 6px 0 !important; 
-                padding-top: 6px !important;
+              .border-line { 
+                border-top: 1px solid #000 !important; 
+                margin: 2px 0 !important;
               }
               .success-icon { 
                 text-align: center !important; 
-                margin: 8px 0 !important;
-                font-size: 20px !important;
+                margin: 4px 0 !important;
+                font-size: 16px !important;
                 color: green !important;
               }
             }
             /* Common styles */
             .receipt-container { 
               width: 100%;
-              border: 1px solid #000;
-              padding: 12px;
+              padding: 4px;
               background: white;
             }
             .header {
               text-align: center;
-              margin-bottom: 12px;
-            }
-            .company-name {
-              font-size: 16px;
-              font-weight: bold;
               margin-bottom: 4px;
             }
-            .receipt-title {
+            .company-name {
               font-size: 14px;
-              margin-bottom: 8px;
+              font-weight: bold;
+              margin-bottom: 2px;
+            }
+            .receipt-title {
+              font-size: 12px;
+              margin-bottom: 4px;
             }
             .items-table {
               width: 100%;
               border-collapse: collapse;
-              margin: 8px 0;
+              margin: 4px 0;
             }
             .items-table td {
-              padding: 1px 0;
-              font-size: 10px;
+              padding: 0;
+              font-size: 9px;
+              line-height: 1.1;
             }
             .discount-item {
               color: #059669;
-              font-size: 9px;
+              font-size: 8px;
             }
             .free-item {
               color: #dc2626;
               font-weight: bold;
+              font-size: 8px;
             }
             .thank-you {
               text-align: center;
-              margin-top: 12px;
+              margin-top: 8px;
               font-style: italic;
-              font-size: 10px;
+              font-size: 9px;
             }
           </style>
         </head>
         <body>
           <div class="receipt-container">
             <div class="header">
-              <div class="company-name">DELISH CHEESECAKE CAFE</div>
+              <div class="company-name">DELISH RESTAURANT</div>
               <div class="receipt-title">ORDER RECEIPT</div>
-              <div class="success-icon">✓</div>
-              <div>Thank you for your order!</div>
+              <div class="border-line"></div>
             </div>
             
-            <div class="border-top">
-              <table width="100%">
-                <tr><td><strong>Order ID:</strong></td><td>${
-                  orderInfo.orderDate
-                    ? Math.floor(new Date(orderInfo.orderDate).getTime())
-                        .toString()
-                        .slice(-6)
-                    : "N/A"
-                }</td></tr>
-                <tr><td><strong>Customer:</strong></td><td>${
-                  orderInfo.customerDetails?.name ||
-                  orderInfo.customerStatus ||
-                  (orderInfo.customerType === "walk-in"
-                    ? "Walk-in Customer"
-                    : "Take-out Customer")
-                }</td></tr>
-                <tr><td><strong>Cashier:</strong></td><td>${
-                  orderInfo.cashier || "Admin"
-                }</td></tr>
-                <tr><td><strong>Date:</strong></td><td>${new Date(
-                  orderInfo.orderDate || Date.now()
-                ).toLocaleString()}</td></tr>
-                <tr><td><strong>Status:</strong></td><td>${
-                  orderInfo.customerStatus ||
-                  (orderInfo.customerType === "walk-in"
-                    ? "Dine-in"
-                    : "Take-out")
-                }</td></tr>
-              </table>
-            </div>
+            <table width="100%" style="font-size: 9px; line-height: 1.1;">
+              <tr><td><strong>Order ID:</strong></td><td>${
+                orderInfo._id?.slice(-8) ||
+                (orderInfo.orderDate
+                  ? Math.floor(new Date(orderInfo.orderDate).getTime())
+                      .toString()
+                      .slice(-6)
+                  : "N/A")
+              }</td></tr>
+              <tr><td><strong>Date:</strong></td><td>${new Date(
+                orderInfo.orderDate || Date.now()
+              ).toLocaleDateString("en-PH")}</td></tr>
+              <tr><td><strong>Time:</strong></td><td>${new Date(
+                orderInfo.orderDate || Date.now()
+              ).toLocaleTimeString("en-PH", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+              })}</td></tr>
+              <tr><td><strong>Cashier:</strong></td><td>${
+                orderInfo.cashier || "Admin"
+              }</td></tr>
+              <tr><td><strong>Customer:</strong></td><td>${
+                orderInfo.customerType === "walk-in" ? "Dine-in" : "Take-out"
+              }</td></tr>
+            </table>
             
-            ${
-              orderInfo.pwdSeniorDetails
-                ? `
-            <div class="border-top">
-              <table width="100%">
-                <tr><td><strong>PWD/SENIOR Details:</strong></td></tr>
-                <tr><td>Type: ${orderInfo.pwdSeniorDetails.type}</td></tr>
-                <tr><td>Name: ${orderInfo.pwdSeniorDetails.name}</td></tr>
-                <tr><td>ID: ${orderInfo.pwdSeniorDetails.idNumber}</td></tr>
-              </table>
-            </div>
-            `
-                : ""
-            }
+            <div class="border-line"></div>
             
-            <div class="border-top">
-              <div class="text-bold">ORDER ITEMS</div>
-              <table class="items-table">
-                ${(orderInfo.items || [])
-                  .map(
-                    (item) => `
+            <table class="items-table">
+              <tr>
+                <td><strong>QTY</strong></td>
+                <td><strong>ITEM</strong></td>
+                <td class="text-right"><strong>AMOUNT</strong></td>
+              </tr>
+              <div class="border-line"></div>
+              ${(orderInfo.items || [])
+                .map(
+                  (item) => `
                   <tr>
-                    <td>${item.name}${item.isFree ? " (FREE)" : ""}${
-                      item.isPwdSeniorDiscounted ? " (PWD/Senior -20%)" : ""
-                    }${item.isRedeemed ? " (Redeemed)" : ""} x${
-                      item.quantity || 1
+                    <td>${item.quantity || 1}</td>
+                    <td>
+                      ${item.name || "Unknown Item"}
+                      ${
+                        item.isRedeemed || item.isFree
+                          ? '<span class="free-item"> (FREE)</span>'
+                          : ""
+                      }
+                      ${
+                        item.isPwdSeniorDiscounted
+                          ? '<span class="discount-item"> (PWD/SENIOR -20%)</span>'
+                          : ""
+                      }
+                    </td>
+                    <td class="text-right">${
+                      item.isRedeemed || item.isFree
+                        ? "FREE"
+                        : `₱${safeNumber(item.price || 0).toFixed(2)}`
                     }</td>
-                    <td class="text-right">PHP ${(item.price || 0).toFixed(
-                      2
-                    )}</td>
                   </tr>
                 `
-                  )
-                  .join("")}
-              </table>
-            </div>
+                )
+                .join("")}
+            </table>
             
-            <div class="border-top">
-              <table width="100%">
-                <tr><td>Subtotal:</td><td class="text-right">PHP ${(
-                  orderInfo.bills?.total || 0
-                ).toFixed(2)}</td></tr>
-                ${
-                  orderInfo.bills?.pwdSeniorDiscount > 0
-                    ? `<tr><td class="discount-item">PWD/Senior Discount:</td><td class="text-right discount-item">-PHP ${(
-                        orderInfo.bills.pwdSeniorDiscount || 0
-                      ).toFixed(2)}</td></tr>`
-                    : ""
-                }
-                ${
-                  orderInfo.bills?.redemptionDiscount > 0
-                    ? `<tr><td class="discount-item">Redemption Discount:</td><td class="text-right discount-item">-PHP ${(
-                        orderInfo.bills.redemptionDiscount || 0
-                      ).toFixed(2)}</td></tr>`
-                    : ""
-                }
-                ${
-                  orderInfo.bills?.employeeDiscount > 0
-                    ? `<tr><td class="discount-item">Employee Discount (15%):</td><td class="text-right discount-item">-PHP ${(
-                        orderInfo.bills.employeeDiscount || 0
-                      ).toFixed(2)}</td></tr>`
-                    : ""
-                }
-                ${
-                  orderInfo.bills?.shareholderDiscount > 0
-                    ? `<tr><td class="discount-item">Shareholder Discount (10%):</td><td class="text-right discount-item">-PHP ${(
-                        orderInfo.bills.shareholderDiscount || 0
-                      ).toFixed(2)}</td></tr>`
-                    : ""
-                }
-                ${
-                  orderInfo.bills?.discount > 0
-                    ? `<tr><td>Total Discount:</td><td class="text-right">-PHP ${(
-                        orderInfo.bills.discount || 0
-                      ).toFixed(2)}</td></tr>`
-                    : ""
-                }
-                <tr><td>Net of VAT:</td><td class="text-right">PHP ${(
-                  orderInfo.bills?.netSales || 0
-                ).toFixed(2)}</td></tr>
-                <tr><td>VAT (12%):</td><td class="text-right">PHP ${(
-                  orderInfo.bills?.tax || 0
-                ).toFixed(2)}</td></tr>
-                <tr class="text-bold">
-                  <td>TOTAL:</td>
-                  <td class="text-right">PHP ${(
-                    orderInfo.bills?.totalWithTax || 0
-                  ).toFixed(2)}</td>
-                </tr>
-                ${
-                  orderInfo.paymentMethod === "Cash" &&
-                  orderInfo.bills?.cashAmount > 0
-                    ? `
-                    <tr><td>Cash:</td><td class="text-right">PHP ${(
-                      orderInfo.bills.cashAmount || 0
-                    ).toFixed(2)}</td></tr>
-                    <tr><td>Change:</td><td class="text-right">PHP ${(
-                      orderInfo.bills.change || 0
-                    ).toFixed(2)}</td></tr>
-                    `
-                    : ""
-                }
-              </table>
-            </div>
+            <div class="border-line"></div>
             
-            <div class="border-top">
-              <table width="100%">
-                <tr><td><strong>Payment:</strong></td><td>${
-                  orderInfo.paymentMethod || "Cash"
-                }</td></tr>
-                <tr><td><strong>Order Status:</strong></td><td>${
-                  orderInfo.orderStatus || "Completed"
-                }</td></tr>
-              </table>
-            </div>
+            <table width="100%" style="font-size: 9px; line-height: 1.1;">
+              <tr><td>Subtotal:</td><td class="text-right">₱${safeNumber(
+                orderInfo.bills?.total || 0
+              ).toFixed(2)}</td></tr>
+              ${
+                safeNumber(orderInfo.bills?.pwdSeniorDiscount || 0) > 0
+                  ? `<tr><td class="discount-item">PWD/SENIOR:</td><td class="text-right discount-item">-₱${safeNumber(
+                      orderInfo.bills?.pwdSeniorDiscount || 0
+                    ).toFixed(2)}</td></tr>`
+                  : ""
+              }
+              ${
+                safeNumber(orderInfo.bills?.redemptionDiscount || 0) > 0
+                  ? `<tr><td class="discount-item">REDEMPTION:</td><td class="text-right discount-item">-₱${safeNumber(
+                      orderInfo.bills?.redemptionDiscount || 0
+                    ).toFixed(2)}</td></tr>`
+                  : ""
+              }
+              ${
+                safeNumber(orderInfo.bills?.employeeDiscount || 0) > 0
+                  ? `<tr><td class="discount-item">EMP DISC:</td><td class="text-right discount-item">-₱${safeNumber(
+                      orderInfo.bills?.employeeDiscount || 0
+                    ).toFixed(2)}</td></tr>`
+                  : ""
+              }
+              ${
+                safeNumber(orderInfo.bills?.shareholderDiscount || 0) > 0
+                  ? `<tr><td class="discount-item">SHAREHOLDER:</td><td class="text-right discount-item">-₱${safeNumber(
+                      orderInfo.bills?.shareholderDiscount || 0
+                    ).toFixed(2)}</td></tr>`
+                  : ""
+              }
+              <tr><td>VAT (12%):</td><td class="text-right">₱${safeNumber(
+                orderInfo.bills?.tax || 0
+              ).toFixed(2)}</td></tr>
+              <div class="border-line"></div>
+              <tr class="text-bold"><td>TOTAL:</td><td class="text-right">₱${safeNumber(
+                orderInfo.bills?.totalWithTax || 0
+              ).toFixed(2)}</td></tr>
+              ${
+                orderInfo.paymentMethod === "Cash" &&
+                safeNumber(orderInfo.bills?.cashAmount || 0) > 0
+                  ? `
+                  <tr><td>Cash:</td><td class="text-right">₱${safeNumber(
+                    orderInfo.bills?.cashAmount || 0
+                  ).toFixed(2)}</td></tr>
+                  <tr><td>Change:</td><td class="text-right">₱${safeNumber(
+                    orderInfo.bills?.change || 0
+                  ).toFixed(2)}</td></tr>
+                  `
+                  : ""
+              }
+            </table>
+            
+            <div class="border-line"></div>
+            
+            <table width="100%" style="font-size: 9px; line-height: 1.1;">
+              <tr><td><strong>Payment:</strong></td><td>${
+                orderInfo.paymentMethod || "Cash"
+              }</td></tr>
+              ${
+                orderInfo.pwdSeniorDetails
+                  ? `
+                  <tr><td colspan="2"><strong>PWD/SENIOR DETAILS:</strong></td></tr>
+                  <tr><td>Name:</td><td>${
+                    orderInfo.pwdSeniorDetails.name
+                  }</td></tr>
+                  <tr><td>ID #:</td><td>${
+                    orderInfo.pwdSeniorDetails.idNumber || ""
+                  }</td></tr>
+                  <tr><td>Type:</td><td>${
+                    orderInfo.pwdSeniorDetails.type || "PWD"
+                  }</td></tr>
+                  `
+                  : ""
+              }
+            </table>
             
             <div class="thank-you">
-              <div>Thank you for your purchase!</div>
-              <div>Please visit DELISH CHEESECAKE CAFE again!</div>
+              <div>Thank you for dining with us!</div>
+              <div>Please visit again!</div>
+              <div>This receipt is your official proof of purchase.</div>
             </div>
           </div>
         </body>
       </html>
     `;
 
-    const printWindow = window.open("", "_blank", "width=300,height=500");
+    const printWindow = window.open("", "_blank", "width=300,height=600");
     if (!printWindow) {
-      alertUser("Please allow popups for printing");
+      alertUser("Please allow popups for printing", "warning");
       return;
     }
 
@@ -584,224 +832,10 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       setTimeout(() => {
         printWindow.print();
         printWindow.onafterprint = () => {
-          // Attempt to open cash drawer after the browser print dialog closes
-          openCashDrawer();
           setTimeout(() => printWindow.close(), 100);
         };
       }, 250);
     };
-  };
-
-  const generateThermalText = (includeDrawerCommand = false) => {
-    const LINE_WIDTH = 32;
-    const orderId = orderInfo.orderDate
-      ? Math.floor(new Date(orderInfo.orderDate).getTime()).toString().slice(-6)
-      : "N/A";
-
-    const customerName =
-      orderInfo.customerDetails?.name ||
-      orderInfo.customerStatus ||
-      (orderInfo.customerType === "walk-in"
-        ? "Walk-in Customer"
-        : "Take-out Customer");
-
-    const cashierName = orderInfo.cashier || "Admin";
-    const orderDate = new Date(
-      orderInfo.orderDate || Date.now()
-    ).toLocaleString();
-
-    const customerStatus =
-      orderInfo.customerStatus ||
-      (orderInfo.customerType === "walk-in" ? "Dine-in" : "Take-out");
-
-    let receiptText = thermalCommands.INIT;
-
-    // Header
-    receiptText += thermalCommands.ALIGN_CENTER;
-    receiptText += thermalCommands.TEXT_LARGE;
-    receiptText += "DELISH CHEESECAKE\n";
-    receiptText += "CAFE\n";
-    receiptText += thermalCommands.TEXT_NORMAL;
-    receiptText += "ORDER RECEIPT\n";
-    receiptText += "✓ Thank you!\n\n";
-
-    // Order Info
-    receiptText += thermalCommands.ALIGN_LEFT;
-    receiptText += thermalCommands.BOLD_ON;
-    receiptText += `Order ID: ${orderId}\n`;
-    receiptText += `Customer: ${customerName}\n`;
-    receiptText += `Cashier: ${cashierName}\n`;
-    receiptText += `Date: ${orderDate}\n`;
-    receiptText += `Status: ${customerStatus}\n`;
-    receiptText += thermalCommands.BOLD_OFF;
-    receiptText += "=".repeat(LINE_WIDTH) + "\n\n";
-
-    // PWD/Senior Details if available
-    if (orderInfo.pwdSeniorDetails) {
-      receiptText += thermalCommands.BOLD_ON;
-      receiptText += `PWD/SENIOR DETAILS:\n`;
-      receiptText += thermalCommands.BOLD_OFF;
-      receiptText += `Type: ${orderInfo.pwdSeniorDetails.type}\n`;
-      receiptText += `Name: ${orderInfo.pwdSeniorDetails.name}\n`;
-      receiptText += `ID: ${orderInfo.pwdSeniorDetails.idNumber}\n`;
-      receiptText += "-".repeat(LINE_WIDTH) + "\n\n";
-    }
-
-    // Items
-    receiptText += thermalCommands.BOLD_ON;
-    receiptText += "ORDER ITEMS:\n";
-    receiptText += thermalCommands.BOLD_OFF;
-
-    (orderInfo.items || []).forEach((item) => {
-      const itemQuantity = item.quantity || 1;
-      const itemPrice = item.price || 0;
-      const isFree = item.isFree;
-      const isRedeemed = item.isRedeemed;
-      const isPwdSeniorDiscounted = item.isPwdSeniorDiscounted;
-
-      const itemName =
-        item.name && item.name.length > 17
-          ? item.name.substring(0, 14) + "..."
-          : item.name || "Item";
-
-      let itemNote = "";
-      if (isFree || isRedeemed) itemNote = " (FREE)";
-      else if (isPwdSeniorDiscounted) itemNote = " (PWD/SENIOR -20%)";
-
-      const lineStart = `${itemName}${itemNote} x${itemQuantity}`;
-      const priceString =
-        isFree || isRedeemed ? "FREE" : `PHP ${itemPrice.toFixed(2)}`;
-
-      receiptText += lineStart;
-      receiptText += " ".repeat(
-        Math.max(1, LINE_WIDTH - lineStart.length - priceString.length)
-      );
-      receiptText += priceString + "\n";
-    });
-
-    receiptText += "\n" + "=".repeat(LINE_WIDTH) + "\n";
-
-    // Bill Summary
-    const subtotal = orderInfo.bills?.total || 0;
-    const pwdDiscount = orderInfo.bills?.pwdSeniorDiscount || 0;
-    const redemptionDiscount = orderInfo.bills?.redemptionDiscount || 0;
-    const empDiscount = orderInfo.bills?.employeeDiscount || 0;
-    const shareholderDiscount = orderInfo.bills?.shareholderDiscount || 0;
-    const totalDiscount = orderInfo.bills?.discount || 0;
-    const netSales = orderInfo.bills?.netSales || 0;
-    const tax = orderInfo.bills?.tax || 0;
-    const total = orderInfo.bills?.totalWithTax || 0;
-    const cashAmount = orderInfo.bills?.cashAmount || 0;
-    const change = orderInfo.bills?.change || 0;
-
-    const billItems = [
-      { label: "Subtotal:", value: subtotal, isDiscount: false },
-      { label: "PWD/Senior Discount:", value: pwdDiscount, isDiscount: true },
-      {
-        label: "Redemption Discount:",
-        value: redemptionDiscount,
-        isDiscount: true,
-      },
-      {
-        label: "Employee Discount (15%):",
-        value: empDiscount,
-        isDiscount: true,
-      },
-      {
-        label: "Shareholder Discount (10%):",
-        value: shareholderDiscount,
-        isDiscount: true,
-      },
-    ];
-
-    // Add discount lines
-    billItems.forEach(({ label, value, isDiscount }) => {
-      if (value > 0) {
-        const displayValue = `-PHP ${value.toFixed(2)}`;
-        const spacing = " ".repeat(
-          Math.max(1, LINE_WIDTH - label.length - displayValue.length)
-        );
-        receiptText += `${label.padEnd(
-          LINE_WIDTH - displayValue.length,
-          " "
-        )}${displayValue}\n`;
-      }
-    });
-
-    if (totalDiscount > 0) {
-      const label = "Total Discount:";
-      const displayValue = `-PHP ${totalDiscount.toFixed(2)}`;
-      receiptText += `${label.padEnd(
-        LINE_WIDTH - displayValue.length,
-        " "
-      )}${displayValue}\n`;
-    }
-
-    // Net of VAT
-    const netLabel = "Net of VAT:";
-    const netDisplayValue = `PHP ${netSales.toFixed(2)}`;
-    const netSpacing = " ".repeat(
-      Math.max(1, LINE_WIDTH - netLabel.length - netDisplayValue.length)
-    );
-    receiptText += `${netLabel}${netSpacing}${netDisplayValue}\n`;
-
-    // VAT
-    const vatLabel = "VAT (12%):";
-    const vatDisplayValue = `PHP ${tax.toFixed(2)}`;
-    const vatSpacing = " ".repeat(
-      Math.max(1, LINE_WIDTH - vatLabel.length - vatDisplayValue.length)
-    );
-    receiptText += `${vatLabel}${vatSpacing}${vatDisplayValue}\n`;
-
-    receiptText += thermalCommands.BOLD_ON;
-    const totalLabel = "TOTAL:";
-    const totalDisplayValue = `PHP ${total.toFixed(2)}`;
-    const totalSpacing = " ".repeat(
-      Math.max(1, LINE_WIDTH - totalLabel.length - totalDisplayValue.length)
-    );
-    receiptText += `${totalLabel}${totalSpacing}${totalDisplayValue}\n`;
-    receiptText += thermalCommands.BOLD_OFF;
-
-    // Cash and Change if payment is Cash
-    if (orderInfo.paymentMethod === "Cash" && cashAmount > 0) {
-      const cashLabel = "Cash:";
-      const cashDisplayValue = `PHP ${cashAmount.toFixed(2)}`;
-      const cashSpacing = " ".repeat(
-        Math.max(1, LINE_WIDTH - cashLabel.length - cashDisplayValue.length)
-      );
-      receiptText += `${cashLabel}${cashSpacing}${cashDisplayValue}\n`;
-
-      const changeLabel = "Change:";
-      const changeDisplayValue = `PHP ${change.toFixed(2)}`;
-      const changeSpacing = " ".repeat(
-        Math.max(1, LINE_WIDTH - changeLabel.length - changeDisplayValue.length)
-      );
-      receiptText += `${changeLabel}${changeSpacing}${changeDisplayValue}\n`;
-    }
-
-    receiptText += "=".repeat(LINE_WIDTH) + "\n\n";
-
-    // Payment Info
-    receiptText += thermalCommands.BOLD_ON;
-    receiptText += `Payment: ${orderInfo.paymentMethod || "Cash"}\n`;
-    receiptText += `Order Status: ${orderInfo.orderStatus || "Completed"}\n`;
-    receiptText += thermalCommands.BOLD_OFF;
-
-    receiptText += "\n" + thermalCommands.ALIGN_CENTER;
-    receiptText += "Thank you for your purchase!\n";
-    receiptText += "Please visit DELISH CHEESECAKE CAFE again!\n\n";
-
-    // Add cash drawer command if requested
-    if (includeDrawerCommand) {
-      receiptText += thermalCommands.DRAWER_KICK_2;
-    }
-
-    // Feed and cut
-    receiptText += thermalCommands.FEED_LINE;
-    receiptText += thermalCommands.FEED_LINE;
-    receiptText += thermalCommands.CUT;
-
-    return receiptText;
   };
 
   const handleThermalPrint = () => {
@@ -820,15 +854,13 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     const textWindow = window.open(textUrl, "_blank");
     if (textWindow) {
       textWindow.document.write(
-        `<pre style="font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.1;">${cleanText}</pre>`
+        `<pre style="font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.1; white-space: pre-wrap; word-wrap: break-word; max-width: 80mm; margin: 0 auto;">${cleanText}</pre>`
       );
       textWindow.document.close();
 
       textWindow.onload = () => {
         setTimeout(() => {
           textWindow.print();
-          // Open cash drawer after thermal print
-          openCashDrawer();
           setTimeout(() => {
             textWindow.close();
             URL.revokeObjectURL(textUrl);
@@ -836,7 +868,33 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         }, 500);
       };
     } else {
-      alertUser("Please allow popups to open the text print preview.");
+      alertUser(
+        "Please allow popups to open the text print preview.",
+        "warning"
+      );
+    }
+  };
+
+  // Function to open cash drawer
+  const openCashDrawer = async () => {
+    try {
+      console.log("Attempting to open cash drawer...");
+
+      if (isConnected && bluetoothDevice) {
+        await sendToPrinter(thermalCommands.DRAWER_KICK);
+        alertUser("Cash drawer opened successfully!", "success");
+      } else {
+        alertUser(
+          "Not connected to printer. Please connect to Bluetooth first or open drawer manually.",
+          "warning"
+        );
+      }
+    } catch (error) {
+      console.error("Failed to open cash drawer:", error);
+      alertUser(
+        "Failed to send drawer command. Please open the cash drawer manually.",
+        "warning"
+      );
     }
   };
 
@@ -920,11 +978,12 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               <div>
                 <span className="text-gray-600">ID:</span>
                 <p className="font-medium truncate">
-                  {orderInfo.orderDate
-                    ? Math.floor(new Date(orderInfo.orderDate).getTime())
-                        .toString()
-                        .slice(-6)
-                    : "N/A"}
+                  {orderInfo._id?.slice(-8) ||
+                    (orderInfo.orderDate
+                      ? Math.floor(new Date(orderInfo.orderDate).getTime())
+                          .toString()
+                          .slice(-6)
+                      : "N/A")}
                 </p>
               </div>
               <div>
@@ -932,32 +991,33 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <p className="font-medium">
                   {new Date(
                     orderInfo.orderDate || Date.now()
-                  ).toLocaleDateString()}
+                  ).toLocaleDateString("en-PH")}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-600">Time:</span>
+                <p className="font-medium">
+                  {new Date(
+                    orderInfo.orderDate || Date.now()
+                  ).toLocaleTimeString("en-PH", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  })}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-600">Cashier:</span>
+                <p className="font-medium truncate text-green-600">
+                  {orderInfo.cashier || "Admin"}
                 </p>
               </div>
               <div className="col-span-2">
                 <span className="text-gray-600">Customer:</span>
-                <p className="font-medium truncate">
-                  {orderInfo.customerDetails?.name ||
-                    orderInfo.customerStatus ||
-                    (orderInfo.customerType === "walk-in"
-                      ? "Walk-in"
-                      : "Take-out")}
-                </p>
-              </div>
-              <div className="col-span-2">
-                <span className="text-gray-600">Status:</span>
                 <p className="font-medium truncate text-blue-600">
-                  {orderInfo.customerStatus ||
-                    (orderInfo.customerType === "walk-in"
-                      ? "Dine-in"
-                      : "Take-out")}
-                </p>
-              </div>
-              <div className="col-span-2">
-                <span className="text-gray-600">Cashier:</span>
-                <p className="font-medium truncate text-green-600">
-                  {orderInfo.cashier || "Admin"}
+                  {orderInfo.customerType === "walk-in"
+                    ? "Dine-in"
+                    : "Take-out"}
                 </p>
               </div>
             </div>
@@ -974,7 +1034,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <div className="flex justify-between">
                   <span className="text-gray-600">Type:</span>
                   <span className="font-medium text-green-700">
-                    {orderInfo.pwdSeniorDetails.type}
+                    {orderInfo.pwdSeniorDetails.type || "PWD"}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -986,7 +1046,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <div className="flex justify-between">
                   <span className="text-gray-600">ID Number:</span>
                   <span className="font-medium">
-                    {orderInfo.pwdSeniorDetails.idNumber}
+                    {orderInfo.pwdSeniorDetails.idNumber || "N/A"}
                   </span>
                 </div>
               </div>
@@ -1003,7 +1063,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <div
                   key={index}
                   className={`flex justify-between items-start p-2 rounded text-xs ${
-                    item.isFree || item.isRedeemed
+                    item.isRedeemed || item.isFree
                       ? "bg-red-50 border border-red-200"
                       : item.isPwdSeniorDiscounted
                       ? "bg-green-50 border border-green-200"
@@ -1013,7 +1073,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                   <div className="flex-1 pr-2">
                     <p className="font-medium truncate">
                       {item.name}
-                      {item.isFree || item.isRedeemed ? (
+                      {item.isRedeemed || item.isFree ? (
                         <span className="ml-1 text-red-600 font-semibold text-[10px]">
                           (FREE)
                         </span>
@@ -1024,7 +1084,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                       ) : null}
                     </p>
                     <p className="text-gray-600 text-[10px]">
-                      {item.quantity || 1} × PHP{" "}
+                      {item.quantity || 1} × ₱
                       {(
                         item.pricePerQuantity ||
                         item.originalPrice ||
@@ -1035,16 +1095,16 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                   <div className="text-right min-w-16">
                     <p
                       className={`font-semibold ${
-                        item.isFree || item.isRedeemed
+                        item.isRedeemed || item.isFree
                           ? "text-red-600"
                           : item.isPwdSeniorDiscounted
                           ? "text-green-600"
                           : "text-gray-800"
                       }`}
                     >
-                      {item.isFree || item.isRedeemed
+                      {item.isRedeemed || item.isFree
                         ? "FREE"
-                        : `PHP ${(item.price || 0).toFixed(2)}`}
+                        : `₱${safeNumber(item.price || 0).toFixed(2)}`}
                     </p>
                   </div>
                 </div>
@@ -1052,7 +1112,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             </div>
           </div>
 
-          {/* Bill Summary */}
+          {/* Bill Summary - EXACT SAME FORMAT AS BILL */}
           <div className="bg-gray-50 p-3 rounded-lg">
             <h3 className="font-semibold text-gray-700 text-sm mb-2">
               Bill Summary
@@ -1060,84 +1120,87 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             <div className="space-y-1 text-xs">
               <div className="flex justify-between">
                 <span>Subtotal:</span>
-                <span>PHP {(orderInfo.bills?.total || 0).toFixed(2)}</span>
+                <span>
+                  ₱{safeNumber(orderInfo.bills?.total || 0).toFixed(2)}
+                </span>
               </div>
 
-              {(orderInfo.bills?.pwdSeniorDiscount || 0) > 0 && (
+              {safeNumber(orderInfo.bills?.pwdSeniorDiscount || 0) > 0 && (
                 <div className="flex justify-between text-green-600">
-                  <span>PWD/Senior Disc:</span>
+                  <span>PWD/SENIOR:</span>
                   <span>
-                    -PHP {(orderInfo.bills.pwdSeniorDiscount || 0).toFixed(2)}
+                    -₱
+                    {safeNumber(
+                      orderInfo.bills?.pwdSeniorDiscount || 0
+                    ).toFixed(2)}
                   </span>
                 </div>
               )}
 
-              {(orderInfo.bills?.redemptionDiscount || 0) > 0 && (
+              {safeNumber(orderInfo.bills?.redemptionDiscount || 0) > 0 && (
                 <div className="flex justify-between text-blue-600">
-                  <span>Redemption Disc:</span>
+                  <span>REDEMPTION:</span>
                   <span>
-                    -PHP {(orderInfo.bills.redemptionDiscount || 0).toFixed(2)}
+                    -₱
+                    {safeNumber(
+                      orderInfo.bills?.redemptionDiscount || 0
+                    ).toFixed(2)}
                   </span>
                 </div>
               )}
 
-              {(orderInfo.bills?.employeeDiscount || 0) > 0 && (
+              {safeNumber(orderInfo.bills?.employeeDiscount || 0) > 0 && (
                 <div className="flex justify-between text-yellow-600">
-                  <span>Emp Disc (15%):</span>
+                  <span>EMP DISC:</span>
                   <span>
-                    -PHP {(orderInfo.bills.employeeDiscount || 0).toFixed(2)}
+                    -₱
+                    {safeNumber(orderInfo.bills?.employeeDiscount || 0).toFixed(
+                      2
+                    )}
                   </span>
                 </div>
               )}
 
-              {(orderInfo.bills?.shareholderDiscount || 0) > 0 && (
+              {safeNumber(orderInfo.bills?.shareholderDiscount || 0) > 0 && (
                 <div className="flex justify-between text-purple-600">
-                  <span>Shareholder Disc (10%):</span>
+                  <span>SHAREHOLDER:</span>
                   <span>
-                    -PHP {(orderInfo.bills.shareholderDiscount || 0).toFixed(2)}
-                  </span>
-                </div>
-              )}
-
-              {(orderInfo.bills?.discount || 0) > 0 && (
-                <div className="flex justify-between text-red-600 border-t pt-1">
-                  <span>Total Discount:</span>
-                  <span className="font-semibold">
-                    -PHP {(orderInfo.bills.discount || 0).toFixed(2)}
+                    -₱
+                    {safeNumber(
+                      orderInfo.bills?.shareholderDiscount || 0
+                    ).toFixed(2)}
                   </span>
                 </div>
               )}
 
               <div className="flex justify-between border-t pt-1">
-                <span>Net of VAT:</span>
-                <span>PHP {(orderInfo.bills?.netSales || 0).toFixed(2)}</span>
-              </div>
-
-              <div className="flex justify-between">
                 <span>VAT (12%):</span>
-                <span>PHP {(orderInfo.bills?.tax || 0).toFixed(2)}</span>
+                <span>₱{safeNumber(orderInfo.bills?.tax || 0).toFixed(2)}</span>
               </div>
 
               <div className="border-t pt-2 mt-2 flex justify-between font-bold text-sm">
-                <span>Total:</span>
+                <span>TOTAL:</span>
                 <span className="text-green-600">
-                  PHP {(orderInfo.bills?.totalWithTax || 0).toFixed(2)}
+                  ₱{safeNumber(orderInfo.bills?.totalWithTax || 0).toFixed(2)}
                 </span>
               </div>
 
               {orderInfo.paymentMethod === "Cash" &&
-                orderInfo.bills?.cashAmount > 0 && (
+                safeNumber(orderInfo.bills?.cashAmount || 0) > 0 && (
                   <>
                     <div className="border-t pt-2 flex justify-between">
                       <span className="text-gray-600">Cash:</span>
                       <span className="text-gray-800">
-                        PHP {(orderInfo.bills.cashAmount || 0).toFixed(2)}
+                        ₱
+                        {safeNumber(orderInfo.bills?.cashAmount || 0).toFixed(
+                          2
+                        )}
                       </span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-gray-600">Change:</span>
                       <span className="text-green-600 font-semibold">
-                        PHP {(orderInfo.bills.change || 0).toFixed(2)}
+                        ₱{safeNumber(orderInfo.bills?.change || 0).toFixed(2)}
                       </span>
                     </div>
                   </>
@@ -1158,18 +1221,11 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 </span>
               </div>
               <div className="flex justify-between">
-                <span>Order Status:</span>
+                <span>Status:</span>
                 <span className="font-medium text-green-600">
-                  {orderInfo.orderStatus || "Completed"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Customer Status:</span>
-                <span className="font-medium text-blue-600">
-                  {orderInfo.customerStatus ||
-                    (orderInfo.customerType === "walk-in"
-                      ? "Dine-in"
-                      : "Take-out")}
+                  {orderInfo.customerType === "walk-in"
+                    ? "Dine-in"
+                    : "Take-out"}
                 </span>
               </div>
             </div>
@@ -1231,15 +1287,24 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
             <button
               onClick={printViaBluetooth}
-              disabled={!isConnected}
+              disabled={!isConnected || isPrinting}
               className={`flex items-center justify-center gap-2 px-2 py-3 rounded-lg transition-colors text-xs font-semibold ${
-                isConnected
+                isConnected && !isPrinting
                   ? "bg-purple-600 text-white hover:bg-purple-700"
                   : "bg-gray-400 text-white cursor-not-allowed"
               }`}
             >
-              <IconBluetooth className="text-xs w-4 h-4" />
-              BT Print
+              {isPrinting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Printing
+                </>
+              ) : (
+                <>
+                  <IconBluetooth className="text-xs w-4 h-4" />
+                  BT Print
+                </>
+              )}
             </button>
 
             <button
