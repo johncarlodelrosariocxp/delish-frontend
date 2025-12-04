@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   removeItemFromOrder,
@@ -16,318 +16,309 @@ import { useMutation } from "@tanstack/react-query";
 import Invoice from "../invoice/Invoice";
 import { useNavigate } from "react-router-dom";
 
-// Enhanced Bluetooth Printer Manager with Thermal Printer Support
-class BluetoothThermalPrinter {
+// Icons
+const IconBluetooth = ({ className }) => (
+  <svg
+    className={className}
+    fill="currentColor"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M14.88 16.29L13 18.17v-3.76l1.88 1.88zM13 5.83l1.88 1.88L13 9.59V5.83zm8.71 4.71L12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l9.71-9.71-5.3-5.29 5.3-5.29z" />
+  </svg>
+);
+
+// Enhanced Bluetooth Printer Manager
+class BluetoothPrinterManager {
   constructor() {
     this.device = null;
-    this.characteristic = null;
+    this.server = null;
+    this.writeCharacteristic = null;
     this.isConnected = false;
-    this.isPrinting = false;
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 3;
-    this.autoReconnect = true;
+    this.reconnectDelay = 1000;
+    this.reconnectTimer = null;
+    this.autoReconnectEnabled = true;
+    this.isPrinting = false;
+    this.printQueue = [];
+    this.isProcessingQueue = false;
   }
 
-  // Check if Web Bluetooth API is supported
-  isSupported() {
-    return navigator.bluetooth && navigator.bluetooth.requestDevice;
-  }
-
-  // Get saved printer from localStorage
-  getSavedPrinter() {
-    return {
-      id: localStorage.getItem("thermalPrinterId"),
-      name: localStorage.getItem("thermalPrinterName"),
-    };
-  }
-
-  // Save printer to localStorage
-  savePrinter(device) {
-    localStorage.setItem("thermalPrinterId", device.id);
-    localStorage.setItem(
-      "thermalPrinterName",
-      device.name || "Thermal Printer"
+  isBluetoothSupported() {
+    return (
+      navigator.bluetooth &&
+      typeof navigator.bluetooth.requestDevice === "function"
     );
   }
 
-  // Clear saved printer
-  clearSavedPrinter() {
-    localStorage.removeItem("thermalPrinterId");
-    localStorage.removeItem("thermalPrinterName");
+  getSavedPrinter() {
+    const deviceId = localStorage.getItem("bluetoothPrinterId");
+    const deviceName = localStorage.getItem("bluetoothPrinterName");
+    return { deviceId, deviceName };
   }
 
-  // Connect to Bluetooth printer
-  async connect() {
-    if (!this.isSupported()) {
-      throw new Error("Bluetooth not supported in this browser");
+  savePrinter(device) {
+    localStorage.setItem("bluetoothPrinterId", device.id);
+    localStorage.setItem(
+      "bluetoothPrinterName",
+      device.name || "Bluetooth Printer"
+    );
+  }
+
+  clearSavedPrinter() {
+    localStorage.removeItem("bluetoothPrinterId");
+    localStorage.removeItem("bluetoothPrinterName");
+  }
+
+  setupDeviceListeners(device, onDisconnect) {
+    device.addEventListener("gattserverdisconnected", () => {
+      console.log("Bluetooth device disconnected");
+      this.isConnected = false;
+      this.device = null;
+      this.server = null;
+      this.writeCharacteristic = null;
+      this.isPrinting = false;
+
+      if (onDisconnect) onDisconnect();
+
+      if (this.autoReconnectEnabled) {
+        this.attemptReconnection(onDisconnect);
+      }
+    });
+  }
+
+  async attemptReconnection(onDisconnect) {
+    if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+      console.log("Max reconnection attempts reached");
+      this.reconnectAttempts = 0;
+      return;
     }
 
+    this.reconnectAttempts++;
+    console.log(
+      `Reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts}`
+    );
+
+    await new Promise((resolve) => setTimeout(resolve, this.reconnectDelay));
+
     try {
-      console.log("Requesting Bluetooth device...");
+      const { deviceId } = this.getSavedPrinter();
+      if (!deviceId) {
+        console.log("No saved printer to reconnect to");
+        return;
+      }
 
-      // Request device with common thermal printer services
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [{ services: ["00001101-0000-1000-8000-00805f9b34fb"] }], // SPP service
-        optionalServices: [
-          "000018f0-0000-1000-8000-00805f9b34fb", // Printer service
-          "00001800-0000-1000-8000-00805f9b34fb", // Generic Access
-          "00001801-0000-1000-8000-00805f9b34fb", // Generic Attribute
-        ],
-      });
+      console.log("Attempting to reconnect to saved printer...");
+      const devices = await navigator.bluetooth.getDevices();
+      const savedDevice = devices.find((d) => d.id === deviceId);
 
-      console.log("Connecting to GATT server...");
+      if (savedDevice) {
+        await this.connectToDevice(savedDevice, onDisconnect);
+        this.reconnectAttempts = 0;
+      }
+    } catch (error) {
+      console.error("Reconnection failed:", error);
+      if (this.autoReconnectEnabled) {
+        this.attemptReconnection(onDisconnect);
+      }
+    }
+  }
+
+  async connectToDevice(device, onDisconnect) {
+    try {
+      console.log("Connecting to device:", device.name);
+
+      if (device.gatt && device.gatt.connected) {
+        console.log("Device already connected");
+        this.device = device;
+        this.isConnected = true;
+        await this.setupPrinterServices(device);
+        this.setupDeviceListeners(device, onDisconnect);
+        return true;
+      }
+
       const server = await device.gatt.connect();
-
-      // Try to get the SPP service (most common for thermal printers)
-      let service;
-      try {
-        service = await server.getPrimaryService(
-          "00001101-0000-1000-8000-00805f9b34fb"
-        );
-      } catch (e) {
-        console.log("SPP service not found, trying other services...");
-        // Try other common printer services
-        const services = await server.getPrimaryServices();
-        service =
-          services.find(
-            (s) =>
-              s.uuid.includes("ff00") ||
-              s.uuid.includes("fff0") ||
-              s.uuid.includes("18f0")
-          ) || services[0];
-      }
-
-      if (!service) {
-        throw new Error("No suitable printer service found");
-      }
-
-      console.log("Getting characteristics...");
-      const characteristics = await service.getCharacteristics();
-
-      // Find a characteristic that can write
-      this.characteristic = characteristics.find(
-        (char) => char.properties.write || char.properties.writeWithoutResponse
-      );
-
-      if (!this.characteristic) {
-        throw new Error("No writable characteristic found");
-      }
-
       this.device = device;
+      this.server = server;
       this.isConnected = true;
-      this.reconnectAttempts = 0;
 
-      // Save printer for auto-reconnect
+      await this.setupPrinterServices(device);
+      this.setupDeviceListeners(device, onDisconnect);
       this.savePrinter(device);
+      this.reconnectAttempts = 0;
+      this.isPrinting = false;
 
-      // Set up disconnect handler
-      device.addEventListener(
-        "gattserverdisconnected",
-        this.handleDisconnect.bind(this)
-      );
-
-      console.log("Connected successfully to:", device.name);
+      console.log("Device connected successfully");
       return true;
     } catch (error) {
-      console.error("Connection failed:", error);
+      console.error("Failed to connect to device:", error);
+      this.isConnected = false;
+      this.isPrinting = false;
       throw error;
     }
   }
 
-  // Handle disconnection
-  handleDisconnect() {
-    console.log("Device disconnected");
-    this.isConnected = false;
-    this.device = null;
-    this.characteristic = null;
-    this.isPrinting = false;
+  async setupPrinterServices(device) {
+    const serviceUUIDs = [
+      "00001101-0000-1000-8000-00805f9b34fb", // SPP service (most common)
+      "000018f0-0000-1000-8000-00805f9b34fb", // Printer service
+      "fff0",
+      "ff00",
+    ];
 
-    // Auto-reconnect if enabled
-    if (
-      this.autoReconnect &&
-      this.reconnectAttempts < this.maxReconnectAttempts
-    ) {
-      setTimeout(() => this.autoReconnectToSaved(), 2000);
-    }
-  }
-
-  // Auto-reconnect to saved printer
-  async autoReconnectToSaved() {
-    if (
-      this.isConnected ||
-      this.reconnectAttempts >= this.maxReconnectAttempts
-    ) {
-      return;
-    }
-
-    const saved = this.getSavedPrinter();
-    if (!saved.id) return;
-
-    try {
-      this.reconnectAttempts++;
-      console.log(`Auto-reconnect attempt ${this.reconnectAttempts}`);
-
-      // Get previously paired devices
-      const devices = await navigator.bluetooth.getDevices();
-      const savedDevice = devices.find((d) => d.id === saved.id);
-
-      if (savedDevice) {
-        await savedDevice.gatt.connect();
-        const server = await savedDevice.gatt.connect();
-        const service = await server.getPrimaryService(
-          "00001101-0000-1000-8000-00805f9b34fb"
-        );
+    for (const serviceUuid of serviceUUIDs) {
+      try {
+        console.log(`Trying service: ${serviceUuid}`);
+        const service = await this.server.getPrimaryService(serviceUuid);
         const characteristics = await service.getCharacteristics();
 
-        this.characteristic = characteristics.find(
+        console.log(`Found ${characteristics.length} characteristics`);
+
+        this.writeCharacteristic = characteristics.find(
           (char) =>
-            char.properties.write || char.properties.writeWithoutResponse
+            char.properties.write ||
+            char.properties.writeWithoutResponse ||
+            char.properties.indicate ||
+            char.properties.notify
         );
 
-        if (this.characteristic) {
-          this.device = savedDevice;
-          this.isConnected = true;
-          this.reconnectAttempts = 0;
-          savedDevice.addEventListener(
-            "gattserverdisconnected",
-            this.handleDisconnect.bind(this)
+        if (this.writeCharacteristic) {
+          console.log(
+            `Found writable characteristic in service ${serviceUuid}`
           );
-          console.log("Auto-reconnected successfully");
-          return true;
+          return;
         }
-      }
-    } catch (error) {
-      console.error("Auto-reconnect failed:", error);
-      if (this.reconnectAttempts < this.maxReconnectAttempts) {
-        setTimeout(() => this.autoReconnectToSaved(), 3000);
+      } catch (error) {
+        console.log(`Service ${serviceUuid} not accessible:`, error.message);
       }
     }
 
-    return false;
+    throw new Error(
+      "No writable characteristic found. Try different printer or check pairing."
+    );
   }
 
-  // Disconnect from printer
-  disconnect() {
-    if (this.device && this.device.gatt.connected) {
-      this.device.gatt.disconnect();
-    }
-    this.isConnected = false;
-    this.device = null;
-    this.characteristic = null;
-    this.isPrinting = false;
-  }
-
-  // Send data to printer
-  async send(data) {
-    if (!this.isConnected || !this.characteristic) {
-      throw new Error("Printer not connected");
+  async sendData(data) {
+    if (!this.isConnected || !this.writeCharacteristic) {
+      throw new Error("Printer not connected. Please connect first.");
     }
 
     if (this.isPrinting) {
-      throw new Error("Printer is busy");
+      console.log("Printer is busy, adding to queue...");
+      this.printQueue.push(data);
+      await this.processQueue();
+      return;
     }
 
     this.isPrinting = true;
 
     try {
-      // Convert string to Uint8Array
       const encoder = new TextEncoder();
       const dataArray = encoder.encode(data);
 
-      // Send in chunks for reliability
+      console.log(`Sending ${dataArray.length} bytes to printer`);
+
       const CHUNK_SIZE = 20;
       for (let i = 0; i < dataArray.length; i += CHUNK_SIZE) {
         const chunk = dataArray.slice(i, i + CHUNK_SIZE);
 
-        if (this.characteristic.properties.write) {
-          await this.characteristic.writeValue(chunk);
-        } else if (this.characteristic.properties.writeWithoutResponse) {
-          await this.characteristic.writeValueWithoutResponse(chunk);
+        try {
+          if (this.writeCharacteristic.properties.write) {
+            await this.writeCharacteristic.writeValue(chunk);
+          } else if (this.writeCharacteristic.properties.writeWithoutResponse) {
+            await this.writeCharacteristic.writeValueWithoutResponse(chunk);
+          } else {
+            await this.writeCharacteristic.writeValue(chunk);
+          }
+        } catch (writeError) {
+          console.error("Chunk write failed:", writeError);
+          throw new Error(
+            `Failed to send data to printer: ${writeError.message}`
+          );
         }
 
-        // Small delay between chunks
         if (i + CHUNK_SIZE < dataArray.length) {
-          await new Promise((resolve) => setTimeout(resolve, 10));
+          await new Promise((resolve) => setTimeout(resolve, 20));
         }
       }
 
+      console.log("Data sent to printer successfully");
       return true;
-    } catch (error) {
-      console.error("Send error:", error);
-      throw error;
     } finally {
       this.isPrinting = false;
+      this.processQueue();
     }
   }
 
-  // Open cash drawer
-  async openCashDrawer() {
-    // ESC/POS command to open cash drawer (usually pin 2)
-    const drawerCommand = "\x1B\x70\x00\x19\xFA"; // ESC p 0 25 250
+  async processQueue() {
+    if (this.isProcessingQueue || this.printQueue.length === 0) return;
+
+    this.isProcessingQueue = true;
     try {
-      await this.send(drawerCommand);
-      console.log("Cash drawer opened");
-      return true;
-    } catch (error) {
-      console.warn("Failed to open cash drawer:", error);
-      return false;
+      while (this.printQueue.length > 0) {
+        const data = this.printQueue.shift();
+        await this.sendData(data);
+      }
+    } finally {
+      this.isProcessingQueue = false;
     }
+  }
+
+  disconnect() {
+    this.isPrinting = false;
+    this.printQueue = [];
+
+    if (this.device && this.device.gatt && this.device.gatt.connected) {
+      try {
+        this.device.gatt.disconnect();
+      } catch (error) {
+        console.error("Error disconnecting:", error);
+      }
+    }
+
+    this.isConnected = false;
+    this.device = null;
+    this.server = null;
+    this.writeCharacteristic = null;
+
+    if (this.reconnectTimer) {
+      clearTimeout(this.reconnectTimer);
+      this.reconnectTimer = null;
+    }
+  }
+
+  disableAutoReconnect() {
+    this.autoReconnectEnabled = false;
+  }
+
+  enableAutoReconnect() {
+    this.autoReconnectEnabled = true;
   }
 }
 
-// Thermal printer commands
-const ThermalCommands = {
-  INIT: "\x1B\x40",
-  ALIGN_LEFT: "\x1B\x61\x00",
-  ALIGN_CENTER: "\x1B\x61\x01",
-  ALIGN_RIGHT: "\x1B\x61\x02",
-  BOLD_ON: "\x1B\x45\x01",
-  BOLD_OFF: "\x1B\x45\x00",
-  CUT_PARTIAL: "\x1B\x69",
-  CUT_FULL: "\x1B\x6D",
-  FEED_LINE: "\x0A",
-  FEED_N_LINES: (n) => `\x1B\x64${String.fromCharCode(n)}`,
-  TEXT_NORMAL: "\x1B\x21\x00",
-  TEXT_LARGE: "\x1B\x21\x10",
-  TEXT_DOUBLE_HEIGHT: "\x1B\x21\x01",
-  LINE_SPACING_24: "\x1B\x33\x18",
-  DRAWER_KICK: "\x1B\x70\x00\x19\xFA",
-  UNDERLINE_ON: "\x1B\x2D\x01",
-  UNDERLINE_OFF: "\x1B\x2D\x00",
-  INVERT_ON: "\x1D\x42\x01",
-  INVERT_OFF: "\x1D\x42\x00",
-};
-
-// Create printer instance
-const printer = new BluetoothThermalPrinter();
+const printerManager = new BluetoothPrinterManager();
 
 const Bill = ({ orderId }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
-  // Redux state
   const orders = useSelector((state) => state.order.orders);
   const activeOrderId = useSelector((state) => state.order.activeOrderId);
   const userState = useSelector((state) => state.auth);
   const user = userState?.user ||
-    userState?.data?.user || {
-      _id: "000000000000000000000001",
-      name: "Admin",
-    };
+    userState?.data?.user || { _id: "000000000000000000000001", name: "Admin" };
 
-  // Current order and cart
   const currentOrder =
     orders.find((order) => order.id === orderId) ||
     orders.find((order) => order.id === activeOrderId);
   const cartData = currentOrder?.items || [];
 
-  // Constants
   const vatRate = 12;
   const pwdSeniorDiscountRate = 0.2;
   const employeeDiscountRate = 0.15;
   const shareholderDiscountRate = 0.1;
 
-  // State variables
   const [pwdSeniorDiscountApplied, setPwdSeniorDiscountApplied] =
     useState(false);
   const [employeeDiscountApplied, setEmployeeDiscountApplied] = useState(false);
@@ -354,8 +345,13 @@ const Bill = ({ orderId }) => {
   const [isPrinterConnected, setIsPrinterConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
-  const [printerName, setPrinterName] = useState("");
   const [autoPrintEnabled, setAutoPrintEnabled] = useState(true);
+  const [printerName, setPrinterName] = useState("");
+  const [pendingPrintOrder, setPendingPrintOrder] = useState(null);
+  const [autoPrintRetryCount, setAutoPrintRetryCount] = useState(0);
+  const [hasAttemptedAutoConnect, setHasAttemptedAutoConnect] = useState(false);
+  const [lastPrintedOrderId, setLastPrintedOrderId] = useState(null);
+  const [connectionStatus, setConnectionStatus] = useState("disconnected");
 
   // Combined payment state
   const [showCombinedPaymentModal, setShowCombinedPaymentModal] =
@@ -368,77 +364,742 @@ const Bill = ({ orderId }) => {
     total: 0,
   });
 
-  // Refs
   const connectionCheckRef = useRef(null);
+  const printTimeoutRef = useRef(null);
 
-  // Initialize Bluetooth connection
+  const thermalCommands = {
+    INIT: "\x1B\x40",
+    ALIGN_LEFT: "\x1B\x61\x00",
+    ALIGN_CENTER: "\x1B\x61\x01",
+    ALIGN_RIGHT: "\x1B\x61\x02",
+    BOLD_ON: "\x1B\x45\x01",
+    BOLD_OFF: "\x1B\x45\x00",
+    CUT_PARTIAL: "\x1B\x69",
+    CUT_FULL: "\x1B\x6D",
+    FEED_LINE: "\x0A",
+    FEED_N_LINES: (n) => `\x1B\x64${String.fromCharCode(n)}`,
+    TEXT_NORMAL: "\x1B\x21\x00",
+    TEXT_LARGE: "\x1B\x21\x10",
+    DRAWER_KICK: "\x1B\x70\x00\x19\xFA",
+    LINE_SPACING_24: "\x1B\x33\x18",
+    CHARACTER_SPACING: "\x1B\x20\x00",
+  };
+
+  // Auto-print effect
   useEffect(() => {
-    const initBluetooth = async () => {
-      if (!printer.isSupported()) {
-        console.warn("Web Bluetooth not supported");
-        return;
-      }
+    const handleAutoPrint = async () => {
+      if (
+        autoPrintEnabled &&
+        pendingPrintOrder &&
+        !isPrinting &&
+        pendingPrintOrder._id !== lastPrintedOrderId
+      ) {
+        console.log("=== AUTO-PRINT TRIGGERED ===");
+        console.log("Order ID to print:", pendingPrintOrder._id);
 
-      // Try to auto-connect to saved printer
-      const saved = printer.getSavedPrinter();
-      if (saved.id) {
-        setPrinterName(saved.name || "Saved Printer");
-        setTimeout(() => {
-          printer.autoReconnectToSaved().then((connected) => {
-            setIsPrinterConnected(connected);
-            if (connected) {
-              console.log("Auto-connected to saved printer");
+        try {
+          setIsPrinting(true);
+          setLastPrintedOrderId(pendingPrintOrder._id);
+
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
+          if (!isPrinterConnected) {
+            const connected = await ensurePrinterConnected();
+            if (!connected) {
+              throw new Error("Printer not connected. Please connect printer.");
             }
+          }
+
+          await printReceipt(pendingPrintOrder);
+          enqueueSnackbar("Receipt auto-printed successfully!", {
+            variant: "success",
           });
-        }, 1000);
+          setPendingPrintOrder(null);
+          setAutoPrintRetryCount(0);
+        } catch (error) {
+          console.error("Auto-print failed:", error);
+          enqueueSnackbar(`Auto-print failed: ${error.message}`, {
+            variant: "warning",
+          });
+
+          setLastPrintedOrderId(null);
+
+          if (autoPrintRetryCount < 2) {
+            setAutoPrintRetryCount((prev) => prev + 1);
+            setTimeout(() => {
+              if (pendingPrintOrder) {
+                console.log("Retrying auto-print...");
+                setPendingPrintOrder({ ...pendingPrintOrder });
+              }
+            }, 2000 * (autoPrintRetryCount + 1));
+          } else {
+            enqueueSnackbar("Auto-print failed. Please print manually.", {
+              variant: "error",
+            });
+            setPendingPrintOrder(null);
+            setAutoPrintRetryCount(0);
+          }
+        } finally {
+          setIsPrinting(false);
+        }
       }
     };
 
-    initBluetooth();
+    handleAutoPrint();
 
-    // Check connection status periodically
-    connectionCheckRef.current = setInterval(() => {
-      const connected = printer.isConnected;
-      setIsPrinterConnected(connected);
-      if (!connected && !isConnecting) {
-        printer.autoReconnectToSaved().then((connected) => {
-          setIsPrinterConnected(connected);
-        });
+    return () => {
+      if (printTimeoutRef.current) {
+        clearTimeout(printTimeoutRef.current);
       }
-    }, 10000);
+    };
+  }, [
+    pendingPrintOrder,
+    autoPrintEnabled,
+    isPrinting,
+    autoPrintRetryCount,
+    lastPrintedOrderId,
+    isPrinterConnected,
+  ]);
+
+  // Initialize Bluetooth connection
+  useEffect(() => {
+    const initializeBluetooth = async () => {
+      if (!printerManager.isBluetoothSupported()) {
+        console.warn("Bluetooth not supported in this browser");
+        setConnectionStatus("unsupported");
+        return;
+      }
+
+      if (hasAttemptedAutoConnect) {
+        return;
+      }
+
+      try {
+        const { deviceId, deviceName } = printerManager.getSavedPrinter();
+
+        if (deviceId) {
+          console.log("Found saved printer:", deviceName);
+          setPrinterName(deviceName || "Bluetooth Printer");
+          setHasAttemptedAutoConnect(true);
+          setConnectionStatus("connecting");
+
+          setTimeout(async () => {
+            try {
+              await attemptReconnection();
+            } catch (error) {
+              console.log("Auto-connect failed:", error);
+              setConnectionStatus("disconnected");
+            }
+          }, 1000);
+        } else {
+          setConnectionStatus("disconnected");
+        }
+      } catch (error) {
+        console.error("Bluetooth initialization failed:", error);
+        setConnectionStatus("error");
+      }
+    };
+
+    initializeBluetooth();
+
+    connectionCheckRef.current = setInterval(() => {
+      const connected = printerManager.isConnected;
+      setIsPrinterConnected(connected);
+      setConnectionStatus(connected ? "connected" : "disconnected");
+
+      if (
+        !connected &&
+        !isConnecting &&
+        hasAttemptedAutoConnect &&
+        connectionStatus !== "connecting"
+      ) {
+        attemptReconnection();
+      }
+    }, 30000);
 
     return () => {
       if (connectionCheckRef.current) {
         clearInterval(connectionCheckRef.current);
       }
     };
-  }, []);
+  }, [isConnecting, hasAttemptedAutoConnect, connectionStatus]);
 
-  // Handle number safely
+  const attemptReconnection = useCallback(async () => {
+    if (isConnecting || printerManager.isConnected) return;
+
+    try {
+      setIsConnecting(true);
+      setConnectionStatus("connecting");
+
+      const { deviceId } = printerManager.getSavedPrinter();
+
+      if (deviceId) {
+        const devices = await navigator.bluetooth.getDevices();
+        const savedDevice = devices.find((d) => d.id === deviceId);
+
+        if (savedDevice) {
+          await printerManager.connectToDevice(
+            savedDevice,
+            handleDisconnection
+          );
+          setIsPrinterConnected(true);
+          setPrinterName(savedDevice.name || "Bluetooth Printer");
+          setConnectionStatus("connected");
+
+          enqueueSnackbar("Reconnected to printer successfully!", {
+            variant: "success",
+          });
+        } else {
+          setConnectionStatus("disconnected");
+        }
+      } else {
+        setConnectionStatus("disconnected");
+      }
+    } catch (error) {
+      console.error("Reconnection failed:", error);
+      setConnectionStatus("error");
+      setIsPrinterConnected(false);
+    } finally {
+      setIsConnecting(false);
+    }
+  }, [isConnecting]);
+
+  const handleDisconnection = () => {
+    setIsPrinterConnected(false);
+    setConnectionStatus("disconnected");
+    enqueueSnackbar("Printer disconnected.", {
+      variant: "warning",
+    });
+  };
+
+  const connectToPrinter = async () => {
+    if (!printerManager.isBluetoothSupported()) {
+      enqueueSnackbar(
+        "Bluetooth is not supported in this browser. Please use Chrome/Edge on desktop.",
+        { variant: "error" }
+      );
+      return false;
+    }
+
+    try {
+      setIsConnecting(true);
+      setConnectionStatus("connecting");
+      console.log("Searching for Bluetooth printer...");
+
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          "00001101-0000-1000-8000-00805f9b34fb",
+          "000018f0-0000-1000-8000-00805f9b34fb",
+          "fff0",
+          "ff00",
+        ],
+      });
+
+      console.log("Connecting to device:", device.name);
+      const connected = await printerManager.connectToDevice(
+        device,
+        handleDisconnection
+      );
+
+      if (connected) {
+        setIsPrinterConnected(true);
+        setPrinterName(device.name || "Bluetooth Printer");
+        setConnectionStatus("connected");
+
+        enqueueSnackbar(
+          `Connected to printer: ${device.name || "Bluetooth Printer"}`,
+          {
+            variant: "success",
+          }
+        );
+        return true;
+      }
+    } catch (error) {
+      console.error("Bluetooth connection failed:", error);
+      setConnectionStatus("error");
+
+      if (error.name === "NotFoundError") {
+        enqueueSnackbar(
+          "No printer selected. Ensure printer is ON and in pairing mode.",
+          {
+            variant: "warning",
+          }
+        );
+      } else if (error.name === "NetworkError") {
+        enqueueSnackbar("Connection failed. Check printer range and battery.", {
+          variant: "error",
+        });
+      } else if (error.name === "SecurityError") {
+        enqueueSnackbar("Security error. Please ensure HTTPS is used.", {
+          variant: "error",
+        });
+      } else if (error.name === "InvalidStateError") {
+        enqueueSnackbar("Printer is already connected to another device.", {
+          variant: "error",
+        });
+      } else {
+        enqueueSnackbar(`Connection failed: ${error.message}`, {
+          variant: "error",
+        });
+      }
+      return false;
+    } finally {
+      setIsConnecting(false);
+    }
+  };
+
+  const disconnectBluetooth = () => {
+    printerManager.disableAutoReconnect();
+    printerManager.disconnect();
+    setIsPrinterConnected(false);
+    setPrinterName("");
+    setConnectionStatus("disconnected");
+
+    enqueueSnackbar("Disconnected from printer", { variant: "info" });
+
+    setTimeout(() => {
+      printerManager.enableAutoReconnect();
+    }, 5000);
+  };
+
+  const ensurePrinterConnected = async () => {
+    if (printerManager.isConnected) {
+      return true;
+    }
+
+    console.log("Printer not connected, attempting to connect...");
+
+    const { deviceId } = printerManager.getSavedPrinter();
+    if (deviceId) {
+      try {
+        const devices = await navigator.bluetooth.getDevices();
+        const savedDevice = devices.find((d) => d.id === deviceId);
+
+        if (savedDevice) {
+          await printerManager.connectToDevice(
+            savedDevice,
+            handleDisconnection
+          );
+          setIsPrinterConnected(true);
+          setPrinterName(savedDevice.name || "Bluetooth Printer");
+          setConnectionStatus("connected");
+          return true;
+        }
+      } catch (error) {
+        console.error("Auto-reconnection failed:", error);
+        setConnectionStatus("error");
+      }
+    }
+
+    enqueueSnackbar("Printer not connected. Please connect to printer.", {
+      variant: "warning",
+    });
+    return false;
+  };
+
+  const sendToPrinter = async (data) => {
+    let retryCount = 0;
+    const maxRetries = 2;
+
+    while (retryCount <= maxRetries) {
+      try {
+        const connected = await ensurePrinterConnected();
+        if (!connected) {
+          throw new Error("Printer not connected");
+        }
+
+        await printerManager.sendData(data);
+        return true;
+      } catch (error) {
+        console.error(`Send attempt ${retryCount + 1} failed:`, error);
+
+        if (retryCount === maxRetries) {
+          throw new Error(`Failed to send data to printer: ${error.message}`);
+        }
+
+        retryCount++;
+        await new Promise((resolve) => setTimeout(resolve, 1000 * retryCount));
+      }
+    }
+
+    return false;
+  };
+
+  const printReceipt = async (orderData) => {
+    console.log("=== PRINT RECEIPT START ===");
+    console.log("Printer connected:", printerManager.isConnected);
+
+    if (!printerManager.isConnected) {
+      const connected = await ensurePrinterConnected();
+      if (!connected) {
+        throw new Error("Printer not connected");
+      }
+    }
+
+    setIsPrinting(true);
+
+    try {
+      const receiptText = generateThermalText(orderData);
+      console.log("Receipt generated, sending to printer...");
+
+      await sendToPrinter(receiptText);
+      console.log("Receipt printed successfully!");
+
+      const shouldOpenDrawer =
+        paymentMethod === "Cash" ||
+        combinedPayment.cashAmount > 0 ||
+        (showCombinedPaymentModal && combinedPayment.cashAmount > 0);
+
+      if (shouldOpenDrawer) {
+        try {
+          await sendToPrinter(thermalCommands.DRAWER_KICK);
+          console.log("Cash drawer command sent");
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        } catch (drawerError) {
+          console.warn("Could not open cash drawer:", drawerError);
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Print receipt error:", error);
+      throw error;
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const generateThermalText = (orderData) => {
+    const LINE_WIDTH = 32;
+
+    const centerText = (text, width = LINE_WIDTH) => {
+      if (text.length >= width) return text;
+      const padding = Math.floor((width - text.length) / 2);
+      return (
+        " ".repeat(padding) + text + " ".repeat(width - text.length - padding)
+      );
+    };
+
+    const rightText = (text, width = LINE_WIDTH) => {
+      if (text.length >= width) return text;
+      return " ".repeat(width - text.length) + text;
+    };
+
+    let receiptText = thermalCommands.INIT;
+    receiptText += thermalCommands.LINE_SPACING_24;
+    receiptText += thermalCommands.ALIGN_CENTER;
+    receiptText += thermalCommands.TEXT_LARGE;
+    receiptText += "DELISH RESTAURANT\n";
+    receiptText += thermalCommands.TEXT_NORMAL;
+    receiptText += "--------------------------------\n";
+    receiptText += "Order Receipt\n";
+    receiptText += "--------------------------------\n\n";
+
+    receiptText += thermalCommands.ALIGN_LEFT;
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += `Order #: ${orderData._id?.slice(-8) || "N/A"}\n`;
+    receiptText += thermalCommands.BOLD_OFF;
+    receiptText += `Date: ${new Date().toLocaleDateString("en-PH")}\n`;
+    receiptText += `Time: ${new Date().toLocaleTimeString("en-PH", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })}\n`;
+    receiptText += `Cashier: ${user?.name || "Admin"}\n`;
+    receiptText += `Customer: ${
+      customerType === "walk-in" ? "Dine-in" : "Take-out"
+    }\n`;
+    receiptText += "--------------------------------\n\n";
+
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += "QTY  ITEM                AMOUNT\n";
+    receiptText += thermalCommands.BOLD_OFF;
+    receiptText += "--------------------------------\n";
+
+    const displayItems = orderData.items || combinedCart || [];
+
+    displayItems.forEach((item) => {
+      const name = item.name || "Unknown Item";
+      const quantity = item.quantity || 1;
+      const price = safeNumber(item.pricePerQuantity || item.price || 0);
+      const total = safeNumber(item.price || 0);
+      const isRedeemed = item.isRedeemed || false;
+      const isDiscounted = item.isPwdSeniorDiscounted || false;
+
+      const qtyStr = quantity.toString().padStart(2, " ");
+      let nameStr = name;
+      if (nameStr.length > 20) {
+        nameStr = nameStr.substring(0, 17) + "...";
+      } else {
+        nameStr = nameStr.padEnd(20, " ");
+      }
+
+      const amountStr = (isRedeemed ? "FREE" : `₱${total.toFixed(2)}`).padStart(
+        8,
+        " "
+      );
+
+      receiptText += `${qtyStr}   ${nameStr}${amountStr}\n`;
+
+      if (isRedeemed) {
+        receiptText += "     *REDEEMED\n";
+      } else if (isDiscounted) {
+        const originalTotal = price * quantity;
+        const discountAmount = originalTotal * pwdSeniorDiscountRate;
+        receiptText += `     *PWD/SENIOR -₱${discountAmount.toFixed(2)}\n`;
+      }
+    });
+
+    receiptText += "--------------------------------\n";
+
+    receiptText += thermalCommands.ALIGN_RIGHT;
+    receiptText += `SUBTOTAL:   ₱${totals.baseGrossTotal.toFixed(2)}\n`;
+
+    if (totals.pwdSeniorDiscountAmount > 0) {
+      receiptText += `PWD/SENIOR: -₱${totals.pwdSeniorDiscountAmount.toFixed(
+        2
+      )}\n`;
+    }
+
+    if (totals.redemptionAmount > 0) {
+      receiptText += `REDEMPTION: -₱${totals.redemptionAmount.toFixed(2)}\n`;
+    }
+
+    if (totals.employeeDiscountAmount > 0) {
+      receiptText += `EMP DISC:   -₱${totals.employeeDiscountAmount.toFixed(
+        2
+      )}\n`;
+    }
+
+    if (totals.shareholderDiscountAmount > 0) {
+      receiptText += `SHAREHOLDER:-₱${totals.shareholderDiscountAmount.toFixed(
+        2
+      )}\n`;
+    }
+
+    receiptText += `VAT (12%):  ₱${totals.vatAmount.toFixed(2)}\n`;
+    receiptText += "--------------------------------\n";
+
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += `TOTAL:      ₱${totals.total.toFixed(2)}\n`;
+    receiptText += thermalCommands.BOLD_OFF;
+    receiptText += "--------------------------------\n";
+
+    receiptText += thermalCommands.ALIGN_LEFT;
+    receiptText += "Payment Details:\n";
+
+    if (showCombinedPaymentModal) {
+      receiptText += `Cash:        ₱${combinedPayment.cashAmount.toFixed(2)}\n`;
+      receiptText += `${
+        combinedPayment.onlineMethod
+      }: ₱${combinedPayment.onlineAmount.toFixed(2)}\n`;
+
+      const totalPaid =
+        combinedPayment.cashAmount + combinedPayment.onlineAmount;
+      receiptText += `Total Paid:  ₱${totalPaid.toFixed(2)}\n`;
+
+      if (totalPaid < totals.total) {
+        receiptText += `Balance:     ₱${(totals.total - totalPaid).toFixed(
+          2
+        )}\n`;
+      } else if (totalPaid > totals.total) {
+        receiptText += `Change:      ₱${(totalPaid - totals.total).toFixed(
+          2
+        )}\n`;
+      }
+    } else {
+      receiptText += `Payment: ${paymentMethod}\n`;
+
+      if (paymentMethod === "Cash") {
+        receiptText += `Cash:    ₱${totals.cashAmount.toFixed(2)}\n`;
+        if (totals.change > 0) {
+          receiptText += `Change:  ₱${totals.change.toFixed(2)}\n`;
+        }
+      } else {
+        receiptText += `Amount:  ₱${totals.total.toFixed(2)}\n`;
+      }
+    }
+    receiptText += "--------------------------------\n";
+
+    if (pwdSeniorDiscountApplied && pwdSeniorDetails.name) {
+      receiptText += "PWD/SENIOR DETAILS:\n";
+      receiptText += `Name: ${pwdSeniorDetails.name}\n`;
+      receiptText += `ID #: ${pwdSeniorDetails.idNumber}\n`;
+      receiptText += `Type: ${pwdSeniorDetails.type}\n`;
+      receiptText += "--------------------------------\n";
+    }
+
+    receiptText += thermalCommands.ALIGN_CENTER;
+    receiptText += "Thank you for dining with us!\n";
+    receiptText += "Please visit again!\n\n";
+    receiptText += "This receipt is your official\n";
+    receiptText += "proof of purchase.\n\n";
+
+    receiptText += thermalCommands.FEED_N_LINES(3);
+    receiptText += thermalCommands.CUT_PARTIAL;
+
+    return receiptText;
+  };
+
+  const handleTestPrint = async () => {
+    if (!printerManager.isBluetoothSupported()) {
+      enqueueSnackbar("Bluetooth not supported", { variant: "error" });
+      return;
+    }
+
+    try {
+      setIsPrinting(true);
+      console.log("Starting test print...");
+
+      const connected = await ensurePrinterConnected();
+      if (!connected) {
+        throw new Error("Failed to connect to printer");
+      }
+
+      let testReceipt = thermalCommands.INIT;
+      testReceipt += thermalCommands.LINE_SPACING_24;
+      testReceipt += thermalCommands.ALIGN_CENTER;
+      testReceipt += thermalCommands.TEXT_LARGE;
+      testReceipt += "TEST RECEIPT\n";
+      testReceipt += thermalCommands.TEXT_NORMAL;
+      testReceipt += "--------------------------------\n";
+      testReceipt += thermalCommands.ALIGN_LEFT;
+      testReceipt += "Date: " + new Date().toLocaleDateString() + "\n";
+      testReceipt += "Time: " + new Date().toLocaleTimeString() + "\n";
+      testReceipt += "Printer: Bluetooth Thermal\n";
+      testReceipt += "Status: Working\n";
+      testReceipt += "--------------------------------\n";
+      testReceipt += thermalCommands.ALIGN_CENTER;
+      testReceipt += "✓ Printer is working!\n";
+      testReceipt += "✓ Connection successful!\n";
+      testReceipt += "✓ Ready to print receipts\n";
+      testReceipt += "--------------------------------\n\n";
+      testReceipt += thermalCommands.FEED_N_LINES(3);
+      testReceipt += thermalCommands.CUT_PARTIAL;
+
+      await sendToPrinter(testReceipt);
+
+      enqueueSnackbar("Test receipt printed successfully!", {
+        variant: "success",
+      });
+    } catch (error) {
+      console.error("Test print error:", error);
+      enqueueSnackbar(`Test print failed: ${error.message}`, {
+        variant: "error",
+      });
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
   const safeNumber = (value) => {
     const num = Number(value);
     return isNaN(num) ? 0 : num;
   };
 
-  // Combine cart items with same ID and price
   const combineCartItems = (cart) => {
-    const combined = {};
+    const combinedItems = {};
+
     cart.forEach((item) => {
       const key = `${item.id}-${item.pricePerQuantity}-${item.isRedeemed}`;
-      if (combined[key]) {
-        combined[key].quantity += item.quantity;
-        combined[key].originalItems = [...combined[key].originalItems, item];
+      if (combinedItems[key]) {
+        combinedItems[key].quantity += item.quantity;
+        combinedItems[key].originalItems = [
+          ...combinedItems[key].originalItems,
+          item,
+        ];
       } else {
-        combined[key] = {
+        combinedItems[key] = {
           ...item,
           originalItems: [item],
         };
       }
     });
-    return Object.values(combined);
+
+    return Object.values(combinedItems);
   };
 
-  // Calculate totals
+  const isDrinkItem = (item) => {
+    const name = item.name.toLowerCase();
+    return (
+      item.category === "drink" ||
+      name.includes("drink") ||
+      name.includes("juice") ||
+      name.includes("soda") ||
+      name.includes("water") ||
+      name.includes("coffee") ||
+      name.includes("tea") ||
+      name.includes("milkshake") ||
+      name.includes("smoothie") ||
+      name.includes("softdrink") ||
+      name.includes("beverage") ||
+      name.includes("cola") ||
+      name.includes("lemonade") ||
+      name.includes("frappe") ||
+      name.includes("latte") ||
+      name.includes("mocha") ||
+      name.includes("americano") ||
+      name.includes("cappuccino") ||
+      name.includes("macchiato") ||
+      name.includes("iced tea") ||
+      name.includes("espresso")
+    );
+  };
+
+  const isFoodItem = (item) => {
+    const name = item.name.toLowerCase();
+    return (
+      item.category === "food" ||
+      item.category === "meal" ||
+      name.includes("meal") ||
+      name.includes("food") ||
+      name.includes("rice") ||
+      name.includes("chicken") ||
+      name.includes("beef") ||
+      name.includes("pork") ||
+      name.includes("fish") ||
+      name.includes("pasta") ||
+      name.includes("burger") ||
+      name.includes("sandwich") ||
+      name.includes("steak") ||
+      name.includes("pizza") ||
+      name.includes("noodles") ||
+      name.includes("salad") ||
+      name.includes("soup") ||
+      name.includes("appetizer") ||
+      name.includes("main") ||
+      name.includes("entree") ||
+      name.includes("dessert") ||
+      name.includes("cake") ||
+      name.includes("cheesecake") ||
+      name.includes("pie") ||
+      name.includes("ice cream") ||
+      name.includes("breakfast") ||
+      name.includes("omelette") ||
+      name.includes("longganisa") ||
+      name.includes("tapa") ||
+      name.includes("tocino") ||
+      name.includes("bacon") ||
+      name.includes("spam") ||
+      name.includes("embutido") ||
+      name.includes("shanghai") ||
+      name.includes("hungarian") ||
+      name.includes("carbonara") ||
+      name.includes("pesto") ||
+      name.includes("snack") ||
+      name.includes("wedge") ||
+      name.includes("potato") ||
+      name.includes("nachos") ||
+      name.includes("bento") ||
+      name.includes("mini")
+    );
+  };
+
+  const getItemKey = (item) => {
+    return `${item.id}-${item.pricePerQuantity}-${item.isRedeemed}`;
+  };
+
   const calculateTotals = () => {
     try {
       const baseGrossTotal = cartData.reduce(
@@ -493,7 +1154,6 @@ const Bill = ({ orderId }) => {
         shareholderDiscountAmount +
         redemptionAmount;
 
-      // Use combined payment cash amount if available, otherwise use regular cash amount
       const cashAmountNum = showCombinedPaymentModal
         ? safeNumber(combinedPayment.cashAmount)
         : safeNumber(cashAmount);
@@ -545,20 +1205,20 @@ const Bill = ({ orderId }) => {
   };
 
   const totals = calculateTotals();
-  const processedCart = cartData.map((item) => ({
-    ...item,
-    discountedPrice: item.discountedPrice ?? safeNumber(item.pricePerQuantity),
-    pricePerQuantity: safeNumber(item.pricePerQuantity),
-    price: safeNumber(item.price),
-  }));
-  const combinedCart = combineCartItems(processedCart);
 
-  // Get item key for identification
-  const getItemKey = (item) => {
-    return `${item.id}-${item.pricePerQuantity}-${item.isRedeemed}`;
+  const addDefaultDiscountedPrice = (cart) => {
+    return cart.map((item) => ({
+      ...item,
+      discountedPrice:
+        item.discountedPrice ?? safeNumber(item.pricePerQuantity),
+      pricePerQuantity: safeNumber(item.pricePerQuantity),
+      price: safeNumber(item.price),
+    }));
   };
 
-  // Calculate item total
+  const processedCart = addDefaultDiscountedPrice(cartData);
+  const combinedCart = combineCartItems(processedCart);
+
   const calculateItemTotal = (item) => {
     if (item.isRedeemed) {
       return 0;
@@ -578,12 +1238,10 @@ const Bill = ({ orderId }) => {
     return safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
   };
 
-  // Calculate item total price
   const calculateItemTotalPrice = (item) => {
     return safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
   };
 
-  // Calculate item discount amount
   const calculateItemDiscountAmount = (item) => {
     if (item.isRedeemed) {
       return safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
@@ -602,282 +1260,29 @@ const Bill = ({ orderId }) => {
     return 0;
   };
 
-  // Get unique key for rendering
   const getUniqueKey = (item, index) => {
     return `${item.id}-${index}-${item.quantity}-${item.pricePerQuantity}-${item.isRedeemed}`;
   };
 
-  // Connect to printer
-  const connectToPrinter = async () => {
-    if (!printer.isSupported()) {
-      enqueueSnackbar("Bluetooth not supported in this browser", {
-        variant: "error",
-      });
-      return false;
-    }
-
-    try {
-      setIsConnecting(true);
-      const connected = await printer.connect();
-      setIsPrinterConnected(connected);
-      if (connected && printer.device) {
-        setPrinterName(printer.device.name || "Thermal Printer");
-        enqueueSnackbar(`Connected to ${printer.device.name}`, {
-          variant: "success",
-        });
-      }
-      return connected;
-    } catch (error) {
-      console.error("Connection error:", error);
-      let message = "Failed to connect";
-      if (error.name === "NotFoundError") {
-        message =
-          "No printer found. Make sure it's powered on and in pairing mode.";
-      } else if (error.name === "SecurityError") {
-        message = "Bluetooth permission denied";
-      } else if (error.name === "NetworkError") {
-        message = "Connection failed. Check distance and battery.";
-      }
-      enqueueSnackbar(message, { variant: "error" });
-      return false;
-    } finally {
-      setIsConnecting(false);
-    }
-  };
-
-  // Disconnect printer
-  const disconnectPrinter = () => {
-    printer.disconnect();
-    setIsPrinterConnected(false);
-    setPrinterName("");
-    enqueueSnackbar("Printer disconnected", { variant: "info" });
-  };
-
-  // Test print
-  const handleTestPrint = async () => {
-    if (!printer.isConnected) {
-      enqueueSnackbar("Printer not connected", { variant: "warning" });
-      return;
-    }
-
-    try {
-      setIsPrinting(true);
-      let receipt = ThermalCommands.INIT;
-      receipt += ThermalCommands.ALIGN_CENTER;
-      receipt += ThermalCommands.TEXT_LARGE;
-      receipt += "TEST RECEIPT\n\n";
-      receipt += ThermalCommands.TEXT_NORMAL;
-      receipt += "======================\n";
-      receipt += "Printer Test\n";
-      receipt += "Working ✓\n";
-      receipt += "======================\n";
-      receipt += ThermalCommands.FEED_N_LINES(3);
-      receipt += ThermalCommands.CUT_PARTIAL;
-
-      await printer.send(receipt);
-      enqueueSnackbar("Test receipt printed", { variant: "success" });
-    } catch (error) {
-      enqueueSnackbar(`Print failed: ${error.message}`, { variant: "error" });
-    } finally {
-      setIsPrinting(false);
-    }
-  };
-
-  // Generate thermal receipt text
-  const generateReceipt = (orderData) => {
-    const centerText = (text, width = 32) => {
-      if (text.length >= width) return text;
-      const padding = Math.floor((width - text.length) / 2);
-      return (
-        " ".repeat(padding) + text + " ".repeat(width - text.length - padding)
-      );
-    };
-
-    let receipt = ThermalCommands.INIT;
-    receipt += ThermalCommands.LINE_SPACING_24;
-    receipt += ThermalCommands.ALIGN_CENTER;
-    receipt += ThermalCommands.TEXT_LARGE;
-    receipt += "DELISH RESTAURANT\n";
-    receipt += ThermalCommands.TEXT_NORMAL;
-    receipt += "========================\n";
-    receipt += "Order Receipt\n";
-    receipt += "========================\n\n";
-
-    receipt += ThermalCommands.ALIGN_LEFT;
-    receipt += `Order #: ${orderData._id?.slice(-8) || "N/A"}\n`;
-    receipt += `Date: ${new Date().toLocaleDateString("en-PH")}\n`;
-    receipt += `Time: ${new Date().toLocaleTimeString("en-PH", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })}\n`;
-    receipt += `Cashier: ${user?.name || "Admin"}\n`;
-    receipt += `Customer: ${
-      customerType === "walk-in" ? "Dine-in" : "Take-out"
-    }\n`;
-    receipt += "========================\n\n";
-
-    receipt += ThermalCommands.BOLD_ON;
-    receipt += "QTY ITEM              AMOUNT\n";
-    receipt += ThermalCommands.BOLD_OFF;
-    receipt += "========================\n";
-
-    // Items
-    const displayItems = orderData.items || combinedCart || [];
-    displayItems.forEach((item) => {
-      const name = item.name || "Unknown Item";
-      const quantity = item.quantity || 1;
-      const price = safeNumber(item.pricePerQuantity || item.price || 0);
-      const total = calculateItemTotal(item);
-      const isRedeemed = item.isRedeemed || false;
-      const isDiscounted = item.isPwdSeniorDiscounted || false;
-
-      const qtyStr = quantity.toString().padStart(2, " ");
-      let nameStr = name;
-      if (nameStr.length > 18) {
-        nameStr = nameStr.substring(0, 15) + "...";
-      } else {
-        nameStr = nameStr.padEnd(18, " ");
-      }
-
-      const amountStr = (isRedeemed ? "FREE" : `₱${total.toFixed(2)}`).padStart(
-        9,
-        " "
-      );
-      receipt += `${qtyStr}  ${nameStr}${amountStr}\n`;
-
-      if (isRedeemed) {
-        receipt += "     *REDEEMED\n";
-      } else if (isDiscounted) {
-        const originalTotal = price * quantity;
-        const discountAmount = originalTotal * pwdSeniorDiscountRate;
-        receipt += `     *PWD/SENIOR -₱${discountAmount.toFixed(2)}\n`;
-      }
-    });
-
-    receipt += "========================\n";
-    receipt += ThermalCommands.ALIGN_RIGHT;
-    receipt += `SUBTOTAL:   ₱${totals.baseGrossTotal.toFixed(2)}\n`;
-
-    if (totals.pwdSeniorDiscountAmount > 0) {
-      receipt += `PWD/SENIOR: -₱${totals.pwdSeniorDiscountAmount.toFixed(2)}\n`;
-    }
-
-    if (totals.redemptionAmount > 0) {
-      receipt += `REDEMPTION: -₱${totals.redemptionAmount.toFixed(2)}\n`;
-    }
-
-    if (totals.employeeDiscountAmount > 0) {
-      receipt += `EMP DISC:   -₱${totals.employeeDiscountAmount.toFixed(2)}\n`;
-    }
-
-    if (totals.shareholderDiscountAmount > 0) {
-      receipt += `SHAREHOLDER:-₱${totals.shareholderDiscountAmount.toFixed(
-        2
-      )}\n`;
-    }
-
-    receipt += `VAT (12%):  ₱${totals.vatAmount.toFixed(2)}\n`;
-    receipt += "========================\n";
-
-    receipt += ThermalCommands.BOLD_ON;
-    receipt += `TOTAL:      ₱${totals.total.toFixed(2)}\n`;
-    receipt += ThermalCommands.BOLD_OFF;
-    receipt += "========================\n";
-
-    // Payment details
-    receipt += ThermalCommands.ALIGN_LEFT;
-    receipt += "Payment Details:\n";
-
-    if (showCombinedPaymentModal) {
-      receipt += `Cash:        ₱${combinedPayment.cashAmount.toFixed(2)}\n`;
-      receipt += `${
-        combinedPayment.onlineMethod
-      }: ₱${combinedPayment.onlineAmount.toFixed(2)}\n`;
-      const totalPaid =
-        combinedPayment.cashAmount + combinedPayment.onlineAmount;
-      receipt += `Total Paid:  ₱${totalPaid.toFixed(2)}\n`;
-      if (totalPaid > totals.total) {
-        receipt += `Change:      ₱${(totalPaid - totals.total).toFixed(2)}\n`;
-      }
-    } else {
-      receipt += `Method: ${paymentMethod}\n`;
-      if (paymentMethod === "Cash") {
-        receipt += `Cash:    ₱${totals.cashAmount.toFixed(2)}\n`;
-        if (totals.change > 0) {
-          receipt += `Change:  ₱${totals.change.toFixed(2)}\n`;
-        }
-      }
-    }
-
-    if (pwdSeniorDiscountApplied && pwdSeniorDetails.name) {
-      receipt += "========================\n";
-      receipt += "PWD/SENIOR DETAILS:\n";
-      receipt += `Name: ${pwdSeniorDetails.name}\n`;
-      receipt += `ID #: ${pwdSeniorDetails.idNumber}\n`;
-      receipt += `Type: ${pwdSeniorDetails.type}\n`;
-    }
-
-    receipt += "========================\n";
-    receipt += ThermalCommands.ALIGN_CENTER;
-    receipt += "Thank you for dining!\n";
-    receipt += "Please visit again!\n\n";
-    receipt += ThermalCommands.FEED_N_LINES(3);
-    receipt += ThermalCommands.CUT_PARTIAL;
-
-    return receipt;
-  };
-
-  // Print receipt
-  const printReceipt = async (orderData) => {
-    if (!printer.isConnected) {
-      throw new Error("Printer not connected");
-    }
-
-    try {
-      setIsPrinting(true);
-      const receiptText = generateReceipt(orderData);
-      await printer.send(receiptText);
-
-      // Open cash drawer for cash payments
-      const shouldOpenDrawer =
-        paymentMethod === "Cash" ||
-        (showCombinedPaymentModal && combinedPayment.cashAmount > 0);
-
-      if (shouldOpenDrawer) {
-        await printer.openCashDrawer();
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Print error:", error);
-      throw error;
-    } finally {
-      setIsPrinting(false);
-    }
-  };
-
-  // Handle item increment
   const handleIncrement = (itemId) => {
     if (!currentOrder) return;
     dispatch(incrementQuantityInOrder({ orderId: currentOrder.id, itemId }));
   };
 
-  // Handle item decrement
   const handleDecrement = (itemId) => {
     if (!currentOrder) return;
     dispatch(decrementQuantityInOrder({ orderId: currentOrder.id, itemId }));
   };
 
-  // Handle redeem item
   const handleRedeemItem = (itemId, itemName) => {
     if (!currentOrder) return;
     dispatch(redeemItemInOrder({ orderId: currentOrder.id, itemId }));
     setShowRedeemOptions(false);
-    enqueueSnackbar(`${itemName} redeemed for free!`, { variant: "success" });
+    enqueueSnackbar(`${itemName} redeemed for free!`, {
+      variant: "success",
+    });
   };
 
-  // Handle remove redemption
   const handleRemoveRedemption = () => {
     if (!currentOrder) return;
     dispatch(removeRedemptionFromOrder({ orderId: currentOrder.id }));
@@ -885,10 +1290,40 @@ const Bill = ({ orderId }) => {
     enqueueSnackbar("Redemption removed!", { variant: "info" });
   };
 
-  // Check if has redeemed items
   const hasRedeemedItem = combinedCart.some((item) => item.isRedeemed);
 
-  // Handle PWD/Senior discount
+  const getDiscountedItemsInfo = () => {
+    if (!pwdSeniorDiscountApplied || totals.pwdSeniorDiscountAmount === 0)
+      return null;
+
+    const drinkCount = pwdSeniorDiscountItems.filter((item) =>
+      isDrinkItem(item)
+    ).length;
+
+    const foodCount = pwdSeniorDiscountItems.filter((item) =>
+      isFoodItem(item)
+    ).length;
+
+    let info = "PWD/Senior Discount (20% on selected items)";
+
+    if (drinkCount === 1 && foodCount === 2) {
+      info = "PWD/Senior Discount (20% – 1 drink + 2 food)";
+    } else if (drinkCount === 1 && foodCount === 1) {
+      info = "PWD/Senior Discount (20% – 1 drink + 1 food)";
+    } else if (drinkCount === 1) {
+      info = "PWD/Senior Discount (20% – 1 drink)";
+    } else if (foodCount === 2) {
+      info = "PWD/Senior Discount (20% – 2 food)";
+    } else if (foodCount === 1) {
+      info = "PWD/Senior Discount (20% – 1 food)";
+    }
+
+    const discountAmount = totals.pwdSeniorDiscountAmount.toFixed(2);
+    return `${info} (-₱${discountAmount})`;
+  };
+
+  const discountedItemsInfo = getDiscountedItemsInfo();
+
   const handlePwdSeniorDiscount = () => {
     if (!pwdSeniorDiscountApplied) {
       setShowPwdSeniorSelection(true);
@@ -896,11 +1331,12 @@ const Bill = ({ orderId }) => {
       setPwdSeniorDiscountApplied(false);
       setPwdSeniorDiscountItems([]);
       setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
+      setEmployeeDiscountApplied(false);
+      setShareholderDiscountApplied(false);
       enqueueSnackbar("PWD/Senior discount removed", { variant: "info" });
     }
   };
 
-  // Handle employee discount
   const handleEmployeeDiscount = () => {
     setEmployeeDiscountApplied(!employeeDiscountApplied);
     setPwdSeniorDiscountApplied(false);
@@ -909,7 +1345,6 @@ const Bill = ({ orderId }) => {
     setShareholderDiscountApplied(false);
   };
 
-  // Handle shareholder discount
   const handleShareholderDiscount = () => {
     setShareholderDiscountApplied(!shareholderDiscountApplied);
     setPwdSeniorDiscountApplied(false);
@@ -918,7 +1353,6 @@ const Bill = ({ orderId }) => {
     setEmployeeDiscountApplied(false);
   };
 
-  // Toggle item selection for PWD/Senior discount
   const toggleItemSelection = (item) => {
     const itemKey = getItemKey(item);
     const isSelected = pwdSeniorDiscountItems.some(
@@ -932,34 +1366,70 @@ const Bill = ({ orderId }) => {
         )
       );
     } else {
-      if (pwdSeniorDiscountItems.length >= 3) {
-        enqueueSnackbar("Maximum 3 items for PWD/Senior discount", {
-          variant: "warning",
-        });
+      const drinks = pwdSeniorDiscountItems.filter((item) => isDrinkItem(item));
+      const foods = pwdSeniorDiscountItems.filter((item) => isFoodItem(item));
+
+      if (isDrinkItem(item)) {
+        if (drinks.length >= 1) {
+          enqueueSnackbar(
+            "Maximum 1 drink can be selected for PWD/Senior discount",
+            {
+              variant: "warning",
+            }
+          );
+          return;
+        }
+      } else if (isFoodItem(item)) {
+        if (foods.length >= 2) {
+          enqueueSnackbar(
+            "Maximum 2 food items can be selected for PWD/Senior discount",
+            {
+              variant: "warning",
+            }
+          );
+          return;
+        }
+      } else {
+        enqueueSnackbar(
+          "Only drinks and food items are eligible for PWD/Senior discount",
+          {
+            variant: "warning",
+          }
+        );
         return;
       }
+
+      if (pwdSeniorDiscountItems.length >= 3) {
+        enqueueSnackbar(
+          "Maximum 3 items can be selected for PWD/Senior discount",
+          {
+            variant: "warning",
+          }
+        );
+        return;
+      }
+
       setPwdSeniorDiscountItems([...pwdSeniorDiscountItems, item]);
     }
   };
 
-  // Apply PWD/Senior selection
   const handleApplyPwdSeniorSelection = () => {
     if (pwdSeniorDiscountItems.length === 0) {
-      enqueueSnackbar("Please select at least 1 item", {
+      enqueueSnackbar("Please select at least 1 item for PWD/Senior discount", {
         variant: "warning",
       });
       return;
     }
 
     if (!pwdSeniorDetails.name.trim()) {
-      enqueueSnackbar("Please enter holder name", {
+      enqueueSnackbar("Please enter PWD/Senior holder name", {
         variant: "warning",
       });
       return;
     }
 
     if (!pwdSeniorDetails.idNumber.trim()) {
-      enqueueSnackbar("Please enter ID number", {
+      enqueueSnackbar("Please enter PWD/Senior ID number", {
         variant: "warning",
       });
       return;
@@ -977,24 +1447,73 @@ const Bill = ({ orderId }) => {
 
     const discountAmount = selectedValue * pwdSeniorDiscountRate;
 
-    enqueueSnackbar(
-      `PWD/Senior discount applied to ${
-        pwdSeniorDiscountItems.length
-      } item(s) (-₱${discountAmount.toFixed(2)})`,
-      { variant: "success" }
-    );
+    const drinks = pwdSeniorDiscountItems.filter((item) => isDrinkItem(item));
+    const foods = pwdSeniorDiscountItems.filter((item) => isFoodItem(item));
+
+    let message = `PWD/Senior discount applied to ${
+      pwdSeniorDiscountItems.length
+    } item(s) (-₱${discountAmount.toFixed(2)})`;
+
+    if (drinks.length === 1 && foods.length === 2) {
+      message = `PWD/Senior discount applied to 1 drink and 2 food items (-₱${discountAmount.toFixed(
+        2
+      )})`;
+    } else if (drinks.length === 1 && foods.length === 1) {
+      message = `PWD/Senior discount applied to 1 drink and 1 food item (-₱${discountAmount.toFixed(
+        2
+      )})`;
+    } else if (drinks.length === 1) {
+      message = `PWD/Senior discount applied to 1 drink (-₱${discountAmount.toFixed(
+        2
+      )})`;
+    } else if (foods.length === 2) {
+      message = `PWD/Senior discount applied to 2 food items (-₱${discountAmount.toFixed(
+        2
+      )})`;
+    } else if (foods.length === 1) {
+      message = `PWD/Senior discount applied to 1 food item (-₱${discountAmount.toFixed(
+        2
+      )})`;
+    }
+
+    message += ` for ${pwdSeniorDetails.type}: ${pwdSeniorDetails.name}`;
+
+    enqueueSnackbar(message, {
+      variant: "success",
+    });
   };
 
-  // Handle customer type change
+  const handleCancelPwdSeniorSelection = () => {
+    setShowPwdSeniorSelection(false);
+  };
+
+  const clearPwdSeniorDiscount = () => {
+    setPwdSeniorDiscountApplied(false);
+    setPwdSeniorDiscountItems([]);
+    setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
+    enqueueSnackbar("PWD/Senior discount removed", {
+      variant: "info",
+    });
+  };
+
+  const handlePwdSeniorDetailsChange = (e) => {
+    const { name, value } = e.target;
+    setPwdSeniorDetails((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+  };
+
   const handleCustomerTypeChange = (type) => {
     setCustomerType(type);
     enqueueSnackbar(
       `Customer type set to ${type === "walk-in" ? "Walk-in" : "Take-out"}`,
-      { variant: "info" }
+      {
+        variant: "info",
+      }
     );
   };
 
-  // Handle online payment select
   const handleOnlinePaymentSelect = (method) => {
     if (totals.cashAmount > 0 && totals.cashAmount < totals.total) {
       setShowCombinedPaymentModal(true);
@@ -1016,7 +1535,6 @@ const Bill = ({ orderId }) => {
     }
   };
 
-  // Handle denomination click
   const handleDenominationClick = (amount) => {
     if (showCombinedPaymentModal) {
       setCombinedPayment((prev) => ({
@@ -1033,7 +1551,6 @@ const Bill = ({ orderId }) => {
     }
   };
 
-  // Prepare order data for API
   const prepareOrderData = () => {
     const bills = {
       total: Number(totals.baseGrossTotal.toFixed(2)),
@@ -1065,7 +1582,7 @@ const Bill = ({ orderId }) => {
         originalPrice: safeNumber(item.pricePerQuantity),
         isRedeemed: Boolean(item.isRedeemed),
         isPwdSeniorDiscounted: isPwdSeniorDiscounted,
-        category: item.category || "food",
+        category: isDrinkItem(item) ? "drink" : "food",
         id: item.id || Date.now().toString(),
       };
     });
@@ -1114,8 +1631,6 @@ const Bill = ({ orderId }) => {
         tableId: currentOrder?.tableId || null,
         orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
         totalAmount: Number(totals.total.toFixed(2)),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       };
     } else {
       return {
@@ -1155,13 +1670,10 @@ const Bill = ({ orderId }) => {
         tableId: currentOrder?.tableId || null,
         orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
         totalAmount: Number(totals.total.toFixed(2)),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
       };
     }
   };
 
-  // Order mutation
   const orderMutation = useMutation({
     mutationFn: (reqData) => addOrder(reqData),
     onSuccess: async (res) => {
@@ -1173,7 +1685,6 @@ const Bill = ({ orderId }) => {
 
       const { data } = res.data;
 
-      // Set order info for receipt
       const invoiceOrderInfo = {
         ...data,
         customerDetails: {
@@ -1199,7 +1710,21 @@ const Bill = ({ orderId }) => {
             isPwdSeniorDiscounted: isDiscounted,
           };
         }),
-        bills: totals,
+        bills: {
+          total: totals.baseGrossTotal,
+          tax: totals.vatAmount,
+          discount: totals.totalDiscountAmount,
+          totalWithTax: totals.total,
+          pwdSeniorDiscount: totals.pwdSeniorDiscountAmount,
+          pwdSeniorDiscountedValue: totals.discountedItemsTotal,
+          employeeDiscount: totals.employeeDiscountAmount,
+          shareholderDiscount: totals.shareholderDiscountAmount,
+          redemptionDiscount: totals.redemptionAmount,
+          cashAmount: totals.cashAmount,
+          onlineAmount: totals.onlineAmount,
+          totalPaid: totals.totalPaid,
+          change: totals.change,
+        },
         paymentMethod: showCombinedPaymentModal
           ? `Cash + ${combinedPayment.onlineMethod}`
           : paymentMethod,
@@ -1213,8 +1738,8 @@ const Bill = ({ orderId }) => {
 
       setOrderInfo(invoiceOrderInfo);
 
-      // Complete order in Redux
       if (currentOrder) {
+        console.log("Dispatching completeOrder for:", currentOrder.id);
         dispatch(completeOrder(currentOrder.id));
       }
 
@@ -1223,19 +1748,18 @@ const Bill = ({ orderId }) => {
       setShowInvoice(true);
       setIsProcessing(false);
 
-      // Auto-print receipt if enabled
-      if (autoPrintEnabled && printer.isConnected) {
-        setTimeout(async () => {
-          try {
-            await printReceipt(invoiceOrderInfo);
-            enqueueSnackbar("Receipt auto-printed", { variant: "success" });
-          } catch (error) {
-            console.error("Auto-print failed:", error);
+      if (autoPrintEnabled && data) {
+        console.log("Setting pending print order for auto-print...");
+        setPendingPrintOrder(data);
+
+        printTimeoutRef.current = setTimeout(() => {
+          if (!isPrinting && pendingPrintOrder) {
+            console.log("Backup print trigger");
+            setPendingPrintOrder({ ...data });
           }
-        }, 1000);
+        }, 5000);
       }
 
-      // Navigate back after delay
       setTimeout(() => {
         if (showInvoice) {
           setShowInvoice(false);
@@ -1245,10 +1769,20 @@ const Bill = ({ orderId }) => {
     },
     onError: (error) => {
       console.error("Order placement error:", error);
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        "Failed to place order. Please try again.";
+      console.error("Error details:", error.response);
+
+      let errorMessage = "Failed to place order. Please try again.";
+
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      if (error.response?.data?.errors) {
+        const validationErrors = error.response.data.errors;
+        errorMessage = Object.values(validationErrors).join(", ");
+      }
 
       enqueueSnackbar(errorMessage, { variant: "error" });
       setIsProcessing(false);
@@ -1259,7 +1793,6 @@ const Bill = ({ orderId }) => {
     },
   });
 
-  // Handle place order
   const handlePlaceOrder = async () => {
     if (isProcessing) return;
 
@@ -1337,16 +1870,34 @@ const Bill = ({ orderId }) => {
     setIsProcessing(true);
 
     if (currentOrder) {
+      console.log("Dispatching processOrder for:", currentOrder.id);
       dispatch(processOrder(currentOrder.id));
     }
 
-    const orderData = prepareOrderData();
-    console.log("Sending order data:", JSON.stringify(orderData, null, 2));
+    try {
+      const orderData = prepareOrderData();
+      console.log("Sending order data:", JSON.stringify(orderData, null, 2));
 
-    orderMutation.mutate(orderData);
+      if (!orderData.items || orderData.items.length === 0) {
+        throw new Error("Order has no items");
+      }
+
+      if (!orderData.user) {
+        throw new Error("User information is missing");
+      }
+
+      orderMutation.mutate(orderData);
+    } catch (error) {
+      console.error("Error preparing order:", error);
+      enqueueSnackbar(`Error: ${error.message}`, { variant: "error" });
+      setIsProcessing(false);
+
+      if (currentOrder) {
+        dispatch(resetOrderStatus(currentOrder.id));
+      }
+    }
   };
 
-  // Handle cash submit
   const handleCashSubmit = () => {
     if (totals.cashAmount >= totals.total) {
       setShowCashModal(false);
@@ -1362,13 +1913,11 @@ const Bill = ({ orderId }) => {
     }
   };
 
-  // Handle close invoice
   const handleCloseInvoice = () => {
     setShowInvoice(false);
     navigate("/menu");
   };
 
-  // Handle show redeem options
   const handleShowRedeemOptions = () => {
     if (combinedCart.length === 0) {
       enqueueSnackbar("Cart is empty!", { variant: "warning" });
@@ -1377,14 +1926,15 @@ const Bill = ({ orderId }) => {
     setShowRedeemOptions(true);
   };
 
-  // Handle manual print
+  const handleCancelRedeem = () => {
+    setShowRedeemOptions(false);
+  };
+
   const handleManualPrint = async () => {
-    if (!orderInfo) {
-      enqueueSnackbar("No order to print", { variant: "warning" });
-      return;
-    }
+    if (!orderInfo) return;
 
     try {
+      setIsPrinting(true);
       await printReceipt(orderInfo);
       enqueueSnackbar("Receipt printed successfully!", {
         variant: "success",
@@ -1394,12 +1944,13 @@ const Bill = ({ orderId }) => {
       enqueueSnackbar(`Print failed: ${error.message}`, {
         variant: "error",
       });
+    } finally {
+      setIsPrinting(false);
     }
   };
 
-  // Handle print via Bluetooth
   const handlePrintViaBluetooth = async () => {
-    if (!printer.isSupported()) {
+    if (!printerManager.isBluetoothSupported()) {
       enqueueSnackbar("Bluetooth not supported", { variant: "error" });
       return;
     }
@@ -1409,12 +1960,8 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    if (!printer.isConnected) {
-      enqueueSnackbar("Printer not connected", { variant: "warning" });
-      return;
-    }
-
     try {
+      setIsPrinting(true);
       await printReceipt(orderInfo);
       enqueueSnackbar("Receipt printed via Bluetooth!", {
         variant: "success",
@@ -1424,6 +1971,42 @@ const Bill = ({ orderId }) => {
       enqueueSnackbar(`Print failed: ${error.message}`, {
         variant: "error",
       });
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const getConnectionStatusText = () => {
+    switch (connectionStatus) {
+      case "connected":
+        return "✓ Connected";
+      case "connecting":
+        return "↻ Connecting...";
+      case "disconnected":
+        return "✗ Disconnected";
+      case "error":
+        return "⚠ Error";
+      case "unsupported":
+        return "🚫 Unsupported";
+      default:
+        return "Unknown";
+    }
+  };
+
+  const getConnectionStatusColor = () => {
+    switch (connectionStatus) {
+      case "connected":
+        return "bg-green-500";
+      case "connecting":
+        return "bg-yellow-500";
+      case "disconnected":
+        return "bg-red-500";
+      case "error":
+        return "bg-red-500";
+      case "unsupported":
+        return "bg-gray-500";
+      default:
+        return "bg-gray-500";
     }
   };
 
@@ -1860,13 +2443,7 @@ const Bill = ({ orderId }) => {
                   </>
                 ) : (
                   <>
-                    <svg
-                      className="w-4 h-4"
-                      fill="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M14.88 16.29L13 18.17v-3.76l1.88 1.88zM13 5.83l1.88 1.88L13 9.59V5.83zm8.71 4.71L12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l9.71-9.71-5.3-5.29 5.3-5.29z" />
-                    </svg>
+                    <IconBluetooth className="text-xs w-4 h-4" />
                     BT Print
                   </>
                 )}
@@ -1885,6 +2462,14 @@ const Bill = ({ orderId }) => {
                 Bluetooth printer not connected. Connect for direct printing.
               </p>
             )}
+
+            {autoPrintEnabled && pendingPrintOrder && (
+              <p className="text-xs text-green-600 mt-2 text-center">
+                {isPrinting
+                  ? "Auto-printing receipt..."
+                  : "Receipt will auto-print..."}
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -1895,46 +2480,41 @@ const Bill = ({ orderId }) => {
           <div className="flex justify-between items-center mb-3">
             <div className="flex items-center gap-2">
               <div
-                className={`w-3 h-3 rounded-full ${
-                  isPrinterConnected
-                    ? "bg-green-500 animate-pulse"
-                    : isConnecting
-                    ? "bg-yellow-500 animate-pulse"
-                    : "bg-red-500"
-                }`}
+                className={`w-3 h-3 rounded-full animate-pulse ${getConnectionStatusColor()}`}
               ></div>
               <span className="text-sm text-gray-700">
-                {isPrinterConnected
-                  ? `✓ ${printerName || "Printer Connected"}`
-                  : isConnecting
-                  ? "Connecting..."
-                  : "Printer Disconnected"}
+                {getConnectionStatusText()}
               </span>
+              {printerName && (
+                <span className="text-xs text-gray-500">({printerName})</span>
+              )}
             </div>
             <div className="flex gap-2">
               {isPrinterConnected ? (
-                <button
-                  onClick={disconnectPrinter}
-                  className="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200 transition-colors"
-                >
-                  Disconnect
-                </button>
+                <>
+                  <button
+                    onClick={handleTestPrint}
+                    disabled={isPrinting}
+                    className="px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium hover:bg-green-200 transition-colors disabled:opacity-50"
+                  >
+                    {isPrinting ? "Printing..." : "Test Print"}
+                  </button>
+                  <button
+                    onClick={disconnectBluetooth}
+                    className="px-3 py-2 bg-red-100 text-red-700 rounded-lg text-xs font-medium hover:bg-red-200 transition-colors"
+                  >
+                    Disconnect
+                  </button>
+                </>
               ) : (
                 <button
                   onClick={connectToPrinter}
-                  disabled={isConnecting}
+                  disabled={isConnecting || connectionStatus === "unsupported"}
                   className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200 transition-colors disabled:opacity-50"
                 >
-                  {isConnecting ? "Connecting..." : "Connect"}
+                  {isConnecting ? "Connecting..." : "Connect Printer"}
                 </button>
               )}
-              <button
-                onClick={handleTestPrint}
-                disabled={isPrinting || !isPrinterConnected}
-                className="px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium hover:bg-green-200 transition-colors disabled:opacity-50"
-              >
-                {isPrinting ? "Printing..." : "Test"}
-              </button>
             </div>
           </div>
 
@@ -1946,16 +2526,40 @@ const Bill = ({ orderId }) => {
                 checked={autoPrintEnabled}
                 onChange={(e) => setAutoPrintEnabled(e.target.checked)}
                 className="sr-only peer"
+                disabled={!isPrinterConnected}
               />
-              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+              <div
+                className={`w-11 h-6 rounded-full peer ${
+                  !isPrinterConnected
+                    ? "bg-gray-300"
+                    : "bg-gray-200 peer-checked:bg-blue-600"
+                }`}
+              >
+                <div
+                  className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 rounded-full h-5 w-5 transition-all ${
+                    autoPrintEnabled ? "translate-x-full" : ""
+                  } ${!isPrinterConnected ? "border-gray-200" : ""}`}
+                ></div>
+              </div>
             </label>
           </div>
 
-          {printerName && (
-            <p className="text-xs text-gray-500 mt-2">
-              {isPrinterConnected
-                ? "Ready to print receipts"
-                : "Will auto-reconnect when available"}
+          {!isPrinterConnected && connectionStatus !== "unsupported" && (
+            <p className="text-xs text-yellow-600 mt-2">
+              Connect a Bluetooth thermal printer to enable auto-printing.
+            </p>
+          )}
+
+          {connectionStatus === "unsupported" && (
+            <p className="text-xs text-red-600 mt-2">
+              Bluetooth is not supported in this browser. Use Chrome/Edge on
+              desktop.
+            </p>
+          )}
+
+          {isPrinterConnected && autoPrintEnabled && (
+            <p className="text-xs text-green-600 mt-2">
+              ✓ Receipts will auto-print after order completion.
             </p>
           )}
         </div>
@@ -2006,6 +2610,9 @@ const Bill = ({ orderId }) => {
               const isDiscounted = pwdSeniorDiscountItems.some(
                 (discountedItem) => getItemKey(discountedItem) === itemKey
               );
+              const isDrink = isDrinkItem(item);
+              const isFood = isFoodItem(item);
+              const itemType = isDrink ? "Drink" : isFood ? "Food" : "Other";
 
               const originalTotal = calculateItemTotalPrice(item);
               const displayedTotal = calculateItemTotal(item);
@@ -2037,6 +2644,9 @@ const Bill = ({ orderId }) => {
                           </span>
                         )}
                       </p>
+                      <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                        {itemType}
+                      </span>
                     </div>
                     <p className="text-gray-500 text-xs">
                       {item.quantity} × ₱
@@ -2138,9 +2748,16 @@ const Bill = ({ orderId }) => {
             <div className="flex justify-between items-center text-green-600">
               <div className="flex items-center">
                 <p className="text-xs font-medium mr-2">
-                  PWD/Senior Discount (20%)
-                  {pwdSeniorDetails.name && ` - ${pwdSeniorDetails.name}`}
+                  {discountedItemsInfo}
+                  {pwdSeniorDetails.name && ` (${pwdSeniorDetails.name})`}
                 </p>
+                <button
+                  onClick={clearPwdSeniorDiscount}
+                  className="text-xs text-red-500 hover:text-red-700 font-medium"
+                  disabled={isProcessing}
+                >
+                  (Clear)
+                </button>
               </div>
               <h1 className="text-md font-bold">
                 -₱{totals.pwdSeniorDiscountAmount.toFixed(2)}
