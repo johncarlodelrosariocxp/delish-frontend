@@ -31,7 +31,7 @@ export default defineConfig({
         theme_color: "#2563eb",
         background_color: "#ffffff",
         display: "standalone",
-        orientation: "portrait",
+        orientation: "landscape", // ⬅️ CHANGED FROM PORTRAIT TO LANDSCAPE
         scope: "/",
         start_url: "/",
         id: "/",
@@ -143,7 +143,6 @@ export default defineConfig({
           react: ["react", "react-dom"],
           router: ["react-router-dom"],
           redux: ["@reduxjs/toolkit", "react-redux"],
-          // Remove vendor chunk to avoid the error
         },
         entryFileNames: "assets/[name]-[hash].js",
         chunkFileNames: "assets/[name]-[hash].js",
