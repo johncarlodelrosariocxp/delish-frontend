@@ -771,7 +771,7 @@ const Bill = ({ orderId }) => {
     receiptText += "--------------------------------\n";
 
     // Payment details for combined payment
-    if (combinedPayment.cashAmount > 0 || combinedPayment.onlineAmount > 0) {
+    if (showCombinedPaymentModal) {
       receiptText += thermalCommands.ALIGN_LEFT;
       receiptText += "Payment Details:\n";
 
@@ -787,16 +787,18 @@ const Bill = ({ orderId }) => {
         }: ₱${combinedPayment.onlineAmount.toFixed(2)}\n`;
       }
 
-      receiptText += `Total Paid:  ₱${combinedPayment.total.toFixed(2)}\n`;
+      const totalPaid =
+        combinedPayment.cashAmount + combinedPayment.onlineAmount;
+      receiptText += `Total Paid:  ₱${totalPaid.toFixed(2)}\n`;
 
-      if (combinedPayment.total < totals.total) {
-        receiptText += `Balance:     ₱${(
-          totals.total - combinedPayment.total
-        ).toFixed(2)}\n`;
-      } else if (combinedPayment.total > totals.total) {
-        receiptText += `Change:      ₱${(
-          combinedPayment.total - totals.total
-        ).toFixed(2)}\n`;
+      if (totalPaid < totals.total) {
+        receiptText += `Balance:     ₱${(totals.total - totalPaid).toFixed(
+          2
+        )}\n`;
+      } else if (totalPaid > totals.total) {
+        receiptText += `Change:      ₱${(totalPaid - totals.total).toFixed(
+          2
+        )}\n`;
       }
 
       receiptText += "--------------------------------\n";
@@ -1444,6 +1446,7 @@ const Bill = ({ orderId }) => {
     }
   };
 
+  // FIXED: Prepare order data for combined payments
   const prepareOrderData = () => {
     const bills = {
       total: Number(totals.baseGrossTotal.toFixed(2)),
@@ -1483,47 +1486,81 @@ const Bill = ({ orderId }) => {
     const customerName =
       customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer";
 
-    const paymentInfo = showCombinedPaymentModal
-      ? {
-          paymentMethod: "Combined",
-          cashAmount: combinedPayment.cashAmount,
-          onlineMethod: combinedPayment.onlineMethod,
-          onlineAmount: combinedPayment.onlineAmount,
-          totalPaid: combinedPayment.total,
-        }
-      : {
-          paymentMethod,
-          cashAmount: totals.cashAmount,
-          onlineAmount: 0,
-          totalPaid: totals.total,
-        };
+    // FIXED: Handle combined payment correctly
+    if (showCombinedPaymentModal) {
+      // For combined payment, we need to use the online method as paymentMethod
+      // and send the cash amount separately
+      const totalPaid =
+        combinedPayment.cashAmount + combinedPayment.onlineAmount;
 
-    return {
-      customerDetails: {
-        name: customerName,
-        phone: "",
-        guests: 1,
-        email: "",
-        address: "",
-      },
-      customerType: customerType,
-      customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
-      items,
-      bills,
-      ...paymentInfo,
-      paymentStatus: "Completed",
-      orderStatus: "Completed",
-      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
-      pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
-      pwdSeniorSelectedItems: pwdSeniorDiscountApplied
-        ? pwdSeniorDiscountItems
-        : [],
-      cashier: user?.name || "Admin",
-      user: user?._id || "000000000000000000000001",
-      tableId: currentOrder?.tableId || null,
-      orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
-      totalAmount: Number(totals.total.toFixed(2)),
-    };
+      return {
+        customerDetails: {
+          name: customerName,
+          phone: "",
+          guests: 1,
+          email: "",
+          address: "",
+        },
+        customerType: customerType,
+        customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
+        items,
+        bills: {
+          ...bills,
+          cashAmount: Number(combinedPayment.cashAmount.toFixed(2)),
+          onlineAmount: Number(combinedPayment.onlineAmount.toFixed(2)),
+          totalPaid: Number(totalPaid.toFixed(2)),
+          change: Number((totalPaid - totals.total).toFixed(2)),
+        },
+        // Use the online method as the primary payment method
+        paymentMethod: combinedPayment.onlineMethod, // This should be "BDO" or "GCASH"
+        // Store additional payment info for combined payments
+        additionalPaymentInfo: {
+          cashAmount: Number(combinedPayment.cashAmount.toFixed(2)),
+          onlineAmount: Number(combinedPayment.onlineAmount.toFixed(2)),
+          isCombinedPayment: true,
+        },
+        paymentStatus: "Completed",
+        orderStatus: "Completed",
+        pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
+        pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
+        pwdSeniorSelectedItems: pwdSeniorDiscountApplied
+          ? pwdSeniorDiscountItems
+          : [],
+        cashier: user?.name || "Admin",
+        user: user?._id || "000000000000000000000001",
+        tableId: currentOrder?.tableId || null,
+        orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
+        totalAmount: Number(totals.total.toFixed(2)),
+      };
+    } else {
+      // Regular single payment method
+      return {
+        customerDetails: {
+          name: customerName,
+          phone: "",
+          guests: 1,
+          email: "",
+          address: "",
+        },
+        customerType: customerType,
+        customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
+        items,
+        bills,
+        paymentMethod: paymentMethod, // "Cash", "BDO", or "GCASH"
+        paymentStatus: "Completed",
+        orderStatus: "Completed",
+        pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
+        pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
+        pwdSeniorSelectedItems: pwdSeniorDiscountApplied
+          ? pwdSeniorDiscountItems
+          : [],
+        cashier: user?.name || "Admin",
+        user: user?._id || "000000000000000000000001",
+        tableId: currentOrder?.tableId || null,
+        orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
+        totalAmount: Number(totals.total.toFixed(2)),
+      };
+    }
   };
 
   // Order mutation
@@ -1538,6 +1575,7 @@ const Bill = ({ orderId }) => {
 
       const { data } = res.data;
 
+      // FIXED: Create proper invoice order info
       const invoiceOrderInfo = {
         ...data,
         customerDetails: {
@@ -1578,7 +1616,10 @@ const Bill = ({ orderId }) => {
           totalPaid: totals.totalPaid,
           change: totals.change,
         },
-        paymentMethod: showCombinedPaymentModal ? "Combined" : paymentMethod,
+        // For display purposes in the invoice modal
+        paymentMethod: showCombinedPaymentModal
+          ? `Cash + ${combinedPayment.onlineMethod}`
+          : paymentMethod,
         orderStatus: "Completed",
         customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
         orderDate: new Date().toISOString(),
@@ -2381,7 +2422,9 @@ const Bill = ({ orderId }) => {
               <div className="flex justify-between mb-2">
                 <span className="text-sm text-gray-600">Payment:</span>
                 <span className="text-sm font-bold">
-                  {showCombinedPaymentModal ? "Combined" : paymentMethod}
+                  {showCombinedPaymentModal
+                    ? `Cash + ${combinedPayment.onlineMethod}`
+                    : paymentMethod}
                 </span>
               </div>
               {showCombinedPaymentModal && (
