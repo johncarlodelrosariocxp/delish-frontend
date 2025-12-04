@@ -10,12 +10,7 @@ import {
   processOrder,
   resetOrderStatus,
 } from "../../redux/slices/orderSlice";
-import {
-  addOrder,
-  createOrderRazorpay,
-  updateTable,
-  verifyPaymentRazorpay,
-} from "../../https/index";
+import { addOrder } from "../../https/index";
 import { enqueueSnackbar } from "notistack";
 import { useMutation } from "@tanstack/react-query";
 import Invoice from "../invoice/Invoice";
@@ -82,6 +77,7 @@ const Bill = ({ orderId }) => {
   // Bluetooth printer state
   const [bluetoothPrinter, setBluetoothPrinter] = useState(null);
   const [isPrinterConnected, setIsPrinterConnected] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
 
   // Bluetooth printer setup
   useEffect(() => {
@@ -95,6 +91,23 @@ const Bill = ({ orderId }) => {
       const devices = await navigator.bluetooth.getDevices();
       if (devices.length > 0) {
         setIsPrinterConnected(true);
+        // Try to connect to the first saved device
+        const savedDeviceId = localStorage.getItem("bluetoothPrinterId");
+        if (savedDeviceId) {
+          const savedDevice = devices.find(
+            (device) => device.id === savedDeviceId
+          );
+          if (savedDevice) {
+            try {
+              await savedDevice.gatt.connect();
+              setBluetoothPrinter(savedDevice);
+              setIsPrinterConnected(true);
+              console.log("Reconnected to saved printer:", savedDevice.name);
+            } catch (error) {
+              console.log("Could not reconnect to saved printer");
+            }
+          }
+        }
       }
     } catch (error) {
       console.log("No existing printer connection");
@@ -106,27 +119,38 @@ const Bill = ({ orderId }) => {
       enqueueSnackbar("Bluetooth not supported on this device", {
         variant: "error",
       });
-      return;
+      return null;
     }
 
     try {
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
-        optionalServices: ["battery_service", "device_information"],
+        optionalServices: ["000018f0-0000-1000-8000-00805f9b34fb"],
       });
 
       const server = await device.gatt.connect();
       setBluetoothPrinter(device);
       setIsPrinterConnected(true);
 
-      enqueueSnackbar("Printer connected successfully!", {
-        variant: "success",
-      });
-
+      // Save device ID for future connections
       localStorage.setItem("bluetoothPrinterId", device.id);
+
+      enqueueSnackbar(
+        `Connected to printer: ${device.name || "Bluetooth Printer"}`,
+        {
+          variant: "success",
+        }
+      );
+
+      return device;
     } catch (error) {
       console.error("Bluetooth connection error:", error);
-      enqueueSnackbar("Failed to connect to printer", { variant: "error" });
+      if (error.name === "NotFoundError") {
+        enqueueSnackbar("No printer selected", { variant: "warning" });
+      } else {
+        enqueueSnackbar("Failed to connect to printer", { variant: "error" });
+      }
+      return null;
     }
   };
 
@@ -704,27 +728,40 @@ const Bill = ({ orderId }) => {
 
   // Send data to Bluetooth printer
   const sendToPrinter = async (data) => {
-    if (!bluetoothPrinter || !isPrinterConnected) {
-      // Try to auto-connect
-      await connectToPrinter();
-      if (!isPrinterConnected) {
+    let device = bluetoothPrinter;
+
+    if (!device || !isPrinterConnected) {
+      // Try to connect to printer
+      device = await connectToPrinter();
+      if (!device) {
         throw new Error("Printer not connected");
       }
     }
 
     try {
-      const encoder = new TextEncoder();
-      const dataArray = encoder.encode(data);
+      // Connect to GATT server
+      const server = await device.gatt.connect();
 
-      const server = await bluetoothPrinter.gatt.connect();
+      // Get the printer service
       const service = await server.getPrimaryService(
         "000018f0-0000-1000-8000-00805f9b34fb"
       );
+
+      // Get the characteristic for writing data
       const characteristic = await service.getCharacteristic(
         "00002af1-0000-1000-8000-00805f9b34fb"
       );
 
+      // Convert string to Uint8Array
+      const encoder = new TextEncoder();
+      const dataArray = encoder.encode(data);
+
+      // Write data to printer
       await characteristic.writeValue(dataArray);
+
+      // Wait a bit for the printer to process
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
       return true;
     } catch (error) {
       console.error("Print error:", error);
@@ -738,6 +775,11 @@ const Bill = ({ orderId }) => {
 
     // Initialize printer
     receipt += printerCommands.INIT;
+
+    // Set line spacing
+    receipt += printerCommands.LINE_SPACING;
+
+    // Header - Centered and bold
     receipt += printerCommands.ALIGN_CENTER;
     receipt += printerCommands.BOLD_ON;
     receipt += printerCommands.SET_CHAR_SIZE(2, 2);
@@ -746,93 +788,158 @@ const Bill = ({ orderId }) => {
     receipt += printerCommands.SET_CHAR_SIZE(1, 1);
     receipt += "123 Main Street, City" + LF;
     receipt += "Phone: (123) 456-7890" + LF;
-    receipt +=
-      "Customer: " + (customerType === "walk-in" ? "Walk-in" : "Take-out") + LF;
-    receipt += LF;
+    receipt += "VAT Reg TIN: 123-456-789-000" + LF;
+    receipt += "MIN: 12345678901234" + LF;
+    receipt += "=================================" + LF;
 
-    // Order info
+    // Order info - Left aligned
     receipt += printerCommands.ALIGN_LEFT;
-    receipt += printerCommands.UNDERLINE_ON;
-    receipt += "ORDER RECEIPT" + LF;
-    receipt += printerCommands.UNDERLINE_OFF;
-    receipt += LF;
-
     receipt += "Order #: " + (orderData._id?.slice(-8) || "N/A") + LF;
-    receipt += "Date: " + new Date().toLocaleDateString() + LF;
-    receipt += "Time: " + new Date().toLocaleTimeString() + LF;
     receipt +=
-      "Status: Customer " +
-      (customerType === "walk-in" ? "Dine-in" : "Take-out") +
+      "Date: " +
+      new Date().toLocaleDateString("en-PH", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }) +
       LF;
+    receipt +=
+      "Time: " +
+      new Date().toLocaleTimeString("en-PH", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+      }) +
+      LF;
+    receipt += "Cashier: " + (user?.name || "Admin") + LF;
+    receipt +=
+      "Customer: " + (customerType === "walk-in" ? "Dine-in" : "Take-out") + LF;
+    receipt += "=================================" + LF;
     receipt += LF;
 
-    receipt += printerCommands.UNDERLINE_ON;
-    receipt += "ITEMS" + LF;
-    receipt += printerCommands.UNDERLINE_OFF;
-    receipt += LF;
+    // Items header
+    receipt += printerCommands.BOLD_ON;
+    receipt += "QTY  DESCRIPTION           AMOUNT" + LF;
+    receipt += printerCommands.BOLD_OFF;
+    receipt += "---------------------------------" + LF;
 
-    // Items
+    // Items list
     combinedCart.forEach((item) => {
-      const name =
-        item.name.length > 24 ? item.name.substring(0, 21) + "..." : item.name;
+      const name = item.name;
       const price = safeNumber(item.pricePerQuantity);
       const quantity = item.quantity;
       const total = calculateItemTotal(item);
 
-      receipt += name + LF;
-      receipt += "  " + quantity + " x ₱" + price.toFixed(2) + LF;
-      receipt += "  " + "₱" + total.toFixed(2) + LF;
-      if (item.isRedeemed) {
-        receipt += "  [REDEEMED - FREE]" + LF;
+      // Format quantity (3 chars)
+      const qtyStr = quantity.toString().padStart(3, " ");
+
+      // Format name (max 20 chars)
+      let nameStr = name;
+      if (nameStr.length > 20) {
+        nameStr = nameStr.substring(0, 17) + "...";
+      } else {
+        nameStr = nameStr.padEnd(20, " ");
       }
-      receipt += LF;
+
+      // Format price (9 chars)
+      const priceStr = total.toFixed(2).padStart(9, " ");
+
+      receipt += qtyStr + "  " + nameStr + priceStr + LF;
+
+      // Show discounted price if applicable
+      const originalPrice = safeNumber(item.pricePerQuantity);
+      if (item.isRedeemed) {
+        receipt += "     *REDEEMED - FREE" + LF;
+      } else if (
+        pwdSeniorDiscountItems.some(
+          (discItem) => getItemKey(discItem) === getItemKey(item)
+        )
+      ) {
+        const originalTotal = originalPrice * quantity;
+        const discountAmount = originalTotal * pwdSeniorDiscountRate;
+        receipt += "     *PWD/SENIOR -₱" + discountAmount.toFixed(2) + LF;
+      }
     });
 
-    // Divider
-    receipt += "--------------------------------" + LF;
+    receipt += "---------------------------------" + LF;
+    receipt += LF;
 
-    // Totals
+    // Totals - Right aligned
     receipt += printerCommands.ALIGN_RIGHT;
-    receipt += "Subtotal:    ₱" + totals.baseGrossTotal.toFixed(2) + LF;
+    receipt +=
+      "SUBTOTAL:      ₱" +
+      totals.baseGrossTotal.toFixed(2).padStart(8, " ") +
+      LF;
 
     if (totals.pwdSeniorDiscountAmount > 0) {
       receipt +=
-        "PWD/Senior:   -₱" + totals.pwdSeniorDiscountAmount.toFixed(2) + LF;
+        "PWD/SENIOR:    -₱" +
+        totals.pwdSeniorDiscountAmount.toFixed(2).padStart(8, " ") +
+        LF;
     }
 
     if (totals.redemptionAmount > 0) {
-      receipt += "Redemption:  -₱" + totals.redemptionAmount.toFixed(2) + LF;
+      receipt +=
+        "REDEMPTION:    -₱" +
+        totals.redemptionAmount.toFixed(2).padStart(8, " ") +
+        LF;
     }
 
     if (totals.employeeDiscountAmount > 0) {
       receipt +=
-        "Emp Disc:    -₱" + totals.employeeDiscountAmount.toFixed(2) + LF;
+        "EMP DISCOUNT:  -₱" +
+        totals.employeeDiscountAmount.toFixed(2).padStart(8, " ") +
+        LF;
     }
 
     if (totals.shareholderDiscountAmount > 0) {
       receipt +=
-        "Shareholder: -₱" + totals.shareholderDiscountAmount.toFixed(2) + LF;
+        "SHAREHOLDER:   -₱" +
+        totals.shareholderDiscountAmount.toFixed(2).padStart(8, " ") +
+        LF;
     }
 
-    receipt += "VAT (12%):   ₱" + totals.vatAmount.toFixed(2) + LF;
-    receipt += "Total:       ₱" + totals.total.toFixed(2) + LF;
+    receipt +=
+      "VAT (12%):     ₱" + totals.vatAmount.toFixed(2).padStart(8, " ") + LF;
+    receipt += "---------------------------------" + LF;
+
+    receipt += printerCommands.BOLD_ON;
+    receipt +=
+      "TOTAL:         ₱" + totals.total.toFixed(2).padStart(8, " ") + LF;
+    receipt += printerCommands.BOLD_OFF;
+    receipt += "---------------------------------" + LF;
 
     if (paymentMethod === "Cash") {
-      receipt += "Cash:        ₱" + totals.cashAmount.toFixed(2) + LF;
-      receipt += "Change:      ₱" + totals.change.toFixed(2) + LF;
+      receipt +=
+        "CASH:          ₱" + totals.cashAmount.toFixed(2).padStart(8, " ") + LF;
+      receipt +=
+        "CHANGE:        ₱" + totals.change.toFixed(2).padStart(8, " ") + LF;
+      receipt += "---------------------------------" + LF;
     }
 
-    receipt += LF;
+    receipt += "PAYMENT: " + paymentMethod + LF;
+
+    if (pwdSeniorDiscountApplied && pwdSeniorDetails.name) {
+      receipt += "---------------------------------" + LF;
+      receipt += "PWD/SENIOR DETAILS:" + LF;
+      receipt += "Name: " + pwdSeniorDetails.name + LF;
+      receipt += "ID #: " + pwdSeniorDetails.idNumber + LF;
+      receipt += "Type: " + pwdSeniorDetails.type + LF;
+    }
+
+    receipt += "=================================" + LF;
+
+    // Footer - Centered
     receipt += printerCommands.ALIGN_CENTER;
-    receipt += "Payment: " + paymentMethod + LF;
-    receipt += "Cashier: " + (user?.name || "Admin") + LF;
-    receipt += LF;
     receipt += "Thank you for dining with us!" + LF;
     receipt += "Please visit again!" + LF;
     receipt += LF;
+    receipt += "This receipt is your official" + LF;
+    receipt += "proof of purchase." + LF;
     receipt += LF;
 
-    // Cut paper
+    // Feed 3 lines and cut
+    receipt += printerCommands.FEED_LINES(3);
     receipt += printerCommands.CUT_PAPER;
 
     return receipt;
@@ -840,41 +947,48 @@ const Bill = ({ orderId }) => {
 
   // Print receipt to Bluetooth printer
   const printReceipt = async (orderData) => {
+    setIsPrinting(true);
+
     try {
-      if (!isPrinterConnected) {
-        await connectToPrinter();
+      console.log("Starting print process...");
+
+      if (!navigator.bluetooth) {
+        throw new Error("Bluetooth not supported");
       }
 
-      if (isPrinterConnected) {
-        const receipt = generateReceipt(orderData);
-        const success = await sendToPrinter(receipt);
+      // Generate receipt content
+      const receiptContent = generateReceipt(orderData);
+      console.log("Receipt generated, sending to printer...");
 
-        if (success) {
-          enqueueSnackbar("Receipt printed successfully!", {
-            variant: "success",
-          });
+      // Send to printer
+      await sendToPrinter(receiptContent);
 
-          // Open cash drawer if payment is cash
-          if (paymentMethod === "Cash") {
-            const cashDrawerCommand = printerCommands.DRAWER_OPEN;
-            await sendToPrinter(cashDrawerCommand);
-            enqueueSnackbar("Cash drawer opened", { variant: "info" });
-          }
-          return true;
+      console.log("Receipt sent successfully!");
+
+      // Open cash drawer if payment is cash
+      if (paymentMethod === "Cash") {
+        try {
+          const cashDrawerCommand = printerCommands.DRAWER_OPEN;
+          await sendToPrinter(cashDrawerCommand);
+          console.log("Cash drawer opened");
+        } catch (drawerError) {
+          console.warn("Could not open cash drawer:", drawerError);
         }
-      } else {
-        throw new Error("Could not connect to printer");
       }
+
+      return true;
     } catch (error) {
-      console.error("Print error:", error);
+      console.error("Print receipt error:", error);
       throw error;
+    } finally {
+      setIsPrinting(false);
     }
   };
 
   // Order mutation with complete order handling
   const orderMutation = useMutation({
     mutationFn: (reqData) => addOrder(reqData),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       console.log("Order success response:", res);
 
       if (!res || !res.data) {
@@ -942,16 +1056,13 @@ const Bill = ({ orderId }) => {
       enqueueSnackbar("Order placed successfully!", { variant: "success" });
 
       // PRINT RECEIPT AUTOMATICALLY
-      setTimeout(async () => {
-        try {
-          await printReceipt(data);
-          enqueueSnackbar("Receipt printed via Bluetooth!", {
-            variant: "success",
-          });
-        } catch (error) {
-          console.error("Failed to print:", error);
-          enqueueSnackbar("Failed to print receipt", { variant: "warning" });
-        }
+      try {
+        console.log("Attempting to print receipt...");
+        await printReceipt(data);
+
+        enqueueSnackbar("Receipt printed successfully!", {
+          variant: "success",
+        });
 
         // Show invoice
         setShowInvoice(true);
@@ -962,7 +1073,25 @@ const Bill = ({ orderId }) => {
           setShowInvoice(false);
           navigate("/menu");
         }, 5000);
-      }, 1000);
+      } catch (printError) {
+        console.error("Failed to print:", printError);
+        enqueueSnackbar(
+          "Order placed but failed to print receipt. Please print manually.",
+          {
+            variant: "warning",
+          }
+        );
+
+        // Still show invoice even if print fails
+        setShowInvoice(true);
+        setIsProcessing(false);
+
+        // Auto-close invoice after 5 seconds and navigate
+        setTimeout(() => {
+          setShowInvoice(false);
+          navigate("/menu");
+        }, 5000);
+      }
     },
     onError: (error) => {
       console.error("Order placement error:", error);
@@ -980,6 +1109,58 @@ const Bill = ({ orderId }) => {
       }
     },
   });
+
+  // Prepare order data for submission
+  const prepareOrderData = () => {
+    // Prepare bills data
+    const bills = {
+      total: Number(totals.baseGrossTotal.toFixed(2)),
+      tax: Number(totals.vatAmount.toFixed(2)),
+      totalWithTax: Number(totals.total.toFixed(2)),
+      discount: Number(totals.totalDiscountAmount.toFixed(2)),
+      pwdSeniorDiscount: Number(totals.pwdSeniorDiscountAmount.toFixed(2)),
+      pwdSeniorDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
+      employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
+      shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
+      redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
+      netSales: Number(totals.netSales.toFixed(2)),
+      cashAmount: Number(totals.cashAmount.toFixed(2)),
+      change: Number(totals.change.toFixed(2)),
+    };
+
+    // Prepare items data
+    const items = cartData.map((item) => {
+      const isPwdSeniorDiscounted = pwdSeniorDiscountItems.some(
+        (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
+      );
+
+      return {
+        name: item.name || "Unknown Item",
+        quantity: safeNumber(item.quantity),
+        pricePerQuantity: safeNumber(item.pricePerQuantity),
+        price: calculateItemTotal(item),
+        originalPrice: safeNumber(item.pricePerQuantity),
+        isRedeemed: Boolean(item.isRedeemed),
+        isPwdSeniorDiscounted: isPwdSeniorDiscounted,
+        category: isDrinkItem(item) ? "drink" : "food",
+        id: item.id || Date.now().toString(),
+      };
+    });
+
+    return {
+      items,
+      bills,
+      paymentMethod,
+      orderStatus: "Completed",
+      customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
+      customerType: customerType,
+      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
+      cashierName: user?.name || "Admin",
+      userId: user?._id || "000000000000000000000001",
+      tableId: currentOrder?.tableId || null,
+      orderNumber: currentOrder?.number || Date.now().toString(),
+    };
+  };
 
   // Handle place order
   const handlePlaceOrder = async () => {
@@ -1040,82 +1221,11 @@ const Bill = ({ orderId }) => {
       dispatch(processOrder(currentOrder.id));
     }
 
-    // Prepare bills data
-    const bills = {
-      total: Number(totals.baseGrossTotal.toFixed(2)),
-      tax: Number(totals.vatAmount.toFixed(2)),
-      totalWithTax: Number(totals.total.toFixed(2)),
-      discount: Number(totals.totalDiscountAmount.toFixed(2)),
-      pwdSeniorDiscount: Number(totals.pwdSeniorDiscountAmount.toFixed(2)),
-      pwdSeniorDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
-      employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
-      shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
-      redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
-      netSales: Number(totals.netSales.toFixed(2)),
-      cashAmount: Number(totals.cashAmount.toFixed(2)),
-      change: Number(totals.change.toFixed(2)),
-    };
-
-    // Prepare items data
-    const items = cartData.map((item) => {
-      const isPwdSeniorDiscounted = pwdSeniorDiscountItems.some(
-        (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
-      );
-
-      return {
-        name: item.name || "Unknown Item",
-        quantity: safeNumber(item.quantity),
-        pricePerQuantity: safeNumber(item.pricePerQuantity),
-        price: calculateItemTotal(item),
-        originalPrice: safeNumber(item.pricePerQuantity),
-        isRedeemed: Boolean(item.isRedeemed),
-        isPwdSeniorDiscounted: isPwdSeniorDiscounted,
-        category: isDrinkItem(item) ? "drink" : "food", // Only food or drink
-        id: item.id || Date.now().toString(),
-      };
-    });
-
-    // Get cashier name
-    const cashierName = user?.name || "Admin";
-
-    // Prepare COMPLETE order data - NO CUSTOMER DETAILS REQUIRED
-    const orderData = {
-      // NO customerDetails field - completely removed
-      orderStatus: "Completed",
-      bills: bills,
-      items: items,
-      table: null,
-      paymentMethod: paymentMethod,
-      customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
-      pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
-      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
-      pwdSeniorSelectedItems: pwdSeniorDiscountItems.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        pricePerQuantity: item.pricePerQuantity,
-        type: isDrinkItem(item) ? "drink" : "food",
-      })),
-      cashier: cashierName,
-      user: user?._id || "000000000000000000000001",
-      orderDate: new Date().toISOString(),
-      totalAmount: Number(totals.total.toFixed(2)),
-      cashAmount: Number(totals.cashAmount.toFixed(2)),
-      change: Number(totals.change.toFixed(2)),
-      notes: "",
-    };
-
+    const orderData = prepareOrderData();
     console.log("Sending order data:", JSON.stringify(orderData, null, 2));
 
-    // Handle payment methods
-    if (paymentMethod === "BDO" || paymentMethod === "GCASH") {
-      // Digital payment methods - directly submit order
-      console.log(`Processing ${paymentMethod} order...`);
-      orderMutation.mutate(orderData);
-    } else {
-      // Cash payment - directly submit order
-      console.log("Processing cash order...");
-      orderMutation.mutate(orderData);
-    }
+    // Submit order
+    orderMutation.mutate(orderData);
   };
 
   // Handle cash amount submission
@@ -1148,6 +1258,27 @@ const Bill = ({ orderId }) => {
   // Cancel redeem selection
   const handleCancelRedeem = () => {
     setShowRedeemOptions(false);
+  };
+
+  // Manual print receipt function (for testing)
+  const handleManualPrint = async () => {
+    try {
+      setIsPrinting(true);
+      const testOrderData = {
+        _id: "TEST" + Date.now().toString().slice(-8),
+        items: combinedCart,
+      };
+      await printReceipt(testOrderData);
+      enqueueSnackbar("Test receipt printed successfully!", {
+        variant: "success",
+      });
+    } catch (error) {
+      enqueueSnackbar("Failed to print test receipt: " + error.message, {
+        variant: "error",
+      });
+    } finally {
+      setIsPrinting(false);
+    }
   };
 
   // If no current order, show empty state
@@ -1530,6 +1661,39 @@ const Bill = ({ orderId }) => {
       )}
 
       <div className="max-w-[600px] mx-auto space-y-4">
+        {/* Printer Status */}
+        <div className="bg-white rounded-lg p-4 shadow-md">
+          <div className="flex justify-between items-center">
+            <div className="flex items-center gap-2">
+              <div
+                className={`w-3 h-3 rounded-full ${
+                  isPrinterConnected ? "bg-green-500" : "bg-red-500"
+                }`}
+              ></div>
+              <span className="text-sm text-gray-700">
+                {isPrinterConnected
+                  ? "Printer Connected"
+                  : "Printer Disconnected"}
+              </span>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={connectToPrinter}
+                className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200 transition-colors"
+              >
+                {isPrinterConnected ? "Reconnect" : "Connect"}
+              </button>
+              <button
+                onClick={handleManualPrint}
+                disabled={isPrinting || !isPrinterConnected}
+                className="px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium hover:bg-green-200 transition-colors disabled:opacity-50"
+              >
+                {isPrinting ? "Printing..." : "Test Print"}
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* 🧾 CUSTOMER TYPE */}
         <div className="bg-white rounded-lg p-4 shadow-md">
           <h2 className="text-gray-900 text-sm font-semibold mb-3">
@@ -1899,6 +2063,11 @@ const Bill = ({ orderId }) => {
               <>
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 Processing...
+              </>
+            ) : isPrinting ? (
+              <>
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                Printing...
               </>
             ) : (
               "Place Order & Print"
