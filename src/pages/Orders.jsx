@@ -9,7 +9,6 @@ import {
   FaPrint,
   FaCalendar,
   FaTachometerAlt,
-  FaExclamationCircle,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
@@ -26,182 +25,120 @@ const Orders = () => {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [totalSales, setTotalSales] = useState(0);
   const [dateFilter, setDateFilter] = useState("today");
-  const [filteredOrders, setFilteredOrders] = useState([]);
   const scrollRef = useRef(null);
 
-  const user = useSelector((state) => state.auth?.user || state.user);
+  const user = useSelector((state) => state.user);
   const navigate = useNavigate();
+
+  // Debug function to check API response
+  const debugAPI = (data, context) => {
+    console.log(`🔍 ${context}:`, data);
+    if (data?.response?.data) {
+      console.log(`🔍 ${context} Response Data:`, data.response.data);
+    }
+    if (data?.message) {
+      console.log(`🔍 ${context} Message:`, data.message);
+    }
+  };
 
   useEffect(() => {
     document.title = "POS | Orders";
   }, []);
 
-  // Enhanced API response handler
-  const extractOrdersFromResponse = (response) => {
-    console.log("🔍 Raw API Response:", response);
-
-    // Handle different response structures
-    if (Array.isArray(response?.data)) {
-      console.log(
-        "✅ Found orders in response.data array:",
-        response.data.length
-      );
-      return response.data;
-    }
-
-    if (response?.data?.data && Array.isArray(response.data.data)) {
-      console.log(
-        "✅ Found orders in response.data.data:",
-        response.data.data.length
-      );
-      return response.data.data;
-    }
-
-    if (response?.data?.orders && Array.isArray(response.data.orders)) {
-      console.log(
-        "✅ Found orders in response.data.orders:",
-        response.data.orders.length
-      );
-      return response.data.orders;
-    }
-
-    if (Array.isArray(response)) {
-      console.log("✅ Response is directly an array:", response.length);
-      return response;
-    }
-
-    console.warn("⚠️ Could not find orders array in response structure");
-    console.log("Response structure:", JSON.stringify(response, null, 2));
-    return [];
-  };
-
   const {
-    data: apiResponse,
+    data: resData,
     isError,
     isLoading,
-    error,
   } = useQuery({
-    queryKey: ["orders", user?.role, user?._id],
+    queryKey: ["orders", user.role],
     queryFn: async () => {
       try {
-        console.log("📋 Fetching orders for user:", {
-          id: user?._id,
-          role: user?.role,
-          name: user?.name,
-        });
-
-        let response;
-        if (user?.role?.toLowerCase() === "admin") {
-          console.log("👑 Fetching all orders (admin)...");
-          response = await getAdminOrders();
+        if (user.role?.toLowerCase() === "admin") {
+          console.log("📋 Orders Page: Fetching all orders (admin)...");
+          const response = await getAdminOrders();
+          debugAPI(response, "Admin Orders API");
+          return response;
         } else {
-          console.log("👤 Fetching user orders...");
-          response = await getOrders();
+          console.log("📋 Orders Page: Fetching user orders...");
+          const response = await getOrders();
+          debugAPI(response, "User Orders API");
+          return response;
         }
-
-        console.log("📦 API Response status:", response?.status);
-        console.log("📦 API Response headers:", response?.headers);
-
-        // Extract data properly
-        const ordersData = extractOrdersFromResponse(response);
-
-        return {
-          success: true,
-          orders: ordersData,
-          rawResponse: response,
-        };
       } catch (error) {
         console.error("❌ Orders fetch error:", error);
-        console.error("Error details:", {
-          message: error.message,
-          response: error.response?.data,
-          status: error.response?.status,
-          config: error.config,
-        });
-
-        return {
-          success: false,
-          error: error.message,
-          orders: [],
-        };
+        debugAPI(error, "Orders Fetch Error");
+        throw error;
       }
     },
     placeholderData: keepPreviousData,
-    retry: 2,
-    refetchOnWindowFocus: false,
   });
 
-  // Process orders when data changes
-  useEffect(() => {
-    if (apiResponse?.success && Array.isArray(apiResponse.orders)) {
-      console.log("🔄 Processing orders:", apiResponse.orders.length);
-
-      // Sort by date (newest first)
-      const sortedOrders = [...apiResponse.orders].sort((a, b) => {
-        const dateA = new Date(a.createdAt || a.orderDate || a.updatedAt || 0);
-        const dateB = new Date(b.createdAt || b.orderDate || b.updatedAt || 0);
-        return dateB.getTime() - dateA.getTime();
-      });
-
-      console.log("✅ Sorted orders:", sortedOrders.length);
-
-      // Apply filters
-      applyFilters(sortedOrders, searchQuery, dateFilter);
-    } else if (apiResponse && !apiResponse.success) {
-      console.error("❌ API response unsuccessful:", apiResponse.error);
-      setFilteredOrders([]);
-    }
-  }, [apiResponse, searchQuery, dateFilter]);
-
-  // Apply filters to orders
-  const applyFilters = (orders, query, dateRange) => {
-    if (!Array.isArray(orders)) {
-      console.error("❌ applyFilters: orders is not an array");
-      setFilteredOrders([]);
-      return;
-    }
-
-    const filtered = orders.filter((order) => {
-      if (!order) return false;
-
-      // Date filter
-      const dateMatch = filterByDateRange(order, dateRange);
-      if (!dateMatch) return false;
-
-      // Search filter
-      if (!query) return true;
-
-      const searchLower = query.toLowerCase();
-      return (
-        (order._id || "").toLowerCase().includes(searchLower) ||
-        (order.orderNumber || "").toLowerCase().includes(searchLower) ||
-        (order.customerDetails?.name || "")
-          .toLowerCase()
-          .includes(searchLower) ||
-        (order.cashier || "").toLowerCase().includes(searchLower) ||
-        (order.user?.name || "").toLowerCase().includes(searchLower) ||
-        "completed".includes(searchLower)
-      );
-    });
-
-    console.log(
-      `🔍 Filtered ${filtered.length} orders out of ${orders.length}`
-    );
-    setFilteredOrders(filtered);
-
-    // Calculate total sales
-    const total = filtered.reduce((sum, order) => {
-      const amount =
-        order.totalAmount ||
-        order.bills?.totalWithTax ||
-        order.bills?.total ||
-        0;
-      return sum + (Number(amount) || 0);
-    }, 0);
-    setTotalSales(total);
+  // Status configuration - All orders are completed
+  const getStatusConfig = () => {
+    return {
+      icon: FaCheckCircle,
+      color: "text-green-500",
+      bgColor: "bg-green-50",
+      borderColor: "border-green-200",
+      text: "Completed",
+    };
   };
 
-  // Filter by date range
+  // ✅ FIXED: Handle data safely and sort by date (newest first)
+  const orders = React.useMemo(() => {
+    try {
+      const ordersData = resData?.data?.data;
+      let ordersArray = [];
+
+      if (Array.isArray(ordersData)) {
+        ordersArray = ordersData;
+      } else if (ordersData && typeof ordersData === "object") {
+        // Handle case where data might be an object with orders property
+        ordersArray = ordersData.orders || ordersData.data || [];
+      }
+
+      if (Array.isArray(ordersArray)) {
+        console.log("📦 Orders data (before sorting):", ordersArray.length);
+
+        // Sort orders by date (newest first)
+        const sortedOrders = [...ordersArray].sort((a, b) => {
+          // Get dates from various possible properties
+          const getDate = (order) => {
+            if (order.createdAt) return new Date(order.createdAt);
+            if (order.orderDate) return new Date(order.orderDate);
+            if (order.date) return new Date(order.date);
+            if (order.updatedAt) return new Date(order.updatedAt);
+            return new Date(0); // Default to epoch if no date found
+          };
+
+          const dateA = getDate(a);
+          const dateB = getDate(b);
+
+          // Sort in descending order (newest first)
+          return dateB.getTime() - dateA.getTime();
+        });
+
+        console.log("📦 Orders sorted (newest first)");
+        return sortedOrders;
+      }
+
+      console.log("📦 No valid orders data found, returning empty array");
+      return [];
+    } catch (error) {
+      console.error("❌ Error processing orders data:", error);
+      return [];
+    }
+  }, [resData]);
+
+  useEffect(() => {
+    if (isError) {
+      enqueueSnackbar("Something went wrong while fetching orders!", {
+        variant: "error",
+      });
+    }
+  }, [isError]);
+
+  // Filter orders by date range
   const filterByDateRange = (order, range) => {
     if (range === "all" || !order) return true;
 
@@ -210,7 +147,8 @@ const Orders = () => {
     );
     const today = new Date();
 
-    if (isNaN(orderDate.getTime())) return false;
+    // Handle invalid dates
+    if (isNaN(orderDate.getTime())) return true;
 
     switch (range) {
       case "today":
@@ -219,6 +157,7 @@ const Orders = () => {
           orderDate.getMonth() === today.getMonth() &&
           orderDate.getFullYear() === today.getFullYear()
         );
+
       case "yesterday":
         const yesterday = new Date(today);
         yesterday.setDate(today.getDate() - 1);
@@ -227,11 +166,13 @@ const Orders = () => {
           orderDate.getMonth() === yesterday.getMonth() &&
           orderDate.getFullYear() === yesterday.getFullYear()
         );
+
       case "thisMonth":
         return (
           orderDate.getMonth() === today.getMonth() &&
           orderDate.getFullYear() === today.getFullYear()
         );
+
       case "lastMonth":
         const lastMonth = new Date(today);
         lastMonth.setMonth(today.getMonth() - 1);
@@ -239,27 +180,171 @@ const Orders = () => {
           orderDate.getMonth() === lastMonth.getMonth() &&
           orderDate.getFullYear() === lastMonth.getFullYear()
         );
+
       case "thisYear":
         return orderDate.getFullYear() === today.getFullYear();
+
       case "lastYear":
         return orderDate.getFullYear() === today.getFullYear() - 1;
+
       default:
         return true;
     }
   };
 
-  // Error handling
+  // Calculate metrics based on date filter
   useEffect(() => {
-    if (isError) {
-      console.error("❌ Query error:", error);
-      enqueueSnackbar(
-        error?.message || "Failed to load orders. Please try again.",
-        { variant: "error" }
+    const filteredByDate = orders.filter((order) =>
+      filterByDateRange(order, dateFilter)
+    );
+
+    // All orders are considered completed for sales calculation
+    const total = filteredByDate.reduce((sum, order) => {
+      if (!order) return sum;
+      const amount = order.bills?.totalWithTax || order.totalAmount || 0;
+      return sum + (Number(amount) || 0);
+    }, 0);
+    setTotalSales(total);
+  }, [orders, dateFilter]);
+
+  // Filter orders based on search query and date filter
+  const filteredOrders = React.useMemo(() => {
+    try {
+      if (!Array.isArray(orders)) {
+        console.log("❌ Orders is not an array:", orders);
+        return [];
+      }
+
+      const filtered = orders.filter((order) => {
+        if (!order) return false;
+
+        const dateMatch = filterByDateRange(order, dateFilter);
+
+        const searchMatch =
+          (order.customerDetails?.name || "")
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase()) ||
+          (order._id || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
+          "completed".includes(searchQuery.toLowerCase()) || // Search for "completed" status
+          (order.cashier || "")
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase()) || // Search for cashier name
+          (order.user?.name || "")
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase()); // Search for user name
+
+        return dateMatch && searchMatch;
+      });
+
+      console.log("🔍 Filtered orders:", filtered.length);
+      return filtered;
+    } catch (error) {
+      console.error("❌ Error filtering orders:", error);
+      return [];
+    }
+  }, [orders, searchQuery, dateFilter]);
+
+  // Calculate and format total amount
+  const calculateTotalAmount = (order) => {
+    if (!order) return 0;
+
+    if (order.totalAmount !== undefined && order.totalAmount !== null) {
+      return Number(order.totalAmount) || 0;
+    }
+    if (
+      order.bills?.totalWithTax !== undefined &&
+      order.bills.totalWithTax !== null
+    ) {
+      return Number(order.bills.totalWithTax) || 0;
+    }
+    if (order.items && Array.isArray(order.items)) {
+      return order.items.reduce((total, item) => {
+        const price = Number(item.price || item.unitPrice || 0);
+        const quantity = Number(item.quantity || 1);
+        return total + price * quantity;
+      }, 0);
+    }
+    return 0;
+  };
+
+  // Format currency
+  const formatCurrency = (amount) => {
+    const numericAmount =
+      typeof amount === "number" ? amount : parseFloat(amount) || 0;
+    return new Intl.NumberFormat("en-PH", {
+      style: "currency",
+      currency: "PHP",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(numericAmount);
+  };
+
+  // Format date with time for better sorting visibility
+  const formatDate = (dateString) => {
+    if (!dateString) return "N/A";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "Invalid Date";
+
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    } catch (error) {
+      return "Invalid Date";
+    }
+  };
+
+  // Get items count
+  const getItemsCount = (order) => {
+    if (!order) return 0;
+
+    if (order.items && Array.isArray(order.items)) {
+      return order.items.reduce(
+        (total, item) => total + (Number(item.quantity) || 1),
+        0
       );
     }
-  }, [isError, error]);
+    return Number(order.itemsCount || order.quantity || 0);
+  };
 
-  // Handle scroll
+  // Get items preview text
+  const getItemsPreview = (order) => {
+    if (!order) return "No items";
+
+    if (!order.items || !Array.isArray(order.items)) {
+      return "No items";
+    }
+
+    const itemsText = order.items
+      .slice(0, 3)
+      .map((item) => {
+        const name = item.name || item.productName || "Unknown Item";
+        const quantity = item.quantity > 1 ? ` (${item.quantity})` : "";
+        return name + quantity;
+      })
+      .join(", ");
+
+    const totalItems = getItemsCount(order);
+    const shownItems = order.items
+      .slice(0, 3)
+      .reduce((total, item) => total + (Number(item.quantity) || 1), 0);
+
+    if (totalItems > shownItems) {
+      return `${itemsText} +${totalItems - shownItems} more`;
+    }
+
+    return itemsText;
+  };
+
+  const handleViewReceipt = (order) => {
+    setSelectedOrder(order);
+    setShowInvoice(true);
+  };
+
   const handleScroll = () => {
     if (scrollRef.current) {
       const scrollTop = scrollRef.current.scrollTop;
@@ -273,110 +358,60 @@ const Orders = () => {
     }
   };
 
-  // Helper functions
-  const formatCurrency = (amount) => {
-    const numericAmount = Number(amount) || 0;
-    return new Intl.NumberFormat("en-PH", {
-      style: "currency",
-      currency: "PHP",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(numericAmount);
+  // Navigate to dashboard
+  const navigateToDashboard = () => {
+    navigate("/dashboard");
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return "N/A";
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) return "Invalid Date";
-      return date.toLocaleDateString("en-US", {
-        month: "short",
-        day: "numeric",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      });
-    } catch (error) {
-      return "Invalid Date";
-    }
-  };
-
-  const getItemsCount = (order) => {
-    if (!order?.items || !Array.isArray(order.items)) return 0;
-    return order.items.reduce(
-      (total, item) => total + (Number(item.quantity) || 1),
-      0
-    );
-  };
-
-  const getItemsPreview = (order) => {
-    if (
-      !order?.items ||
-      !Array.isArray(order.items) ||
-      order.items.length === 0
-    ) {
-      return "No items";
-    }
-
-    const itemsText = order.items
-      .slice(0, 2)
-      .map((item) => {
-        const name = item.name || "Unknown Item";
-        const quantity = item.quantity > 1 ? ` (${item.quantity})` : "";
-        return name + quantity;
-      })
-      .join(", ");
-
-    const totalItems = getItemsCount(order);
-    if (order.items.length > 2) {
-      return `${itemsText} +${order.items.length - 2} more`;
-    }
-    return itemsText;
-  };
-
+  // Get user display name
   const getUserDisplayName = (order) => {
+    // Check for user name in different possible locations
     if (order.cashier) return order.cashier;
     if (order.user?.name) return order.user.name;
-    if (user?.name) return user.name;
+    if (order.userDetails?.name) return order.userDetails.name;
+    if (user.name && order.user?._id === user._id) return user.name;
     return "Admin";
   };
 
+  // Check if order has discount
   const hasDiscount = (order) => {
-    if (!order?.bills) return false;
-    return (
-      (order.bills.discount && order.bills.discount > 0) ||
-      (order.bills.pwdSeniorDiscount && order.bills.pwdSeniorDiscount > 0) ||
-      (order.bills.employeeDiscount && order.bills.employeeDiscount > 0) ||
-      (order.bills.shareholderDiscount &&
-        order.bills.shareholderDiscount > 0) ||
-      (order.bills.redemptionDiscount && order.bills.redemptionDiscount > 0)
-    );
+    if (!order) return false;
+
+    // Check for any discount in bills
+    if (order.bills) {
+      return (
+        (order.bills.discount && order.bills.discount > 0) ||
+        (order.bills.pwdSeniorDiscount && order.bills.pwdSeniorDiscount > 0) ||
+        (order.bills.employeeDiscount && order.bills.employeeDiscount > 0) ||
+        (order.bills.shareholderDiscount &&
+          order.bills.shareholderDiscount > 0) ||
+        (order.bills.redemptionDiscount && order.bills.redemptionDiscount > 0)
+      );
+    }
+
+    return false;
   };
 
+  // Get discount type
   const getDiscountType = (order) => {
-    if (!order?.bills) return null;
+    if (!order || !order.bills) return null;
+
     if (order.bills.pwdSeniorDiscount > 0) return "PWD/Senior";
     if (order.bills.employeeDiscount > 0) return "Employee";
     if (order.bills.shareholderDiscount > 0) return "Shareholder";
     if (order.bills.redemptionDiscount > 0) return "Redemption";
     if (order.bills.discount > 0) return "Discount";
+
     return null;
-  };
-
-  const handleViewReceipt = (order) => {
-    setSelectedOrder(order);
-    setShowInvoice(true);
-  };
-
-  const navigateToDashboard = () => {
-    navigate("/dashboard");
   };
 
   // Order Card Component
   const OrderCard = ({ order, onViewReceipt }) => {
     if (!order) return null;
 
-    const totalAmount = order.totalAmount || order.bills?.totalWithTax || 0;
+    const statusConfig = getStatusConfig();
+    const StatusIcon = statusConfig.icon;
+    const totalAmount = calculateTotalAmount(order);
     const itemsCount = getItemsCount(order);
     const itemsPreview = getItemsPreview(order);
     const userDisplayName = getUserDisplayName(order);
@@ -390,13 +425,15 @@ const Orders = () => {
           <div className="flex items-center gap-2">
             <FaReceipt className="text-gray-600 text-sm" />
             <span className="font-mono text-xs text-gray-700">
-              #{order._id?.slice(-8) || order.orderNumber?.slice(-8) || "N/A"}
+              #{order._id?.slice(-8) || "N/A"}
             </span>
           </div>
           <div className="flex items-center gap-1">
-            <FaCheckCircle className="text-xs text-green-500" />
-            <span className="text-xs font-medium text-green-600">
-              Completed
+            <StatusIcon className={`text-xs ${statusConfig.color}`} />
+            <span
+              className={`text-xs font-medium capitalize ${statusConfig.color}`}
+            >
+              {statusConfig.text}
             </span>
           </div>
         </div>
@@ -409,7 +446,7 @@ const Orders = () => {
           </span>
         </div>
 
-        {/* Cashier Info */}
+        {/* User/Cashier Info */}
         <div className="flex items-center gap-2 mb-3 text-xs text-gray-600">
           <span>Cashier:</span>
           <span className="font-medium text-gray-800">{userDisplayName}</span>
@@ -419,7 +456,7 @@ const Orders = () => {
         {discountExists && discountType && (
           <div className="mb-3">
             <span className="bg-yellow-100 text-yellow-800 text-[10px] px-2 py-1 rounded-full font-medium">
-              {discountType} Discount
+              {discountType} Discount Applied
             </span>
           </div>
         )}
@@ -450,10 +487,10 @@ const Orders = () => {
         </div>
 
         {/* Items Preview */}
-        {itemsCount > 0 && (
+        {((order.items && order.items.length > 0) || itemsCount > 0) && (
           <div className="mt-2 pt-2 border-t border-gray-200 mb-3">
             <div className="text-xs text-gray-600 mb-1">
-              Items ({itemsCount})
+              Items {itemsCount > 0 && `(${itemsCount})`}
             </div>
             <div className="text-xs text-gray-800 line-clamp-2">
               {itemsPreview}
@@ -485,19 +522,23 @@ const Orders = () => {
             <h1 className="text-[#333333] text-xl sm:text-2xl font-bold tracking-wider">
               Orders
             </h1>
+            {user.role?.toLowerCase() !== "admin" && (
+              <span className="bg-purple-100 text-purple-800 px-2 py-1 rounded-full text-xs font-medium">
+                Your Orders
+              </span>
+            )}
             <span
               className={`px-2 py-1 rounded-full text-xs font-medium ${
-                user?.role?.toLowerCase() === "admin"
+                user.role?.toLowerCase() === "admin"
                   ? "bg-green-100 text-green-800"
                   : "bg-blue-100 text-blue-800"
               }`}
             >
-              {user?.role?.toLowerCase() === "admin"
+              {user.role?.toLowerCase() === "admin"
                 ? "Admin View"
                 : "User View"}
             </span>
           </div>
-
           <div className="flex flex-wrap gap-2 md:gap-4 items-center">
             {/* Dashboard Button */}
             <button
@@ -529,9 +570,6 @@ const Orders = () => {
             {/* Metrics Display */}
             <div className="flex flex-wrap gap-2 md:gap-4">
               <span className="text-xs sm:text-sm font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">
-                Orders: {filteredOrders.length}
-              </span>
-              <span className="text-xs sm:text-sm font-semibold text-blue-700 bg-blue-50 px-3 py-1 rounded-full">
                 Sales: {formatCurrency(totalSales)}
               </span>
             </div>
@@ -548,14 +586,6 @@ const Orders = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="bg-transparent outline-none text-black w-full text-xs sm:text-sm placeholder-gray-500"
           />
-          {searchQuery && (
-            <button
-              onClick={() => setSearchQuery("")}
-              className="text-gray-500 hover:text-gray-700 text-xs"
-            >
-              Clear
-            </button>
-          )}
         </div>
       </div>
 
@@ -565,80 +595,49 @@ const Orders = () => {
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 py-4 mb-16 md:mb-6"
       >
-        {isLoading ? (
-          <div className="flex justify-center items-center py-12">
-            <div className="text-center bg-white rounded-lg p-8 shadow-md">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600 text-sm">Loading orders...</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 auto-rows-fr">
+          {isLoading ? (
+            <div className="col-span-full flex justify-center items-center py-8">
+              <div className="text-center bg-white rounded-lg p-6">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-400 mx-auto mb-2"></div>
+                <p className="text-gray-500 text-sm">Loading orders...</p>
+              </div>
             </div>
-          </div>
-        ) : isError ? (
-          <div className="flex justify-center items-center py-12">
-            <div className="text-center bg-red-50 border border-red-200 rounded-lg p-8 shadow-md max-w-md">
-              <FaExclamationCircle className="text-red-500 text-3xl mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-red-700 mb-2">
-                Failed to Load Orders
-              </h3>
-              <p className="text-red-600 text-sm mb-4">
-                {error?.message ||
-                  "Unable to fetch orders. Please check your connection."}
-              </p>
-              <button
-                onClick={() => window.location.reload()}
-                className="bg-red-600 text-white px-4 py-2 rounded text-sm font-medium hover:bg-red-700 transition-colors"
-              >
-                Retry
-              </button>
-            </div>
-          </div>
-        ) : filteredOrders.length > 0 ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 auto-rows-fr">
-            {filteredOrders.map((order) => (
+          ) : filteredOrders.length > 0 ? (
+            filteredOrders.map((order) => (
               <OrderCard
                 key={order._id || Math.random().toString()}
                 order={order}
                 onViewReceipt={handleViewReceipt}
               />
-            ))}
-          </div>
-        ) : (
-          <div className="flex justify-center items-center py-12">
-            <div className="text-center bg-white border border-gray-200 rounded-lg p-8 shadow-md max-w-md">
-              <FaReceipt className="text-gray-400 text-3xl mx-auto mb-4" />
-              <h3 className="text-lg font-semibold text-gray-700 mb-2">
-                No Orders Found
-              </h3>
-              <p className="text-gray-600 text-sm mb-4">
-                {searchQuery || dateFilter !== "all"
-                  ? "No orders match your search criteria."
-                  : user?.role?.toLowerCase() === "admin"
-                  ? "No orders have been placed yet."
-                  : "You haven't placed any orders yet."}
-              </p>
-              {(searchQuery || dateFilter !== "all") && (
-                <button
-                  onClick={() => {
-                    setSearchQuery("");
-                    setDateFilter("all");
-                  }}
-                  className="text-blue-600 text-sm font-medium hover:text-blue-800 transition-colors"
-                >
-                  Clear all filters
-                </button>
-              )}
+            ))
+          ) : (
+            <div className="col-span-full flex justify-center items-center py-8">
+              <div className="text-center bg-white rounded-lg p-6">
+                <FaReceipt className="mx-auto text-gray-400 text-2xl mb-2" />
+                <p className="text-gray-500 text-sm">
+                  {searchQuery || dateFilter !== "today"
+                    ? "No orders found matching your criteria"
+                    : user.role?.toLowerCase() === "admin"
+                    ? "No orders available"
+                    : "You haven't placed any orders yet"}
+                </p>
+                {(searchQuery || dateFilter !== "today") && (
+                  <button
+                    onClick={() => {
+                      setSearchQuery("");
+                      setDateFilter("today");
+                    }}
+                    className="text-[#025cca] text-xs mt-1 hover:underline"
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
-
-      {/* Debug Info (Dev only) */}
-      {process.env.NODE_ENV === "development" && (
-        <div className="fixed bottom-20 right-4 bg-gray-900 text-white p-2 rounded text-xs opacity-75 max-w-xs">
-          <div>Orders: {filteredOrders.length}</div>
-          <div>User ID: {user?._id?.slice(-8) || "none"}</div>
-          <div>Role: {user?.role || "none"}</div>
+          )}
         </div>
-      )}
+      </div>
 
       {/* Scroll to Top */}
       {showScrollButton && (
@@ -652,22 +651,7 @@ const Orders = () => {
 
       {/* Invoice Modal */}
       {showInvoice && selectedOrder && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg w-full max-w-4xl max-h-[90vh] overflow-hidden">
-            <div className="p-4 border-b flex justify-between items-center">
-              <h2 className="text-xl font-bold">Order Receipt</h2>
-              <button
-                onClick={() => setShowInvoice(false)}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="overflow-y-auto max-h-[calc(90vh-80px)]">
-              <Invoice order={selectedOrder} />
-            </div>
-          </div>
-        </div>
+        <Invoice orderInfo={selectedOrder} setShowInvoice={setShowInvoice} />
       )}
 
       {/* Bottom Navigation */}
