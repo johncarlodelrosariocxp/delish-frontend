@@ -50,7 +50,6 @@ const Bill = ({ orderId }) => {
   const currentOrder =
     orders.find((order) => order.id === orderId) ||
     orders.find((order) => order.id === activeOrderId);
-  const customerData = currentOrder?.customer || {};
   const cartData = currentOrder?.items || [];
 
   const vatRate = 12;
@@ -176,7 +175,15 @@ const Bill = ({ orderId }) => {
       name.includes("softdrink") ||
       name.includes("beverage") ||
       name.includes("cola") ||
-      name.includes("lemonade")
+      name.includes("lemonade") ||
+      name.includes("frappe") ||
+      name.includes("latte") ||
+      name.includes("mocha") ||
+      name.includes("americano") ||
+      name.includes("cappuccino") ||
+      name.includes("macchiato") ||
+      name.includes("iced tea") ||
+      name.includes("espresso")
     );
   };
 
@@ -206,8 +213,27 @@ const Bill = ({ orderId }) => {
       name.includes("entree") ||
       name.includes("dessert") ||
       name.includes("cake") ||
+      name.includes("cheesecake") ||
       name.includes("pie") ||
-      name.includes("ice cream")
+      name.includes("ice cream") ||
+      name.includes("breakfast") ||
+      name.includes("omelette") ||
+      name.includes("longganisa") ||
+      name.includes("tapa") ||
+      name.includes("tocino") ||
+      name.includes("bacon") ||
+      name.includes("spam") ||
+      name.includes("embutido") ||
+      name.includes("shanghai") ||
+      name.includes("hungarian") ||
+      name.includes("carbonara") ||
+      name.includes("pesto") ||
+      name.includes("snack") ||
+      name.includes("wedge") ||
+      name.includes("potato") ||
+      name.includes("nachos") ||
+      name.includes("bento") ||
+      name.includes("mini")
     );
   };
 
@@ -440,22 +466,6 @@ const Bill = ({ orderId }) => {
   };
 
   const discountedItemsInfo = getDiscountedItemsInfo();
-
-  // Get eligible items count for PWD/Senior discount
-  const getEligibleItemsCount = () => {
-    const drinks = combinedCart.filter((item) => isDrinkItem(item));
-    const foods = combinedCart.filter((item) => isFoodItem(item));
-    const totalEligible = drinks.length + foods.length;
-
-    return {
-      drinks,
-      foods,
-      totalEligible,
-      maxDrinks: Math.min(drinks.length, 1),
-      maxFoods: Math.min(foods.length, 2),
-      maxTotal: Math.min(totalEligible, 3),
-    };
-  };
 
   // Handle PWD/Senior discount
   const handlePwdSeniorDiscount = () => {
@@ -923,25 +933,6 @@ const Bill = ({ orderId }) => {
 
       setOrderInfo(invoiceOrderInfo);
 
-      // Update table status
-      const tableId =
-        customerData.tables?.[0]?.tableId ||
-        customerData.table?.tableId ||
-        customerData.tableId ||
-        null;
-
-      if (tableId) {
-        const tableData = {
-          status: "Booked",
-          orderId: data._id,
-          tableId: tableId,
-        };
-
-        updateTable(tableData).catch((error) => {
-          console.error("Table update failed:", error);
-        });
-      }
-
       // MARK ORDER AS COMPLETED IN REDUX
       if (currentOrder) {
         console.log("Dispatching completeOrder for:", currentOrder.id);
@@ -1049,12 +1040,6 @@ const Bill = ({ orderId }) => {
       dispatch(processOrder(currentOrder.id));
     }
 
-    const tableId =
-      customerData.tables?.[0]?.tableId ||
-      customerData.table?.tableId ||
-      customerData.tableId ||
-      null;
-
     // Prepare bills data
     const bills = {
       total: Number(totals.baseGrossTotal.toFixed(2)),
@@ -1085,7 +1070,7 @@ const Bill = ({ orderId }) => {
         originalPrice: safeNumber(item.pricePerQuantity),
         isRedeemed: Boolean(item.isRedeemed),
         isPwdSeniorDiscounted: isPwdSeniorDiscounted,
-        category: item.category || "general",
+        category: isDrinkItem(item) ? "drink" : "food", // Only food or drink
         id: item.id || Date.now().toString(),
       };
     });
@@ -1093,20 +1078,13 @@ const Bill = ({ orderId }) => {
     // Get cashier name
     const cashierName = user?.name || "Admin";
 
-    // Prepare COMPLETE order data
+    // Prepare COMPLETE order data - NO CUSTOMER DETAILS REQUIRED
     const orderData = {
-      customerDetails: {
-        name:
-          customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer",
-        type: customerType,
-        status: customerType === "walk-in" ? "Dine-in" : "Take-out",
-        phone: "",
-        guests: 1,
-      },
+      // NO customerDetails field - completely removed
       orderStatus: "Completed",
       bills: bills,
       items: items,
-      table: tableId,
+      table: null,
       paymentMethod: paymentMethod,
       customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
       pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
@@ -1133,103 +1111,6 @@ const Bill = ({ orderId }) => {
       // Digital payment methods - directly submit order
       console.log(`Processing ${paymentMethod} order...`);
       orderMutation.mutate(orderData);
-    } else if (paymentMethod === "Online") {
-      // Legacy online payment
-      try {
-        console.log("Loading Razorpay script...");
-        const loaded = await loadScript(
-          "https://checkout.razorpay.com/v1/checkout.js"
-        );
-
-        if (!loaded) {
-          enqueueSnackbar("Razorpay SDK failed to load!", { variant: "error" });
-          setIsProcessing(false);
-          if (currentOrder) {
-            dispatch(resetOrderStatus(currentOrder.id));
-          }
-          return;
-        }
-
-        console.log("Creating Razorpay order...");
-        const reqData = {
-          amount: Math.round(totals.total * 100),
-          currency: "INR",
-        };
-
-        const { data } = await createOrderRazorpay(reqData);
-        console.log("Razorpay order created:", data);
-
-        if (!data || !data.order) {
-          throw new Error("Invalid response from Razorpay");
-        }
-
-        const options = {
-          key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-          amount: data.order.amount,
-          currency: data.order.currency,
-          name: "DELISH",
-          description: "Restaurant Order Payment",
-          order_id: data.order.id,
-          handler: async (response) => {
-            console.log("Payment successful:", response);
-            try {
-              const verification = await verifyPaymentRazorpay(response);
-              console.log("Payment verified:", verification);
-
-              enqueueSnackbar("Payment successful! Placing order...", {
-                variant: "success",
-              });
-
-              // Add payment data to order
-              orderData.paymentData = {
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              };
-
-              // Submit order
-              orderMutation.mutate(orderData);
-            } catch (verificationError) {
-              console.error("Payment verification failed:", verificationError);
-              enqueueSnackbar("Payment verification failed!", {
-                variant: "error",
-              });
-              setIsProcessing(false);
-              if (currentOrder) {
-                dispatch(resetOrderStatus(currentOrder.id));
-              }
-            }
-          },
-          prefill: {
-            name: "Customer",
-            email: "",
-            contact: "",
-          },
-          theme: { color: "#2563eb" },
-          modal: {
-            ondismiss: function () {
-              enqueueSnackbar("Payment cancelled", { variant: "info" });
-              setIsProcessing(false);
-              if (currentOrder) {
-                dispatch(resetOrderStatus(currentOrder.id));
-              }
-            },
-          },
-        };
-
-        const razorpay = new window.Razorpay(options);
-        razorpay.open();
-      } catch (err) {
-        console.error("Razorpay error:", err);
-        enqueueSnackbar(
-          err.response?.data?.message || "Payment initialization failed!",
-          { variant: "error" }
-        );
-        setIsProcessing(false);
-        if (currentOrder) {
-          dispatch(resetOrderStatus(currentOrder.id));
-        }
-      }
     } else {
       // Cash payment - directly submit order
       console.log("Processing cash order...");
@@ -2011,12 +1892,7 @@ const Bill = ({ orderId }) => {
         <div className="flex flex-col sm:flex-row gap-3 mt-6">
           <button
             onClick={handlePlaceOrder}
-            disabled={
-              isProcessing ||
-              !paymentMethod ||
-              cartData.length === 0 ||
-              !customerType
-            }
+            disabled={isProcessing || !paymentMethod || cartData.length === 0}
             className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
             {isProcessing ? (
