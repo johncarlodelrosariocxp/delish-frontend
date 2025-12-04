@@ -3,11 +3,450 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/delish-logo.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Delish</title>
+    <link rel="manifest" href="/manifest.json" />
+
+    <!-- Responsive viewport settings -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#2563eb" />
+    <meta name="description" content="Delish Restaurant Point of Sale System" />
+
+    <!-- Apple Specific Meta Tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Delish POS" />
+    <link rel="apple-touch-icon" href="/delish-logo.svg" />
+
+    <!-- Microsoft Specific Meta Tags -->
+    <meta name="msapplication-TileColor" content="#2563eb" />
+    <meta name="msapplication-TileImage" content="/delish-logo.svg" />
+
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Delish Restaurant POS" />
+    <meta
+      property="og:description"
+      content="Delish Restaurant Point of Sale System"
+    />
+    <meta property="og:image" content="/delish-logo.svg" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="Delish Restaurant POS" />
+    <meta
+      name="twitter:description"
+      content="Delish Restaurant Point of Sale System"
+    />
+    <meta name="twitter:image" content="/delish-logo.svg" />
+
+    <title>Delish POS</title>
+
+    <!-- PWA and Data Persistence Scripts -->
+    <script>
+      // Service Worker Registration
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker
+            .register("/sw.js", {
+              scope: "/",
+              updateViaCache: "none",
+            })
+            .then(
+              function (registration) {
+                console.log(
+                  "ServiceWorker registration successful with scope:",
+                  registration.scope
+                );
+
+                // Check for updates
+                registration.addEventListener("updatefound", function () {
+                  const newWorker = registration.installing;
+
+                  newWorker.addEventListener("statechange", function () {
+                    if (
+                      newWorker.state === "installed" &&
+                      navigator.serviceWorker.controller
+                    ) {
+                      // New update available
+                      console.log("New version available!");
+
+                      // Create update notification
+                      if (
+                        confirm(
+                          "New version available! Reload to update the app?"
+                        )
+                      ) {
+                        window.location.reload();
+                      }
+                    }
+                  });
+                });
+              },
+              function (err) {
+                console.log("ServiceWorker registration failed:", err);
+              }
+            );
+        });
+      }
+
+      // Data Persistence and Refresh Prevention
+      let hasUnsavedChanges = false;
+      let isDataDirty = false;
+      let emergencySaveTimeout = null;
+
+      // Function to mark data as changed (call this from your React app)
+      window.markDataChanged = function () {
+        isDataDirty = true;
+        hasUnsavedChanges = true;
+
+        // Auto-save after 2 seconds of inactivity
+        clearTimeout(emergencySaveTimeout);
+        emergencySaveTimeout = setTimeout(function () {
+          if (isDataDirty) {
+            window.saveCurrentState();
+            isDataDirty = false;
+          }
+        }, 2000);
+      };
+
+      // Function to save current state (implement in your React app)
+      window.saveCurrentState = function () {
+        // This will be implemented in React
+        console.log("Saving current state...");
+        // Dispatch custom event that React can listen to
+        window.dispatchEvent(new CustomEvent("saveAppState"));
+      };
+
+      // Prevent accidental refresh when there are unsaved changes
+      window.addEventListener("beforeunload", function (e) {
+        if (hasUnsavedChanges) {
+          // Try to save before leaving
+          window.saveCurrentState();
+
+          // Show confirmation dialog
+          e.preventDefault();
+          e.returnValue =
+            "You have unsaved changes. Are you sure you want to leave?";
+          return e.returnValue;
+        }
+      });
+
+      // Save when page becomes hidden (mobile app switching)
+      document.addEventListener("visibilitychange", function () {
+        if (document.visibilityState === "hidden" && hasUnsavedChanges) {
+          window.saveCurrentState();
+          console.log("Auto-saved on page hide");
+        }
+      });
+
+      // Save when window loses focus
+      window.addEventListener("blur", function () {
+        if (hasUnsavedChanges) {
+          window.saveCurrentState();
+          console.log("Auto-saved on window blur");
+        }
+      });
+
+      // PWA Installation Detection
+      window.addEventListener("appinstalled", function (evt) {
+        console.log("App was successfully installed");
+        localStorage.setItem("app_installed", "true");
+        localStorage.setItem("install_date", new Date().toISOString());
+
+        // Send to analytics if needed
+        if (window.gtag) {
+          window.gtag("event", "app_installed");
+        }
+      });
+
+      // Detect if running in standalone mode (installed PWA)
+      function isRunningAsPWA() {
+        return (
+          window.matchMedia("(display-mode: standalone)").matches ||
+          window.navigator.standalone ||
+          document.referrer.includes("android-app://")
+        );
+      }
+
+      // Add class to body if running as PWA
+      if (isRunningAsPWA()) {
+        document.documentElement.classList.add("pwa-standalone");
+        console.log("Running in standalone PWA mode");
+      }
+
+      // Network status detection
+      window.addEventListener("online", function () {
+        console.log("App is online");
+        document.documentElement.classList.remove("offline");
+        document.documentElement.classList.add("online");
+
+        // Sync data if needed
+        if (typeof window.syncData === "function") {
+          window.syncData();
+        }
+      });
+
+      window.addEventListener("offline", function () {
+        console.log("App is offline");
+        document.documentElement.classList.remove("online");
+        document.documentElement.classList.add("offline");
+      });
+
+      // Initialize network status
+      if (navigator.onLine) {
+        document.documentElement.classList.add("online");
+      } else {
+        document.documentElement.classList.add("offline");
+      }
+
+      // Clear data flag on successful save
+      window.addEventListener("dataSaved", function () {
+        hasUnsavedChanges = false;
+        isDataDirty = false;
+        console.log("Data saved successfully");
+      });
+
+      // Install prompt handler
+      let deferredPrompt;
+
+      window.addEventListener("beforeinstallprompt", function (e) {
+        // Prevent Chrome 67 and earlier from automatically showing the prompt
+        e.preventDefault();
+        // Stash the event so it can be triggered later
+        deferredPrompt = e;
+
+        // Show install button after 5 seconds
+        setTimeout(function () {
+          showInstallPrompt();
+        }, 5000);
+      });
+
+      function showInstallPrompt() {
+        if (!deferredPrompt || isRunningAsPWA()) return;
+
+        // Create install button
+        const installButton = document.createElement("button");
+        installButton.id = "pwa-install-button";
+        installButton.innerHTML = "📱 Install App";
+        installButton.style.cssText = `
+          position: fixed;
+          bottom: 20px;
+          right: 20px;
+          padding: 12px 24px;
+          background: linear-gradient(135deg, #2563eb, #1d4ed8);
+          color: white;
+          border: none;
+          border-radius: 25px;
+          cursor: pointer;
+          font-weight: bold;
+          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+          z-index: 10000;
+          font-size: 14px;
+          animation: pulse 2s infinite;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        `;
+
+        // Add keyframes for pulse animation
+        const style = document.createElement("style");
+        style.textContent = `
+          @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+            50% { transform: scale(1.05); box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4); }
+            100% { transform: scale(1); box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3); }
+          }
+        `;
+        document.head.appendChild(style);
+
+        installButton.onclick = async function () {
+          if (deferredPrompt) {
+            // Show the install prompt
+            deferredPrompt.prompt();
+
+            // Wait for the user to respond to the prompt
+            const { outcome } = await deferredPrompt.userChoice;
+
+            if (outcome === "accepted") {
+              console.log("User accepted the install prompt");
+              installButton.remove();
+            } else {
+              console.log("User dismissed the install prompt");
+              // Hide button for 24 hours if user declines
+              localStorage.setItem("install_prompt_declined", Date.now());
+            }
+
+            // Clear the saved prompt since it can't be used again
+            deferredPrompt = null;
+          }
+        };
+
+        // Check if user declined recently
+        const declinedTime = localStorage.getItem("install_prompt_declined");
+        if (declinedTime) {
+          const hoursSinceDecline =
+            (Date.now() - parseInt(declinedTime)) / (1000 * 60 * 60);
+          if (hoursSinceDecline < 24) {
+            return; // Don't show if declined within 24 hours
+          }
+        }
+
+        // Don't show if already installed
+        if (!isRunningAsPWA()) {
+          document.body.appendChild(installButton);
+
+          // Auto-remove after 30 seconds
+          setTimeout(function () {
+            if (installButton.parentNode) {
+              installButton.remove();
+            }
+          }, 30000);
+        }
+      }
+
+      // Load initial data from localStorage
+      window.addEventListener("DOMContentLoaded", function () {
+        const savedState = localStorage.getItem("delish_pos_state");
+        if (savedState) {
+          console.log("Found saved state in localStorage");
+          // Dispatch event that React can listen to
+          window.dispatchEvent(
+            new CustomEvent("loadAppState", {
+              detail: JSON.parse(savedState),
+            })
+          );
+        }
+      });
+    </script>
+
+    <style>
+      /* Prevent text selection on mobile for better UX */
+      * {
+        -webkit-touch-callout: none;
+        -webkit-user-select: none;
+        -khtml-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+        user-select: none;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      /* Allow text selection in input fields and textareas */
+      input,
+      textarea,
+      [contenteditable="true"] {
+        -webkit-user-select: text;
+        -khtml-user-select: text;
+        -moz-user-select: text;
+        -ms-user-select: text;
+        user-select: text;
+      }
+
+      /* PWA standalone mode adjustments */
+      .pwa-standalone body {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+      }
+
+      /* Offline indicator styles */
+      .offline::before {
+        content: "⚠️ Offline";
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: #ef4444;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-size: 12px;
+        z-index: 9999;
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      .online::before {
+        content: "✓ Online";
+        position: fixed;
+        top: 10px;
+        right: 10px;
+        background: #10b981;
+        color: white;
+        padding: 5px 10px;
+        border-radius: 5px;
+        font-size: 12px;
+        z-index: 9999;
+        animation: fadeIn 0.3s ease-in;
+      }
+
+      @keyframes fadeIn {
+        from {
+          opacity: 0;
+          transform: translateY(-10px);
+        }
+        to {
+          opacity: 1;
+          transform: translateY(0);
+        }
+      }
+
+      /* Prevent body scrolling when modal is open */
+      body.no-scroll {
+        overflow: hidden;
+        position: fixed;
+        width: 100%;
+        height: 100%;
+      }
+
+      /* Better touch targets for mobile */
+      button,
+      [role="button"],
+      input[type="submit"],
+      input[type="button"] {
+        min-height: 44px;
+        min-width: 44px;
+      }
+
+      /* Improve mobile scrolling */
+      * {
+        -webkit-overflow-scrolling: touch;
+      }
+
+      /* Smooth transitions */
+      * {
+        transition: background-color 0.3s ease, border-color 0.3s ease;
+      }
+
+      /* Hide install button in standalone mode */
+      .pwa-standalone #pwa-install-button {
+        display: none !important;
+      }
+    </style>
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
+
+    <!-- Fallback for unsupported browsers -->
+    <noscript>
+      <style>
+        #root {
+          display: none;
+        }
+        body::before {
+          content: "JavaScript is required to run Delish POS. Please enable JavaScript in your browser settings.";
+          display: block;
+          padding: 20px;
+          text-align: center;
+          font-size: 18px;
+          color: #666;
+        }
+      </style>
+    </noscript>
   </body>
 </html>
