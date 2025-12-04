@@ -84,44 +84,21 @@ const Orders = () => {
     };
   };
 
-  // ✅ FIXED: Handle data safely and sort by date (newest first)
+  // ✅ FIXED: Handle data safely
   const orders = React.useMemo(() => {
     try {
       const ordersData = resData?.data?.data;
-      let ordersArray = [];
-
       if (Array.isArray(ordersData)) {
-        ordersArray = ordersData;
+        console.log("📦 Orders data (array):", ordersData.length);
+        return ordersData;
       } else if (ordersData && typeof ordersData === "object") {
         // Handle case where data might be an object with orders property
-        ordersArray = ordersData.orders || ordersData.data || [];
+        const ordersArray = ordersData.orders || ordersData.data || [];
+        if (Array.isArray(ordersArray)) {
+          console.log("📦 Orders data (from object):", ordersArray.length);
+          return ordersArray;
+        }
       }
-
-      if (Array.isArray(ordersArray)) {
-        console.log("📦 Orders data (before sorting):", ordersArray.length);
-
-        // Sort orders by date (newest first)
-        const sortedOrders = [...ordersArray].sort((a, b) => {
-          // Get dates from various possible properties
-          const getDate = (order) => {
-            if (order.createdAt) return new Date(order.createdAt);
-            if (order.orderDate) return new Date(order.orderDate);
-            if (order.date) return new Date(order.date);
-            if (order.updatedAt) return new Date(order.updatedAt);
-            return new Date(0); // Default to epoch if no date found
-          };
-
-          const dateA = getDate(a);
-          const dateB = getDate(b);
-
-          // Sort in descending order (newest first)
-          return dateB.getTime() - dateA.getTime();
-        });
-
-        console.log("📦 Orders sorted (newest first)");
-        return sortedOrders;
-      }
-
       console.log("📦 No valid orders data found, returning empty array");
       return [];
     } catch (error) {
