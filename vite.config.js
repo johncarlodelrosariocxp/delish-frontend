@@ -114,7 +114,6 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    // CRITICAL: This makes refresh work in development
     hmr: {
       overlay: true,
     },
@@ -144,9 +143,10 @@ export default defineConfig({
       },
     },
   },
-  // CRITICAL: This tells Vite to handle all routes in production
   preview: {
     port: 4173,
     host: true,
   },
+  // Key fix: Add this for SPA routing
+  base: "/",
 });
