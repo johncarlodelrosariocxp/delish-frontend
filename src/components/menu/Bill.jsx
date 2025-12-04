@@ -16,6 +16,18 @@ import { useMutation } from "@tanstack/react-query";
 import Invoice from "../invoice/Invoice";
 import { useNavigate } from "react-router-dom";
 
+// Icons
+const IconBluetooth = ({ className }) => (
+  <svg
+    className={className}
+    fill="currentColor"
+    viewBox="0 0 24 24"
+    xmlns="http://www.w3.org/2000/svg"
+  >
+    <path d="M14.88 16.29L13 18.17v-3.76l1.88 1.88zM13 5.83l1.88 1.88L13 9.59V5.83zm8.71 4.71L12 2h-1v7.59L6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 11 14.41V22h1l9.71-9.71-5.3-5.29 5.3-5.29z" />
+  </svg>
+);
+
 // Bluetooth connection manager
 class BluetoothPrinterManager {
   constructor() {
@@ -23,11 +35,11 @@ class BluetoothPrinterManager {
     this.server = null;
     this.writeCharacteristic = null;
     this.isConnected = false;
-    this.connectionPromise = null;
     this.reconnectAttempts = 0;
-    this.maxReconnectAttempts = 5;
+    this.maxReconnectAttempts = 3;
     this.reconnectDelay = 2000;
     this.reconnectTimer = null;
+    this.autoReconnectEnabled = true;
   }
 
   isBluetoothSupported() {
@@ -66,7 +78,9 @@ class BluetoothPrinterManager {
 
       if (onDisconnect) onDisconnect();
 
-      this.attemptReconnection(onDisconnect);
+      if (this.autoReconnectEnabled) {
+        this.attemptReconnection(onDisconnect);
+      }
     });
   }
 
@@ -97,10 +111,13 @@ class BluetoothPrinterManager {
 
       if (savedDevice) {
         await this.connectToDevice(savedDevice, onDisconnect);
+        this.reconnectAttempts = 0;
       }
     } catch (error) {
       console.error("Reconnection failed:", error);
-      this.attemptReconnection(onDisconnect);
+      if (this.autoReconnectEnabled) {
+        this.attemptReconnection(onDisconnect);
+      }
     }
   }
 
@@ -213,6 +230,14 @@ class BluetoothPrinterManager {
       this.reconnectTimer = null;
     }
   }
+
+  disableAutoReconnect() {
+    this.autoReconnectEnabled = false;
+  }
+
+  enableAutoReconnect() {
+    this.autoReconnectEnabled = true;
+  }
 }
 
 const printerManager = new BluetoothPrinterManager();
@@ -270,6 +295,19 @@ const Bill = ({ orderId }) => {
   const [printerName, setPrinterName] = useState("");
   const [pendingPrintOrder, setPendingPrintOrder] = useState(null);
   const [autoPrintRetryCount, setAutoPrintRetryCount] = useState(0);
+  const [hasAttemptedAutoConnect, setHasAttemptedAutoConnect] = useState(false);
+
+  // Combined payment state
+  const [showCombinedPaymentModal, setShowCombinedPaymentModal] =
+    useState(false);
+  const [onlinePaymentAmount, setOnlinePaymentAmount] = useState(0);
+  const [selectedOnlineMethod, setSelectedOnlineMethod] = useState(null);
+  const [combinedPayment, setCombinedPayment] = useState({
+    cashAmount: 0,
+    onlineAmount: 0,
+    onlineMethod: null,
+    total: 0,
+  });
 
   const connectionCheckRef = useRef(null);
 
@@ -296,17 +334,16 @@ const Bill = ({ orderId }) => {
   // Auto-print effect
   useEffect(() => {
     const handleAutoPrint = async () => {
-      if (
-        autoPrintEnabled &&
-        pendingPrintOrder &&
-        !isPrinting &&
-        isPrinterConnected
-      ) {
+      if (autoPrintEnabled && pendingPrintOrder && !isPrinting) {
         console.log("=== AUTO-PRINT TRIGGERED ===");
         console.log("Order to print:", pendingPrintOrder);
 
         try {
           setIsPrinting(true);
+
+          // Wait a moment to ensure order is processed
+          await new Promise((resolve) => setTimeout(resolve, 500));
+
           await printReceipt(pendingPrintOrder);
           enqueueSnackbar("Receipt auto-printed successfully!", {
             variant: "success",
@@ -339,15 +376,9 @@ const Bill = ({ orderId }) => {
     };
 
     handleAutoPrint();
-  }, [
-    pendingPrintOrder,
-    autoPrintEnabled,
-    isPrinting,
-    isPrinterConnected,
-    autoPrintRetryCount,
-  ]);
+  }, [pendingPrintOrder, autoPrintEnabled, isPrinting, autoPrintRetryCount]);
 
-  // Initialize Bluetooth connection
+  // Initialize Bluetooth connection - Improved auto-connect
   useEffect(() => {
     const initializeBluetooth = async () => {
       if (!printerManager.isBluetoothSupported()) {
@@ -358,26 +389,43 @@ const Bill = ({ orderId }) => {
         return;
       }
 
+      if (hasAttemptedAutoConnect) {
+        return;
+      }
+
       try {
-        setIsConnecting(true);
         const { deviceId, deviceName } = printerManager.getSavedPrinter();
 
         if (deviceId) {
           console.log("Found saved printer:", deviceName);
           setPrinterName(deviceName || "Bluetooth Printer");
-          await attemptReconnection();
-        } else {
-          console.log("No saved printer found");
-          setIsConnecting(false);
+          setHasAttemptedAutoConnect(true);
+
+          // Auto-connect in background without showing loading
+          setTimeout(async () => {
+            try {
+              await attemptReconnection();
+            } catch (error) {
+              console.log("Background auto-connect failed:", error);
+            }
+          }, 1000);
         }
       } catch (error) {
         console.error("Bluetooth initialization failed:", error);
-        setIsConnecting(false);
       }
     };
 
     initializeBluetooth();
-    connectionCheckRef.current = setInterval(checkConnectionStatus, 5000);
+
+    // Check connection status periodically
+    connectionCheckRef.current = setInterval(() => {
+      const connected = printerManager.isConnected;
+      setIsPrinterConnected(connected);
+
+      if (!connected && !isConnecting) {
+        attemptReconnection();
+      }
+    }, 10000); // Check every 10 seconds
 
     return () => {
       if (connectionCheckRef.current) {
@@ -385,15 +433,6 @@ const Bill = ({ orderId }) => {
       }
     };
   }, []);
-
-  const checkConnectionStatus = () => {
-    const connected = printerManager.isConnected;
-    setIsPrinterConnected(connected);
-
-    if (!connected && printerManager.getSavedPrinter().deviceId) {
-      attemptReconnection();
-    }
-  };
 
   const attemptReconnection = async () => {
     if (isConnecting || printerManager.isConnected) return;
@@ -431,10 +470,6 @@ const Bill = ({ orderId }) => {
     enqueueSnackbar("Printer disconnected. Attempting to reconnect...", {
       variant: "warning",
     });
-
-    setTimeout(() => {
-      attemptReconnection();
-    }, 2000);
   };
 
   const connectToPrinter = async () => {
@@ -508,11 +543,17 @@ const Bill = ({ orderId }) => {
   };
 
   const disconnectBluetooth = () => {
+    printerManager.disableAutoReconnect();
     printerManager.disconnect();
     setIsPrinterConnected(false);
     setPrinterName("");
 
     enqueueSnackbar("Disconnected from printer", { variant: "info" });
+
+    // Re-enable auto-reconnect after 5 seconds
+    setTimeout(() => {
+      printerManager.enableAutoReconnect();
+    }, 5000);
   };
 
   const ensurePrinterConnected = async () => {
@@ -591,7 +632,8 @@ const Bill = ({ orderId }) => {
 
       console.log("Receipt printed successfully!");
 
-      if (paymentMethod === "Cash") {
+      // Open cash drawer for cash payments
+      if (paymentMethod === "Cash" || combinedPayment.cashAmount > 0) {
         try {
           await sendToPrinter(thermalCommands.DRAWER_KICK);
           console.log("Cash drawer command sent");
@@ -728,23 +770,57 @@ const Bill = ({ orderId }) => {
     receiptText += thermalCommands.BOLD_OFF;
     receiptText += "--------------------------------\n";
 
-    receiptText += thermalCommands.ALIGN_LEFT;
-    receiptText += `Payment: ${paymentMethod}\n`;
+    // Payment details for combined payment
+    if (combinedPayment.cashAmount > 0 || combinedPayment.onlineAmount > 0) {
+      receiptText += thermalCommands.ALIGN_LEFT;
+      receiptText += "Payment Details:\n";
 
-    if (paymentMethod === "Cash") {
-      receiptText += `Cash:    ₱${totals.cashAmount.toFixed(2)}\n`;
-      receiptText += `Change:  ₱${totals.change.toFixed(2)}\n`;
+      if (combinedPayment.cashAmount > 0) {
+        receiptText += `Cash:        ₱${combinedPayment.cashAmount.toFixed(
+          2
+        )}\n`;
+      }
+
+      if (combinedPayment.onlineAmount > 0) {
+        receiptText += `${
+          combinedPayment.onlineMethod
+        }: ₱${combinedPayment.onlineAmount.toFixed(2)}\n`;
+      }
+
+      receiptText += `Total Paid:  ₱${combinedPayment.total.toFixed(2)}\n`;
+
+      if (combinedPayment.total < totals.total) {
+        receiptText += `Balance:     ₱${(
+          totals.total - combinedPayment.total
+        ).toFixed(2)}\n`;
+      } else if (combinedPayment.total > totals.total) {
+        receiptText += `Change:      ₱${(
+          combinedPayment.total - totals.total
+        ).toFixed(2)}\n`;
+      }
+
+      receiptText += "--------------------------------\n";
+    } else {
+      // Single payment method
+      receiptText += thermalCommands.ALIGN_LEFT;
+      receiptText += `Payment: ${paymentMethod}\n`;
+
+      if (paymentMethod === "Cash") {
+        receiptText += `Cash:    ₱${totals.cashAmount.toFixed(2)}\n`;
+        if (totals.change > 0) {
+          receiptText += `Change:  ₱${totals.change.toFixed(2)}\n`;
+        }
+      }
+      receiptText += "--------------------------------\n";
     }
 
     if (pwdSeniorDiscountApplied && pwdSeniorDetails.name) {
-      receiptText += "--------------------------------\n";
       receiptText += "PWD/SENIOR DETAILS:\n";
       receiptText += `Name: ${pwdSeniorDetails.name}\n`;
       receiptText += `ID #: ${pwdSeniorDetails.idNumber}\n`;
       receiptText += `Type: ${pwdSeniorDetails.type}\n`;
+      receiptText += "--------------------------------\n";
     }
-
-    receiptText += "--------------------------------\n";
 
     receiptText += thermalCommands.ALIGN_CENTER;
     receiptText += "Thank you for dining with us!\n";
@@ -969,9 +1045,17 @@ const Bill = ({ orderId }) => {
         shareholderDiscountAmount +
         redemptionAmount;
 
-      const cashAmountNum = safeNumber(cashAmount);
-      const change =
-        paymentMethod === "Cash" ? Math.max(0, cashAmountNum - total) : 0;
+      // Use combined payment cash amount if available, otherwise use regular cash amount
+      const cashAmountNum = showCombinedPaymentModal
+        ? safeNumber(combinedPayment.cashAmount)
+        : safeNumber(cashAmount);
+
+      const onlineAmountNum = showCombinedPaymentModal
+        ? safeNumber(combinedPayment.onlineAmount)
+        : 0;
+
+      const totalPaid = cashAmountNum + onlineAmountNum;
+      const change = totalPaid > total ? totalPaid - total : 0;
 
       return {
         baseGrossTotal,
@@ -986,6 +1070,8 @@ const Bill = ({ orderId }) => {
         totalDiscountAmount,
         subtotalAfterPwdSeniorAndRedemption,
         cashAmount: cashAmountNum,
+        onlineAmount: onlineAmountNum,
+        totalPaid,
         change,
       };
     } catch (error) {
@@ -1003,6 +1089,8 @@ const Bill = ({ orderId }) => {
         totalDiscountAmount: 0,
         subtotalAfterPwdSeniorAndRedemption: 0,
         cashAmount: 0,
+        onlineAmount: 0,
+        totalPaid: 0,
         change: 0,
       };
     }
@@ -1319,15 +1407,41 @@ const Bill = ({ orderId }) => {
   };
 
   const handleOnlinePaymentSelect = (method) => {
-    setPaymentMethod(method);
-    setShowOnlineOptions(false);
-    enqueueSnackbar(`Payment method set to ${method}`, {
-      variant: "success",
-    });
+    if (totals.cashAmount > 0 && totals.cashAmount < totals.total) {
+      // Show combined payment modal if cash is insufficient
+      setShowCombinedPaymentModal(true);
+      setSelectedOnlineMethod(method);
+      setCombinedPayment((prev) => ({
+        ...prev,
+        cashAmount: totals.cashAmount,
+        onlineMethod: method,
+        onlineAmount: totals.total - totals.cashAmount,
+        total: totals.total,
+      }));
+      setShowOnlineOptions(false);
+    } else {
+      setPaymentMethod(method);
+      setShowOnlineOptions(false);
+      enqueueSnackbar(`Payment method set to ${method}`, {
+        variant: "success",
+      });
+    }
   };
 
   const handleDenominationClick = (amount) => {
-    setCashAmount((prev) => safeNumber(prev) + amount);
+    if (showCombinedPaymentModal) {
+      setCombinedPayment((prev) => ({
+        ...prev,
+        cashAmount: safeNumber(prev.cashAmount) + amount,
+        onlineAmount: Math.max(
+          0,
+          totals.total - (safeNumber(prev.cashAmount) + amount)
+        ),
+        total: totals.total,
+      }));
+    } else {
+      setCashAmount((prev) => safeNumber(prev) + amount);
+    }
   };
 
   const prepareOrderData = () => {
@@ -1343,6 +1457,8 @@ const Bill = ({ orderId }) => {
       redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
       netSales: Number(totals.netSales.toFixed(2)),
       cashAmount: Number(totals.cashAmount.toFixed(2)),
+      onlineAmount: Number(totals.onlineAmount.toFixed(2)),
+      totalPaid: Number(totals.totalPaid.toFixed(2)),
       change: Number(totals.change.toFixed(2)),
     };
 
@@ -1367,6 +1483,21 @@ const Bill = ({ orderId }) => {
     const customerName =
       customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer";
 
+    const paymentInfo = showCombinedPaymentModal
+      ? {
+          paymentMethod: "Combined",
+          cashAmount: combinedPayment.cashAmount,
+          onlineMethod: combinedPayment.onlineMethod,
+          onlineAmount: combinedPayment.onlineAmount,
+          totalPaid: combinedPayment.total,
+        }
+      : {
+          paymentMethod,
+          cashAmount: totals.cashAmount,
+          onlineAmount: 0,
+          totalPaid: totals.total,
+        };
+
     return {
       customerDetails: {
         name: customerName,
@@ -1379,7 +1510,7 @@ const Bill = ({ orderId }) => {
       customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
       items,
       bills,
-      paymentMethod,
+      ...paymentInfo,
       paymentStatus: "Completed",
       orderStatus: "Completed",
       pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
@@ -1392,8 +1523,6 @@ const Bill = ({ orderId }) => {
       tableId: currentOrder?.tableId || null,
       orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
       totalAmount: Number(totals.total.toFixed(2)),
-      cashAmount: Number(totals.cashAmount.toFixed(2)),
-      change: Number(totals.change.toFixed(2)),
     };
   };
 
@@ -1445,9 +1574,11 @@ const Bill = ({ orderId }) => {
           shareholderDiscount: totals.shareholderDiscountAmount,
           redemptionDiscount: totals.redemptionAmount,
           cashAmount: totals.cashAmount,
+          onlineAmount: totals.onlineAmount,
+          totalPaid: totals.totalPaid,
           change: totals.change,
         },
-        paymentMethod: paymentMethod,
+        paymentMethod: showCombinedPaymentModal ? "Combined" : paymentMethod,
         orderStatus: "Completed",
         customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
         orderDate: new Date().toISOString(),
@@ -1470,13 +1601,9 @@ const Bill = ({ orderId }) => {
       setIsProcessing(false);
 
       // SET PENDING PRINT ORDER - This will trigger auto-print via useEffect
-      if (autoPrintEnabled && isPrinterConnected) {
+      if (autoPrintEnabled) {
         console.log("Setting pending print order for auto-print...");
         setPendingPrintOrder(data);
-      } else if (autoPrintEnabled && !isPrinterConnected) {
-        enqueueSnackbar("Printer not connected. Auto-print disabled.", {
-          variant: "warning",
-        });
       }
 
       // Auto-close invoice after 8 seconds (gives time for printing)
@@ -1506,7 +1633,7 @@ const Bill = ({ orderId }) => {
 
     console.log("Starting order placement...");
 
-    if (!paymentMethod) {
+    if (!paymentMethod && !showCombinedPaymentModal) {
       enqueueSnackbar("Please select a payment method!", {
         variant: "warning",
       });
@@ -1540,9 +1667,38 @@ const Bill = ({ orderId }) => {
       }
     }
 
-    if (paymentMethod === "Cash") {
+    if (paymentMethod === "Cash" && !showCombinedPaymentModal) {
       if (totals.cashAmount < totals.total) {
-        setShowCashModal(true);
+        // Show combined payment option
+        setShowCombinedPaymentModal(true);
+        setCombinedPayment({
+          cashAmount: totals.cashAmount,
+          onlineAmount: totals.total - totals.cashAmount,
+          onlineMethod: null,
+          total: totals.total,
+        });
+        return;
+      }
+    }
+
+    if (showCombinedPaymentModal) {
+      if (!combinedPayment.onlineMethod) {
+        enqueueSnackbar("Please select an online payment method", {
+          variant: "warning",
+        });
+        return;
+      }
+
+      if (
+        combinedPayment.cashAmount + combinedPayment.onlineAmount <
+        totals.total
+      ) {
+        enqueueSnackbar(
+          "Total payment must be equal to or greater than total amount",
+          {
+            variant: "error",
+          }
+        );
         return;
       }
     }
@@ -1565,8 +1721,13 @@ const Bill = ({ orderId }) => {
       setShowCashModal(false);
       handlePlaceOrder();
     } else {
-      enqueueSnackbar("Cash amount must be greater than or equal to total", {
-        variant: "error",
+      // Show combined payment option
+      setShowCombinedPaymentModal(true);
+      setCombinedPayment({
+        cashAmount: totals.cashAmount,
+        onlineAmount: totals.total - totals.cashAmount,
+        onlineMethod: null,
+        total: totals.total,
       });
     }
   };
@@ -1599,6 +1760,33 @@ const Bill = ({ orderId }) => {
       });
     } catch (error) {
       console.error("Manual print error:", error);
+      enqueueSnackbar(`Print failed: ${error.message}`, {
+        variant: "error",
+      });
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  const handlePrintViaBluetooth = async () => {
+    if (!printerManager.isBluetoothSupported()) {
+      enqueueSnackbar("Bluetooth not supported", { variant: "error" });
+      return;
+    }
+
+    if (!orderInfo) {
+      enqueueSnackbar("No order to print", { variant: "warning" });
+      return;
+    }
+
+    try {
+      setIsPrinting(true);
+      await printReceipt(orderInfo);
+      enqueueSnackbar("Receipt printed via Bluetooth!", {
+        variant: "success",
+      });
+    } catch (error) {
+      console.error("Bluetooth print error:", error);
       enqueueSnackbar(`Print failed: ${error.message}`, {
         variant: "error",
       });
@@ -1717,7 +1905,197 @@ const Bill = ({ orderId }) => {
                 disabled={totals.cashAmount < totals.total}
                 className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Confirm
+                {totals.cashAmount < totals.total
+                  ? "Add Online Payment"
+                  : "Confirm"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Combined Payment Modal */}
+      {showCombinedPaymentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+              Combined Payment
+            </h3>
+
+            <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+              <p className="text-sm text-gray-700 mb-2">
+                Total Amount:{" "}
+                <span className="font-bold">₱{totals.total.toFixed(2)}</span>
+              </p>
+              <p className="text-sm text-gray-600 mb-4">
+                Cash amount is insufficient. Please add online payment.
+              </p>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Cash Amount
+                  </label>
+                  <input
+                    type="number"
+                    value={combinedPayment.cashAmount}
+                    onChange={(e) =>
+                      setCombinedPayment((prev) => ({
+                        ...prev,
+                        cashAmount: safeNumber(e.target.value),
+                        onlineAmount: Math.max(
+                          0,
+                          totals.total - safeNumber(e.target.value)
+                        ),
+                        total: totals.total,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    placeholder="Enter cash amount"
+                    max={totals.total}
+                    step="0.01"
+                  />
+                  <div className="flex gap-2 mt-2">
+                    {[100, 200, 500, 1000].map((amount) => (
+                      <button
+                        key={amount}
+                        onClick={() => handleDenominationClick(amount)}
+                        className="flex-1 px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs font-medium hover:bg-gray-200"
+                      >
+                        +₱{amount}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Online Payment Method
+                  </label>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() =>
+                        setCombinedPayment((prev) => ({
+                          ...prev,
+                          onlineMethod: "BDO",
+                        }))
+                      }
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium ${
+                        combinedPayment.onlineMethod === "BDO"
+                          ? "bg-blue-600 text-white"
+                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      }`}
+                    >
+                      BDO
+                    </button>
+                    <button
+                      onClick={() =>
+                        setCombinedPayment((prev) => ({
+                          ...prev,
+                          onlineMethod: "GCASH",
+                        }))
+                      }
+                      className={`flex-1 px-3 py-2 rounded-lg text-sm font-medium ${
+                        combinedPayment.onlineMethod === "GCASH"
+                          ? "bg-green-600 text-white"
+                          : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+                      }`}
+                    >
+                      GCASH
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">
+                    Online Payment Amount
+                  </label>
+                  <input
+                    type="number"
+                    value={combinedPayment.onlineAmount}
+                    onChange={(e) =>
+                      setCombinedPayment((prev) => ({
+                        ...prev,
+                        onlineAmount: safeNumber(e.target.value),
+                        cashAmount: Math.max(
+                          0,
+                          totals.total - safeNumber(e.target.value)
+                        ),
+                        total: totals.total,
+                      }))
+                    }
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                    placeholder="Enter online payment amount"
+                    max={totals.total}
+                    step="0.01"
+                  />
+                </div>
+
+                <div className="pt-4 border-t">
+                  <div className="flex justify-between mb-2">
+                    <span className="text-sm text-gray-600">Cash:</span>
+                    <span className="text-sm font-bold">
+                      ₱{combinedPayment.cashAmount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-sm text-gray-600">
+                      Online ({combinedPayment.onlineMethod || "Method"}):
+                    </span>
+                    <span className="text-sm font-bold">
+                      ₱{combinedPayment.onlineAmount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-sm font-semibold text-gray-700">
+                      Total Payment:
+                    </span>
+                    <span className="text-sm font-bold text-blue-600">
+                      ₱
+                      {(
+                        combinedPayment.cashAmount +
+                        combinedPayment.onlineAmount
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between mt-2">
+                    <span className="text-sm text-gray-600">Change:</span>
+                    <span className="text-sm font-bold text-green-600">
+                      ₱
+                      {Math.max(
+                        0,
+                        combinedPayment.cashAmount +
+                          combinedPayment.onlineAmount -
+                          totals.total
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowCombinedPaymentModal(false);
+                  if (paymentMethod === "Cash") {
+                    setShowCashModal(true);
+                  }
+                }}
+                className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePlaceOrder}
+                disabled={
+                  !combinedPayment.onlineMethod ||
+                  combinedPayment.cashAmount + combinedPayment.onlineAmount <
+                    totals.total
+                }
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirm Payment
               </button>
             </div>
           </div>
@@ -2002,30 +2380,52 @@ const Bill = ({ orderId }) => {
               </div>
               <div className="flex justify-between mb-2">
                 <span className="text-sm text-gray-600">Payment:</span>
-                <span className="text-sm font-bold">{paymentMethod}</span>
+                <span className="text-sm font-bold">
+                  {showCombinedPaymentModal ? "Combined" : paymentMethod}
+                </span>
               </div>
-              {paymentMethod === "Cash" && totals.cashAmount > 0 && (
+              {showCombinedPaymentModal && (
                 <>
                   <div className="flex justify-between mb-2">
                     <span className="text-sm text-gray-600">Cash:</span>
                     <span className="text-sm font-bold">
-                      ₱{totals.cashAmount.toFixed(2)}
+                      ₱{combinedPayment.cashAmount.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between mb-2">
+                    <span className="text-sm text-gray-600">
+                      Online ({combinedPayment.onlineMethod}):
+                    </span>
+                    <span className="text-sm font-bold">
+                      ₱{combinedPayment.onlineAmount.toFixed(2)}
                     </span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-sm text-gray-600">Change:</span>
-                    <span className="text-sm font-bold text-green-600">
-                      ₱{totals.change.toFixed(2)}
+                    <span className="text-sm text-gray-600">Total Paid:</span>
+                    <span className="text-sm font-bold">
+                      ₱
+                      {(
+                        combinedPayment.cashAmount +
+                        combinedPayment.onlineAmount
+                      ).toFixed(2)}
                     </span>
                   </div>
                 </>
               )}
+              {totals.change > 0 && (
+                <div className="flex justify-between mt-2">
+                  <span className="text-sm text-gray-600">Change:</span>
+                  <span className="text-sm font-bold text-green-600">
+                    ₱{totals.change.toFixed(2)}
+                  </span>
+                </div>
+              )}
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col gap-2">
               <button
                 onClick={handleManualPrint}
-                disabled={isPrinting || !isPrinterConnected}
+                disabled={isPrinting}
                 className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center gap-2"
               >
                 {isPrinting ? (
@@ -2037,6 +2437,30 @@ const Bill = ({ orderId }) => {
                   "Print Receipt"
                 )}
               </button>
+
+              {/* Bluetooth Print Button */}
+              <button
+                onClick={handlePrintViaBluetooth}
+                disabled={!isPrinterConnected || isPrinting}
+                className={`flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-colors text-sm font-semibold ${
+                  isPrinterConnected && !isPrinting
+                    ? "bg-purple-600 text-white hover:bg-purple-700"
+                    : "bg-gray-400 text-white cursor-not-allowed"
+                }`}
+              >
+                {isPrinting ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Printing
+                  </>
+                ) : (
+                  <>
+                    <IconBluetooth className="text-xs w-4 h-4" />
+                    BT Print
+                  </>
+                )}
+              </button>
+
               <button
                 onClick={handleCloseInvoice}
                 className="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-medium hover:bg-gray-300"
@@ -2046,14 +2470,16 @@ const Bill = ({ orderId }) => {
             </div>
 
             {!isPrinterConnected && (
-              <p className="text-xs text-red-600 mt-2 text-center">
-                Printer not connected. Connect printer to print receipt.
+              <p className="text-xs text-yellow-600 mt-2 text-center">
+                Bluetooth printer not connected. Connect for direct printing.
               </p>
             )}
 
-            {autoPrintEnabled && isPrinterConnected && pendingPrintOrder && (
+            {autoPrintEnabled && pendingPrintOrder && (
               <p className="text-xs text-green-600 mt-2 text-center">
-                Auto-printing receipt...
+                {isPrinting
+                  ? "Auto-printing receipt..."
+                  : "Receipt will auto-print..."}
               </p>
             )}
           </div>
@@ -2129,7 +2555,9 @@ const Bill = ({ orderId }) => {
                 <span className="font-medium text-gray-700">{printerName}</span>
               </p>
               <p className="text-xs text-gray-400 mt-1">
-                Printer will automatically reconnect if disconnected
+                {isPrinterConnected
+                  ? "Ready to print receipts automatically"
+                  : "Printer will automatically reconnect"}
               </p>
             </div>
           )}
@@ -2387,21 +2815,58 @@ const Bill = ({ orderId }) => {
             </h1>
           </div>
 
-          {paymentMethod === "Cash" && totals.cashAmount > 0 && (
+          {showCombinedPaymentModal ? (
             <>
               <div className="flex justify-between items-center border-t pt-2">
                 <p className="text-xs text-gray-600 font-medium">Cash</p>
                 <p className="text-md text-gray-800 font-bold">
-                  ₱{totals.cashAmount.toFixed(2)}
+                  ₱{combinedPayment.cashAmount.toFixed(2)}
                 </p>
               </div>
               <div className="flex justify-between items-center">
-                <p className="text-xs text-gray-600 font-medium">Change</p>
-                <p className="text-md text-green-600 font-bold">
-                  ₱{totals.change.toFixed(2)}
+                <p className="text-xs text-gray-600 font-medium">
+                  Online ({combinedPayment.onlineMethod})
+                </p>
+                <p className="text-md text-gray-800 font-bold">
+                  ₱{combinedPayment.onlineAmount.toFixed(2)}
                 </p>
               </div>
+              <div className="flex justify-between items-center">
+                <p className="text-xs text-gray-600 font-medium">Total Paid</p>
+                <p className="text-md text-blue-600 font-bold">
+                  ₱
+                  {(
+                    combinedPayment.cashAmount + combinedPayment.onlineAmount
+                  ).toFixed(2)}
+                </p>
+              </div>
+              {totals.change > 0 && (
+                <div className="flex justify-between items-center">
+                  <p className="text-xs text-gray-600 font-medium">Change</p>
+                  <p className="text-md text-green-600 font-bold">
+                    ₱{totals.change.toFixed(2)}
+                  </p>
+                </div>
+              )}
             </>
+          ) : (
+            paymentMethod === "Cash" &&
+            totals.cashAmount > 0 && (
+              <>
+                <div className="flex justify-between items-center border-t pt-2">
+                  <p className="text-xs text-gray-600 font-medium">Cash</p>
+                  <p className="text-md text-gray-800 font-bold">
+                    ₱{totals.cashAmount.toFixed(2)}
+                  </p>
+                </div>
+                <div className="flex justify-between items-center">
+                  <p className="text-xs text-gray-600 font-medium">Change</p>
+                  <p className="text-md text-green-600 font-bold">
+                    ₱{totals.change.toFixed(2)}
+                  </p>
+                </div>
+              </>
+            )
           )}
         </div>
 
@@ -2465,7 +2930,11 @@ const Bill = ({ orderId }) => {
         {/* 💳 PAYMENT BUTTONS */}
         <div className="flex flex-col sm:flex-row gap-3">
           <button
-            onClick={() => setPaymentMethod("Cash")}
+            onClick={() => {
+              setPaymentMethod("Cash");
+              setShowCombinedPaymentModal(false);
+              setShowCashModal(true);
+            }}
             disabled={isProcessing}
             className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
               paymentMethod === "Cash"
@@ -2480,7 +2949,9 @@ const Bill = ({ orderId }) => {
             onClick={() => setShowOnlineOptions(true)}
             disabled={isProcessing}
             className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
-              paymentMethod === "BDO" || paymentMethod === "GCASH"
+              paymentMethod === "BDO" ||
+              paymentMethod === "GCASH" ||
+              showCombinedPaymentModal
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-gray-200 text-gray-600 hover:bg-gray-300"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
@@ -2489,6 +2960,8 @@ const Bill = ({ orderId }) => {
               ? "✓ BDO"
               : paymentMethod === "GCASH"
               ? "✓ GCASH"
+              : showCombinedPaymentModal
+              ? "✓ Combined"
               : "Online"}
           </button>
         </div>
@@ -2497,7 +2970,11 @@ const Bill = ({ orderId }) => {
         <div className="flex flex-col sm:flex-row gap-3 mt-6">
           <button
             onClick={handlePlaceOrder}
-            disabled={isProcessing || !paymentMethod || cartData.length === 0}
+            disabled={
+              isProcessing ||
+              (!paymentMethod && !showCombinedPaymentModal) ||
+              cartData.length === 0
+            }
             className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
             {isProcessing ? (
