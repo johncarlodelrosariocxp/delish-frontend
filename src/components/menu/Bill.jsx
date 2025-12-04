@@ -985,6 +985,77 @@ const Bill = ({ orderId }) => {
     }
   };
 
+  // Prepare order data for submission - UPDATED
+  const prepareOrderData = () => {
+    // Prepare bills data
+    const bills = {
+      total: Number(totals.baseGrossTotal.toFixed(2)),
+      tax: Number(totals.vatAmount.toFixed(2)),
+      totalWithTax: Number(totals.total.toFixed(2)),
+      discount: Number(totals.totalDiscountAmount.toFixed(2)),
+      pwdSeniorDiscount: Number(totals.pwdSeniorDiscountAmount.toFixed(2)),
+      pwdSeniorDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
+      employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
+      shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
+      redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
+      netSales: Number(totals.netSales.toFixed(2)),
+      cashAmount: Number(totals.cashAmount.toFixed(2)),
+      change: Number(totals.change.toFixed(2)),
+    };
+
+    // Prepare items data
+    const items = cartData.map((item) => {
+      const isPwdSeniorDiscounted = pwdSeniorDiscountItems.some(
+        (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
+      );
+
+      return {
+        name: item.name || "Unknown Item",
+        quantity: safeNumber(item.quantity),
+        pricePerQuantity: safeNumber(item.pricePerQuantity),
+        price: calculateItemTotal(item),
+        originalPrice: safeNumber(item.pricePerQuantity),
+        isRedeemed: Boolean(item.isRedeemed),
+        isPwdSeniorDiscounted: isPwdSeniorDiscounted,
+        category: isDrinkItem(item) ? "drink" : "food",
+        id: item.id || Date.now().toString(),
+      };
+    });
+
+    // Prepare customer details based on type
+    const customerName =
+      customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer";
+
+    return {
+      customerDetails: {
+        name: customerName,
+        phone: "",
+        guests: 1,
+        email: "",
+        address: "",
+      },
+      customerType: customerType,
+      customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
+      items,
+      bills,
+      paymentMethod,
+      paymentStatus: "Completed",
+      orderStatus: "Completed",
+      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
+      pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
+      pwdSeniorSelectedItems: pwdSeniorDiscountApplied
+        ? pwdSeniorDiscountItems
+        : [],
+      cashier: user?.name || "Admin",
+      user: user?._id || "000000000000000000000001",
+      tableId: currentOrder?.tableId || null,
+      orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
+      totalAmount: Number(totals.total.toFixed(2)),
+      cashAmount: Number(totals.cashAmount.toFixed(2)),
+      change: Number(totals.change.toFixed(2)),
+    };
+  };
+
   // Order mutation with complete order handling
   const orderMutation = useMutation({
     mutationFn: (reqData) => addOrder(reqData),
@@ -996,6 +1067,54 @@ const Bill = ({ orderId }) => {
       }
 
       const { data } = res.data;
+
+      // Create complete order info for invoice
+      const invoiceOrderInfo = {
+        ...data,
+        customerDetails: {
+          name:
+            customerType === "walk-in"
+              ? "Walk-in Customer"
+              : "Take-out Customer",
+          type: customerType,
+          status: customerType === "walk-in" ? "Dine-in" : "Take-out",
+        },
+        items: combinedCart.map((item) => {
+          const isDiscounted = pwdSeniorDiscountItems.some(
+            (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
+          );
+
+          return {
+            name: item.name,
+            quantity: item.quantity,
+            price: calculateItemTotal(item),
+            originalPrice: safeNumber(item.pricePerQuantity),
+            pricePerQuantity: safeNumber(item.pricePerQuantity),
+            isFree: item.isRedeemed || false,
+            isPwdSeniorDiscounted: isDiscounted,
+          };
+        }),
+        bills: {
+          total: totals.baseGrossTotal,
+          tax: totals.vatAmount,
+          discount: totals.totalDiscountAmount,
+          totalWithTax: totals.total,
+          pwdSeniorDiscount: totals.pwdSeniorDiscountAmount,
+          pwdSeniorDiscountedValue: totals.discountedItemsTotal,
+          employeeDiscount: totals.employeeDiscountAmount,
+          shareholderDiscount: totals.shareholderDiscountAmount,
+          redemptionDiscount: totals.redemptionAmount,
+          cashAmount: totals.cashAmount,
+          change: totals.change,
+        },
+        paymentMethod: paymentMethod,
+        orderStatus: "Completed",
+        customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
+        orderDate: new Date().toISOString(),
+        cashier: user?.name || "Admin",
+        pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
+        user: user?._id || "000000000000000000000001",
+      };
 
       setOrderInfo(invoiceOrderInfo);
 
@@ -1061,58 +1180,6 @@ const Bill = ({ orderId }) => {
       }
     },
   });
-
-  // Prepare order data for submission
-  const prepareOrderData = () => {
-    // Prepare bills data
-    const bills = {
-      total: Number(totals.baseGrossTotal.toFixed(2)),
-      tax: Number(totals.vatAmount.toFixed(2)),
-      totalWithTax: Number(totals.total.toFixed(2)),
-      discount: Number(totals.totalDiscountAmount.toFixed(2)),
-      pwdSeniorDiscount: Number(totals.pwdSeniorDiscountAmount.toFixed(2)),
-      pwdSeniorDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
-      employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
-      shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
-      redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
-      netSales: Number(totals.netSales.toFixed(2)),
-      cashAmount: Number(totals.cashAmount.toFixed(2)),
-      change: Number(totals.change.toFixed(2)),
-    };
-
-    // Prepare items data
-    const items = cartData.map((item) => {
-      const isPwdSeniorDiscounted = pwdSeniorDiscountItems.some(
-        (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
-      );
-
-      return {
-        name: item.name || "Unknown Item",
-        quantity: safeNumber(item.quantity),
-        pricePerQuantity: safeNumber(item.pricePerQuantity),
-        price: calculateItemTotal(item),
-        originalPrice: safeNumber(item.pricePerQuantity),
-        isRedeemed: Boolean(item.isRedeemed),
-        isPwdSeniorDiscounted: isPwdSeniorDiscounted,
-        category: isDrinkItem(item) ? "drink" : "food",
-        id: item.id || Date.now().toString(),
-      };
-    });
-
-    return {
-      items,
-      bills,
-      paymentMethod,
-      orderStatus: "Completed",
-      customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
-      customerType: customerType,
-      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
-      cashierName: user?.name || "Admin",
-      userId: user?._id || "000000000000000000000001",
-      tableId: currentOrder?.tableId || null,
-      orderNumber: currentOrder?.number || Date.now().toString(),
-    };
-  };
 
   // Handle place order
   const handlePlaceOrder = async () => {
