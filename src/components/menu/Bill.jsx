@@ -997,54 +997,6 @@ const Bill = ({ orderId }) => {
 
       const { data } = res.data;
 
-      // Create complete order info for invoice
-      const invoiceOrderInfo = {
-        ...data,
-        customerDetails: {
-          name:
-            customerType === "walk-in"
-              ? "Walk-in Customer"
-              : "Take-out Customer",
-          type: customerType,
-          status: customerType === "walk-in" ? "Dine-in" : "Take-out",
-        },
-        items: combinedCart.map((item) => {
-          const isDiscounted = pwdSeniorDiscountItems.some(
-            (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
-          );
-
-          return {
-            name: item.name,
-            quantity: item.quantity,
-            price: calculateItemTotal(item),
-            originalPrice: safeNumber(item.pricePerQuantity),
-            pricePerQuantity: safeNumber(item.pricePerQuantity),
-            isFree: item.isRedeemed || false,
-            isPwdSeniorDiscounted: isDiscounted,
-          };
-        }),
-        bills: {
-          total: totals.baseGrossTotal,
-          tax: totals.vatAmount,
-          discount: totals.totalDiscountAmount,
-          totalWithTax: totals.total,
-          pwdSeniorDiscount: totals.pwdSeniorDiscountAmount,
-          pwdSeniorDiscountedValue: totals.discountedItemsTotal,
-          employeeDiscount: totals.employeeDiscountAmount,
-          shareholderDiscount: totals.shareholderDiscountAmount,
-          redemptionDiscount: totals.redemptionAmount,
-          cashAmount: totals.cashAmount,
-          change: totals.change,
-        },
-        paymentMethod: paymentMethod,
-        orderStatus: "Completed",
-        customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
-        orderDate: new Date().toISOString(),
-        cashier: user?.name || "Admin",
-        pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
-        user: user?._id || "000000000000000000000001",
-      };
-
       setOrderInfo(invoiceOrderInfo);
 
       // MARK ORDER AS COMPLETED IN REDUX
