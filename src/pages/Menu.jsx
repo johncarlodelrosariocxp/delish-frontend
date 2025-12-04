@@ -18,15 +18,11 @@ import {
   createNewOrder,
   switchOrder,
   closeOrder,
-  loadOrdersFromStorage,
 } from "../redux/slices/orderSlice";
 
 const Menu = () => {
   useEffect(() => {
     document.title = "POS | Menu";
-
-    // Load orders from localStorage on component mount
-    dispatch(loadOrdersFromStorage());
 
     // Initialize Bluetooth printer
     initializeBluetooth();

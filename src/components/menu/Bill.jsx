@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   removeItemFromOrder,
@@ -16,16 +16,6 @@ import { useMutation } from "@tanstack/react-query";
 import Invoice from "../invoice/Invoice";
 import { useNavigate } from "react-router-dom";
 
-function loadScript(src) {
-  return new Promise((resolve) => {
-    const script = document.createElement("script");
-    script.src = src;
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-}
-
 const Bill = ({ orderId }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -40,7 +30,6 @@ const Bill = ({ orderId }) => {
     userState?.data?.user || {
       _id: "000000000000000000000001",
       name: "Admin",
-      role: "cashier"
     };
 
   const currentOrder =
@@ -74,433 +63,6 @@ const Bill = ({ orderId }) => {
   const [cashAmount, setCashAmount] = useState(0);
   const [showCashModal, setShowCashModal] = useState(false);
   const [showOnlineOptions, setShowOnlineOptions] = useState(false);
-
-  // Bluetooth printer state
-  const [bluetoothPrinter, setBluetoothPrinter] = useState(null);
-  const [isPrinterConnected, setIsPrinterConnected] = useState(false);
-  const [isPrinting, setIsPrinting] = useState(false);
-  const [printerCharacteristic, setPrinterCharacteristic] = useState(null);
-
-  // Bluetooth printer setup
-  useEffect(() => {
-    if (navigator.bluetooth) {
-      checkPrinterConnection();
-    }
-  }, []);
-
-  const checkPrinterConnection = async () => {
-    try {
-      // Check if we have a saved device ID
-      const savedDeviceId = localStorage.getItem("bluetoothPrinterId");
-      if (!savedDeviceId) {
-        console.log("No saved printer found");
-        return;
-      }
-
-      // Get previously connected devices
-      const devices = await navigator.bluetooth.getDevices();
-      const savedDevice = devices.find(device => device.id === savedDeviceId);
-      
-      if (savedDevice) {
-        try {
-          console.log("Attempting to reconnect to printer:", savedDevice.name);
-          const server = await savedDevice.gatt.connect();
-          setBluetoothPrinter(savedDevice);
-          setIsPrinterConnected(true);
-          
-          // Try to find the printer service and characteristic
-          await discoverPrinterServices(savedDevice);
-          
-          enqueueSnackbar(`Reconnected to printer: ${savedDevice.name || "Bluetooth Printer"}`, {
-            variant: "success",
-          });
-        } catch (error) {
-          console.error("Reconnection failed:", error);
-          setIsPrinterConnected(false);
-        }
-      }
-    } catch (error) {
-      console.log("No existing printer connection:", error);
-    }
-  };
-
-  const discoverPrinterServices = async (device) => {
-    try {
-      const server = await device.gatt.connect();
-      
-      // Common ESC/POS printer service UUIDs
-      const printerServices = [
-        '000018f0-0000-1000-8000-00805f9b34fb', // Generic Access
-        '00001101-0000-1000-8000-00805f9b34fb', // SPP (Serial Port Profile)
-        '00001800-0000-1000-8000-00805f9b34fb', // Generic Access Profile
-        '00001801-0000-1000-8000-00805f9b34fb', // Generic Attribute Profile
-        'e7810a71-73ae-499d-8c15-faa9aef0c3f2', // Serial Port Service (SPP)
-      ];
-
-      let foundCharacteristic = null;
-      
-      for (const serviceUUID of printerServices) {
-        try {
-          const service = await server.getPrimaryService(serviceUUID);
-          const characteristics = await service.getCharacteristics();
-          
-          // Look for write characteristic
-          for (const characteristic of characteristics) {
-            if (characteristic.properties.write || characteristic.properties.writeWithoutResponse) {
-              foundCharacteristic = characteristic;
-              setPrinterCharacteristic(characteristic);
-              console.log("Found printer characteristic:", characteristic.uuid);
-              break;
-            }
-          }
-          
-          if (foundCharacteristic) break;
-        } catch (err) {
-          console.log(`Service ${serviceUUID} not found or accessible`);
-        }
-      }
-      
-      if (!foundCharacteristic) {
-        throw new Error("No writable characteristic found");
-      }
-      
-      return foundCharacteristic;
-    } catch (error) {
-      console.error("Service discovery error:", error);
-      throw error;
-    }
-  };
-
-  const connectToPrinter = async () => {
-    if (!navigator.bluetooth) {
-      enqueueSnackbar("Bluetooth not supported on this device", {
-        variant: "error",
-      });
-      return null;
-    }
-
-    try {
-      // Request Bluetooth device with common printer services
-      const device = await navigator.bluetooth.requestDevice({
-        filters: [
-          { services: ['000018f0-0000-1000-8000-00805f9b34fb'] },
-          { services: ['00001101-0000-1000-8000-00805f9b34fb'] },
-          { services: ['00001800-0000-1000-8000-00805f9b34fb'] },
-          { services: ['e7810a71-73ae-499d-8c15-faa9aef0c3f2'] },
-        ],
-        optionalServices: [
-          '000018f0-0000-1000-8000-00805f9b34fb',
-          '00001101-0000-1000-8000-00805f9b34fb',
-          '00001800-0000-1000-8000-00805f9b34fb',
-          '00001801-0000-1000-8000-00805f9b34fb',
-          'e7810a71-73ae-499d-8c15-faa9aef0c3f2',
-        ],
-      });
-
-      console.log("Selected device:", device.name, device.id);
-
-      // Save device ID immediately
-      localStorage.setItem("bluetoothPrinterId", device.id);
-
-      // Discover services and get characteristic
-      const characteristic = await discoverPrinterServices(device);
-      
-      setBluetoothPrinter(device);
-      setPrinterCharacteristic(characteristic);
-      setIsPrinterConnected(true);
-
-      enqueueSnackbar(
-        `Connected to printer: ${device.name || "Bluetooth Printer"}`,
-        {
-          variant: "success",
-        }
-      );
-
-      return { device, characteristic };
-    } catch (error) {
-      console.error("Bluetooth connection error:", error);
-      if (error.name === "NotFoundError") {
-        enqueueSnackbar("No printer selected", { variant: "warning" });
-      } else if (error.name === "SecurityError") {
-        enqueueSnackbar("Bluetooth permission denied", { variant: "error" });
-      } else {
-        enqueueSnackbar("Failed to connect to printer: " + error.message, { variant: "error" });
-      }
-      return null;
-    }
-  };
-
-  // Send data to Bluetooth printer with retry logic
-  const sendToPrinter = async (data) => {
-    let characteristic = printerCharacteristic;
-    let device = bluetoothPrinter;
-
-    // If no characteristic, try to reconnect
-    if (!characteristic || !isPrinterConnected) {
-      console.log("No active printer connection, attempting to reconnect...");
-      const result = await connectToPrinter();
-      if (!result) {
-        throw new Error("Printer not connected. Please connect first.");
-      }
-      device = result.device;
-      characteristic = result.characteristic;
-    }
-
-    try {
-      // Ensure device is connected
-      if (!device.gatt.connected) {
-        await device.gatt.connect();
-      }
-
-      // Convert string to Uint8Array for ESC/POS
-      const encoder = new TextEncoder();
-      
-      // For ESC/POS printers, we need to send data in chunks
-      const CHUNK_SIZE = 512; // Adjust based on printer capability
-      const dataArray = encoder.encode(data);
-      
-      // Send data in chunks
-      for (let i = 0; i < dataArray.length; i += CHUNK_SIZE) {
-        const chunk = dataArray.slice(i, i + CHUNK_SIZE);
-        
-        // Try writeWithoutResponse first (faster, no confirmation)
-        if (characteristic.properties.writeWithoutResponse) {
-          await characteristic.writeValueWithoutResponse(chunk);
-        } 
-        // Fall back to writeWithResponse
-        else if (characteristic.properties.write) {
-          await characteristic.writeValue(chunk);
-        } else {
-          throw new Error("Printer characteristic does not support write operations");
-        }
-        
-        // Small delay between chunks to prevent buffer overflow
-        if (i + CHUNK_SIZE < dataArray.length) {
-          await new Promise(resolve => setTimeout(resolve, 10));
-        }
-      }
-
-      // Wait for printer to process all data
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      return true;
-    } catch (error) {
-      console.error("Print error:", error);
-      
-      // Clear connection on error
-      setIsPrinterConnected(false);
-      setPrinterCharacteristic(null);
-      
-      // Remove saved printer ID if connection failed
-      localStorage.removeItem("bluetoothPrinterId");
-      
-      throw new Error("Print failed: " + error.message);
-    }
-  };
-
-  // Thermal printer ESC/POS commands
-  const ESC = "\x1B";
-  const GS = "\x1D";
-  const LF = "\x0A";
-
-  // Generate optimized receipt for thermal printers
-  const generateReceipt = (orderData) => {
-    let receipt = "";
-
-    // Initialize printer
-    receipt += ESC + "@"; // ESC @ = Initialize printer
-    
-    // Set character size (normal)
-    receipt += ESC + "!" + "\x00"; // Normal size
-    
-    // Header - Center aligned
-    receipt += ESC + "a" + "\x01"; // Center align
-    receipt += ESC + "E" + "\x01"; // Bold on
-    receipt += "DELISH RESTAURANT\n";
-    receipt += ESC + "E" + "\x00"; // Bold off
-    receipt += "123 Main Street, City\n";
-    receipt += "Phone: (123) 456-7890\n";
-    receipt += "VAT Reg TIN: 123-456-789-000\n";
-    receipt += "MIN: 12345678901234\n";
-    receipt += "==============================\n";
-    
-    // Left align for content
-    receipt += ESC + "a" + "\x00"; // Left align
-    
-    // Order info
-    const now = new Date();
-    receipt += `Order #: ${orderData._id?.slice(-8) || `ORD-${now.getTime().toString().slice(-8)}`}\n`;
-    receipt += `Date: ${now.getFullYear()}/${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}\n`;
-    receipt += `Time: ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}\n`;
-    receipt += `Cashier: ${user?.name || "Admin"}\n`;
-    receipt += `Customer: ${customerType === "walk-in" ? "Dine-in" : "Take-out"}\n`;
-    receipt += "==============================\n\n";
-    
-    // Items header
-    receipt += ESC + "E" + "\x01"; // Bold on
-    receipt += "QTY  ITEM                AMOUNT\n";
-    receipt += ESC + "E" + "\x00"; // Bold off
-    receipt += "------------------------------\n";
-    
-    // Items
-    combinedCart.forEach((item) => {
-      const name = item.name.length > 20 ? item.name.substring(0, 17) + "..." : item.name;
-      const quantity = String(item.quantity).padStart(2);
-      const price = safeNumber(item.pricePerQuantity).toFixed(2);
-      const total = calculateItemTotal(item).toFixed(2);
-      
-      receipt += `${quantity}x ${name.padEnd(20)}`;
-      receipt += `₱${total.padStart(8)}\n`;
-      
-      // Add discount info if applicable
-      if (item.isRedeemed) {
-        receipt += "     *REDEEMED - FREE\n";
-      } else if (pwdSeniorDiscountItems.some(discItem => getItemKey(discItem) === getItemKey(item))) {
-        receipt += "     *PWD/SENIOR 20%\n";
-      }
-    });
-    
-    receipt += "------------------------------\n";
-    
-    // Right align for totals
-    receipt += ESC + "a" + "\x02"; // Right align
-    
-    // Totals
-    receipt += `SUBTOTAL:    ₱${totals.baseGrossTotal.toFixed(2).padStart(10)}\n`;
-    
-    if (totals.pwdSeniorDiscountAmount > 0) {
-      receipt += `PWD/SENIOR: -₱${totals.pwdSeniorDiscountAmount.toFixed(2).padStart(10)}\n`;
-    }
-    
-    if (totals.redemptionAmount > 0) {
-      receipt += `REDEMPTION: -₱${totals.redemptionAmount.toFixed(2).padStart(10)}\n`;
-    }
-    
-    if (totals.employeeDiscountAmount > 0) {
-      receipt += `EMPLOYEE:   -₱${totals.employeeDiscountAmount.toFixed(2).padStart(10)}\n`;
-    }
-    
-    if (totals.shareholderDiscountAmount > 0) {
-      receipt += `SHAREHOLDER:-₱${totals.shareholderDiscountAmount.toFixed(2).padStart(10)}\n`;
-    }
-    
-    receipt += `VAT (12%):   ₱${totals.vatAmount.toFixed(2).padStart(10)}\n`;
-    receipt += "------------------------------\n";
-    receipt += ESC + "E" + "\x01"; // Bold on
-    receipt += `TOTAL:       ₱${totals.total.toFixed(2).padStart(10)}\n";
-    receipt += ESC + "E" + "\x00"; // Bold off
-    receipt += "------------------------------\n";
-    
-    if (paymentMethod === "Cash") {
-      receipt += `CASH:        ₱${totals.cashAmount.toFixed(2).padStart(10)}\n`;
-      receipt += `CHANGE:      ₱${totals.change.toFixed(2).padStart(10)}\n`;
-      receipt += "------------------------------\n";
-    }
-    
-    receipt += `PAYMENT: ${paymentMethod}\n`;
-    
-    if (pwdSeniorDiscountApplied && pwdSeniorDetails.name) {
-      receipt += "------------------------------\n";
-      receipt += "PWD/SENIOR DETAILS:\n";
-      receipt += ESC + "a" + "\x00"; // Left align
-      receipt += `Name: ${pwdSeniorDetails.name}\n`;
-      receipt += `ID #: ${pwdSeniorDetails.idNumber}\n`;
-      receipt += `Type: ${pwdSeniorDetails.type}\n`;
-      receipt += ESC + "a" + "\x02"; // Right align
-    }
-    
-    receipt += "==============================\n";
-    
-    // Footer - Center aligned
-    receipt += ESC + "a" + "\x01"; // Center align
-    receipt += "Thank you for dining with us!\n";
-    receipt += "Please visit again!\n\n";
-    receipt += "This receipt is your official\n";
-    receipt += "proof of purchase.\n\n";
-    
-    // Feed and cut
-    receipt += "\n\n\n"; // Feed 3 lines
-    receipt += GS + "V" + "\x41" + "\x00"; // Partial cut
-    
-    // Open cash drawer if Cash payment
-    if (paymentMethod === "Cash") {
-      receipt += ESC + "p" + "\x00" + "\x10" + "\x10"; // Open cash drawer pulse
-    }
-    
-    return receipt;
-  };
-
-  // Print receipt function with better error handling
-  const printReceipt = async (orderData) => {
-    setIsPrinting(true);
-
-    try {
-      console.log("Starting print process...");
-
-      if (!navigator.bluetooth) {
-        throw new Error("Bluetooth not supported on this device");
-      }
-
-      // Generate receipt content
-      const receiptContent = generateReceipt(orderData);
-      console.log("Receipt generated, length:", receiptContent.length);
-
-      // Send to printer
-      await sendToPrinter(receiptContent);
-
-      console.log("Receipt sent successfully!");
-
-      // Additional delay to ensure print completes
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
-      return true;
-    } catch (error) {
-      console.error("Print receipt error:", error);
-      throw error;
-    } finally {
-      setIsPrinting(false);
-    }
-  };
-
-  // Test print function
-  const handleTestPrint = async () => {
-    try {
-      setIsPrinting(true);
-      
-      // Connect first if not connected
-      if (!isPrinterConnected || !printerCharacteristic) {
-        const result = await connectToPrinter();
-        if (!result) {
-          throw new Error("Failed to connect to printer");
-        }
-      }
-      
-      // Simple test receipt
-      let testReceipt = ESC + "@"; // Initialize
-      testReceipt += ESC + "a" + "\x01"; // Center align
-      testReceipt += ESC + "E" + "\x01"; // Bold on
-      testReceipt += "TEST PRINT\n";
-      testReceipt += ESC + "E" + "\x00"; // Bold off
-      testReceipt += "==============================\n";
-      testReceipt += "Printer connection test\n";
-      testReceipt += "Successful!\n";
-      testReceipt += new Date().toLocaleString() + "\n";
-      testReceipt += "==============================\n\n\n";
-      testReceipt += GS + "V" + "\x41" + "\x00"; // Cut
-      
-      await sendToPrinter(testReceipt);
-      
-      enqueueSnackbar("Test print successful!", {
-        variant: "success",
-      });
-    } catch (error) {
-      enqueueSnackbar("Test print failed: " + error.message, {
-        variant: "error",
-      });
-    } finally {
-      setIsPrinting(false);
-    }
-  };
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -1052,7 +614,7 @@ const Bill = ({ orderId }) => {
     setCashAmount((prev) => safeNumber(prev) + amount);
   };
 
-  // Prepare order data for submission - UPDATED
+  // Prepare order data for submission
   const prepareOrderData = () => {
     // Prepare bills data
     const bills = {
@@ -1113,12 +675,8 @@ const Bill = ({ orderId }) => {
       pwdSeniorSelectedItems: pwdSeniorDiscountApplied
         ? pwdSeniorDiscountItems
         : [],
-      cashier: {
-        id: user?._id || "000000000000000000000001",
-        name: user?.name || "Admin",
-        role: user?.role || "cashier",
-      },
-      userId: user?._id || "000000000000000000000001",
+      cashier: user?.name || "Admin",
+      user: user?._id || "000000000000000000000001",
       tableId: currentOrder?.tableId || null,
       orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
       totalAmount: Number(totals.total.toFixed(2)),
@@ -1182,11 +740,7 @@ const Bill = ({ orderId }) => {
         orderStatus: "Completed",
         customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
         orderDate: new Date().toISOString(),
-        cashier: {
-          id: user?._id || "000000000000000000000001",
-          name: user?.name || "Admin",
-          role: user?.role || "cashier",
-        },
+        cashier: user?.name || "Admin",
         pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
         user: user?._id || "000000000000000000000001",
       };
@@ -1201,42 +755,9 @@ const Bill = ({ orderId }) => {
 
       enqueueSnackbar("Order placed successfully!", { variant: "success" });
 
-      // PRINT RECEIPT AUTOMATICALLY
-      try {
-        console.log("Attempting to print receipt...");
-        await printReceipt(data);
-
-        enqueueSnackbar("Order placed and receipt printed!", {
-          variant: "success",
-        });
-
-        // Show invoice
-        setShowInvoice(true);
-        setIsProcessing(false);
-
-        // Auto-close invoice after 5 seconds and navigate
-        setTimeout(() => {
-          setShowInvoice(false);
-          navigate("/menu");
-        }, 5000);
-      } catch (printError) {
-        console.error("Print failed, but order was placed:", printError);
-        
-        // Order was successful, just print failed
-        enqueueSnackbar("Order placed! Receipt print failed. Please print manually.", {
-          variant: "warning",
-        });
-
-        // Still show invoice
-        setShowInvoice(true);
-        setIsProcessing(false);
-
-        // Auto-close invoice after 5 seconds and navigate
-        setTimeout(() => {
-          setShowInvoice(false);
-          navigate("/menu");
-        }, 5000);
-      }
+      // SHOW INVOICE IMMEDIATELY
+      setShowInvoice(true);
+      setIsProcessing(false);
     },
     onError: (error) => {
       console.error("Order placement error:", error);
@@ -1733,50 +1254,6 @@ const Bill = ({ orderId }) => {
       )}
 
       <div className="max-w-[600px] mx-auto space-y-4">
-        {/* Printer Status */}
-        <div className="bg-white rounded-lg p-4 shadow-md">
-          <div className="flex justify-between items-center">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-3 h-3 rounded-full ${
-                    isPrinterConnected ? "bg-green-500" : "bg-red-500"
-                  }`}
-                ></div>
-                <span className="text-sm text-gray-700">
-                  {isPrinterConnected
-                    ? `Printer: ${bluetoothPrinter?.name || "Connected"}`
-                    : "Printer: Disconnected"}
-                </span>
-              </div>
-              
-              {isPrinting && (
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full animate-pulse"></div>
-                  <span className="text-xs text-blue-600">Printing...</span>
-                </div>
-              )}
-            </div>
-            
-            <div className="flex gap-2">
-              <button
-                onClick={connectToPrinter}
-                disabled={isPrinting}
-                className="px-3 py-2 bg-blue-100 text-blue-700 rounded-lg text-xs font-medium hover:bg-blue-200 transition-colors disabled:opacity-50"
-              >
-                {isPrinterConnected ? "Reconnect" : "Connect"}
-              </button>
-              <button
-                onClick={handleTestPrint}
-                disabled={isPrinting}
-                className="px-3 py-2 bg-green-100 text-green-700 rounded-lg text-xs font-medium hover:bg-green-200 transition-colors disabled:opacity-50"
-              >
-                Test Print
-              </button>
-            </div>
-          </div>
-        </div>
-
         {/* 🧾 CUSTOMER TYPE */}
         <div className="bg-white rounded-lg p-4 shadow-md">
           <h2 className="text-gray-900 text-sm font-semibold mb-3">
@@ -2147,13 +1624,8 @@ const Bill = ({ orderId }) => {
                 <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                 Processing...
               </>
-            ) : isPrinting ? (
-              <>
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                Printing...
-              </>
             ) : (
-              "Place Order & Print"
+              "Place Order & Show Invoice"
             )}
           </button>
         </div>
