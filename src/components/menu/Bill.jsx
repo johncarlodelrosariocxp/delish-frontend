@@ -78,6 +78,7 @@ const Bill = ({ orderId }) => {
   const [bluetoothPrinter, setBluetoothPrinter] = useState(null);
   const [isPrinterConnected, setIsPrinterConnected] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [autoPrintEnabled, setAutoPrintEnabled] = useState(true); // Auto-print enabled by default
 
   // Bluetooth printer setup
   useEffect(() => {
@@ -1126,43 +1127,42 @@ const Bill = ({ orderId }) => {
 
       enqueueSnackbar("Order placed successfully!", { variant: "success" });
 
-      // PRINT RECEIPT AUTOMATICALLY
-      try {
-        console.log("Attempting to print receipt...");
-        await printReceipt(data);
+      // AUTO PRINT RECEIPT IF ENABLED
+      if (autoPrintEnabled && isPrinterConnected) {
+        try {
+          console.log("Auto-printing receipt...");
+          await printReceipt(data);
 
-        enqueueSnackbar("Receipt printed successfully!", {
-          variant: "success",
-        });
-
-        // Show invoice
-        setShowInvoice(true);
-        setIsProcessing(false);
-
-        // Auto-close invoice after 5 seconds and navigate
-        setTimeout(() => {
-          setShowInvoice(false);
-          navigate("/menu");
-        }, 5000);
-      } catch (printError) {
-        console.error("Failed to print:", printError);
+          enqueueSnackbar("Receipt printed successfully!", {
+            variant: "success",
+          });
+        } catch (printError) {
+          console.error("Auto-print failed:", printError);
+          enqueueSnackbar(
+            "Order placed but failed to auto-print receipt. Please print manually.",
+            {
+              variant: "warning",
+            }
+          );
+        }
+      } else if (!isPrinterConnected) {
         enqueueSnackbar(
-          "Order placed but failed to print receipt. Please print manually.",
+          "Printer not connected. Please connect printer or print manually.",
           {
             variant: "warning",
           }
         );
-
-        // Still show invoice even if print fails
-        setShowInvoice(true);
-        setIsProcessing(false);
-
-        // Auto-close invoice after 5 seconds and navigate
-        setTimeout(() => {
-          setShowInvoice(false);
-          navigate("/menu");
-        }, 5000);
       }
+
+      // Show invoice
+      setShowInvoice(true);
+      setIsProcessing(false);
+
+      // Auto-close invoice after 5 seconds and navigate
+      setTimeout(() => {
+        setShowInvoice(false);
+        navigate("/menu");
+      }, 5000);
     },
     onError: (error) => {
       console.error("Order placement error:", error);
@@ -1303,7 +1303,9 @@ const Bill = ({ orderId }) => {
   // If no current order, show empty state
   if (!currentOrder) {
     return (
-      <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
+      <div className="w-full min-h-screen overflow-y-auto bg-gray-100 px-4 py-6 pb-24">
+        {" "}
+        {/* Added pb-24 for bottom padding */}
         <div className="max-w-[600px] mx-auto text-center">
           <div className="bg-white rounded-lg p-8 shadow-md">
             <h2 className="text-gray-900 text-lg font-semibold mb-4">
@@ -1319,7 +1321,9 @@ const Bill = ({ orderId }) => {
   }
 
   return (
-    <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
+    <div className="w-full min-h-screen overflow-y-auto bg-gray-100 px-4 py-6 pb-24">
+      {" "}
+      {/* Added pb-24 for bottom padding */}
       {/* Cash Modal */}
       {showCashModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1417,7 +1421,6 @@ const Bill = ({ orderId }) => {
           </div>
         </div>
       )}
-
       {/* Online Payment Options Modal */}
       {showOnlineOptions && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1448,7 +1451,6 @@ const Bill = ({ orderId }) => {
           </div>
         </div>
       )}
-
       {/* PWD/Senior Selection Modal */}
       {showPwdSeniorSelection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1678,7 +1680,6 @@ const Bill = ({ orderId }) => {
           </div>
         </div>
       )}
-
       <div className="max-w-[600px] mx-auto space-y-4">
         {/* Printer Status */}
         <div className="bg-white rounded-lg p-4 shadow-md">
@@ -1710,6 +1711,18 @@ const Bill = ({ orderId }) => {
                 {isPrinting ? "Printing..." : "Test Print"}
               </button>
             </div>
+          </div>
+          <div className="mt-3 flex items-center justify-between">
+            <span className="text-sm text-gray-700">Auto-print receipts:</span>
+            <label className="relative inline-flex items-center cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoPrintEnabled}
+                onChange={(e) => setAutoPrintEnabled(e.target.checked)}
+                className="sr-only peer"
+              />
+              <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
+            </label>
           </div>
         </div>
 
