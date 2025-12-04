@@ -120,6 +120,18 @@ export const breakfastItems = [
     category: "Breakfast",
     variants: [{ label: "With bacon and egg", price: 199 }],
   },
+  {
+    id: 12,
+    name: "Rice",
+    category: "Breakfast",
+    variants: [{ label: "Regular", price: 25 }],
+  },
+  {
+    id: 13,
+    name: "Egg",
+    category: "Breakfast",
+    variants: [{ label: "Regular", price: 15 }],
+  },
 ];
 
 // 🍝 Pasta (Updated from image)
