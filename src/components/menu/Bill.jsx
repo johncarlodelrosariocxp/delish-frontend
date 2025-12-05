@@ -1967,7 +1967,7 @@ const Bill = ({ orderId }) => {
                   : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              {employeeDiscountApplied ? "✓ Employee" : "Employee"}
+              {employeeDiscountApplied ? "✓ Employee/Owner" : "Employee/Owner"}
             </button>
 
             <button
@@ -1979,7 +1979,7 @@ const Bill = ({ orderId }) => {
                   : "bg-purple-100 text-purple-700 hover:bg-purple-200"
               } disabled:opacity-50 disabled:cursor-not-allowed`}
             >
-              {shareholderDiscountApplied ? "✓ Shareholder" : "Shareholder"}
+              {shareholderDiscountApplied ? "✓ VIP" : "VIP"}
             </button>
 
             {!hasRedeemedItem ? (
