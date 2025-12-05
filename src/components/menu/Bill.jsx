@@ -24,10 +24,11 @@ const Bill = ({ orderId }) => {
   const orders = useSelector((state) => state.order.orders);
   const activeOrderId = useSelector((state) => state.order.activeOrderId);
 
-  // ✅ Get user data
+  // ✅ FIXED: Get user data more reliably
   const userState = useSelector((state) => state.auth);
+  console.log("🔍 FULL AUTH STATE:", userState); // Debug log
 
-  // ✅ Extract user with multiple fallbacks
+  // ✅ IMPROVED: Extract user with multiple fallbacks
   const user = React.useMemo(() => {
     // Try different possible paths in the auth state
     const possiblePaths = [
@@ -42,6 +43,7 @@ const Bill = ({ orderId }) => {
     const foundUser = possiblePaths.find(Boolean);
 
     if (foundUser) {
+      console.log("✅ Found user via Redux:", foundUser);
       return foundUser;
     }
 
@@ -50,6 +52,7 @@ const Bill = ({ orderId }) => {
       const storedUser = localStorage.getItem("user");
       if (storedUser) {
         const parsedUser = JSON.parse(storedUser);
+        console.log("✅ Found user via localStorage:", parsedUser);
         return parsedUser;
       }
     } catch (error) {
@@ -61,6 +64,7 @@ const Bill = ({ orderId }) => {
       const token = localStorage.getItem("authToken");
       if (token) {
         const payload = JSON.parse(atob(token.split(".")[1]));
+        console.log("✅ Extracted user from token:", payload);
         return {
           _id: payload?._id || payload?.userId || payload?.id,
           name: payload?.name || "Cashier",
@@ -72,13 +76,19 @@ const Bill = ({ orderId }) => {
       console.error("Error extracting user from token:", error);
     }
 
-    // Default fallback
+    // Default fallback (shouldn't happen if user is logged in)
+    console.warn("⚠️ Using fallback user object");
     return {
       _id: "000000000000000000000001",
       name: "Admin",
       role: "admin",
     };
   }, [userState]);
+
+  console.log("👤 FINAL USER OBJECT:", user);
+  console.log("👤 USER ID:", user?._id);
+  console.log("👤 USER ROLE:", user?.role);
+  console.log("👤 USER NAME:", user?.name);
 
   const currentOrder =
     orders.find((order) => order.id === orderId) ||
@@ -96,6 +106,8 @@ const Bill = ({ orderId }) => {
   const [shareholderDiscountApplied, setShareholderDiscountApplied] =
     useState(false);
   const [paymentMethod, setPaymentMethod] = useState(null);
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [orderInfo, setOrderInfo] = useState(null);
   const [showRedeemOptions, setShowRedeemOptions] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [pwdSeniorDiscountItems, setPwdSeniorDiscountItems] = useState([]);
@@ -116,6 +128,8 @@ const Bill = ({ orderId }) => {
     onlineMethod: null,
   });
   const [showMixedPaymentModal, setShowMixedPaymentModal] = useState(false);
+  const [invoiceKey, setInvoiceKey] = useState(Date.now()); // Force re-render
+  const [autoPrintTriggered, setAutoPrintTriggered] = useState(false);
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -832,6 +846,10 @@ const Bill = ({ orderId }) => {
       }
     }
 
+    // Log what we're sending
+    console.log("📤 Sending order with user ID:", userId);
+    console.log("📤 User object:", user);
+
     return {
       customerDetails: {
         name: customerName,
@@ -859,6 +877,7 @@ const Bill = ({ orderId }) => {
         ? pwdSeniorDiscountItems
         : [],
       cashier: user?.name || "Admin",
+      // ✅ Use the extracted user ID
       user: userId || "000000000000000000000001",
       tableId: currentOrder?.tableId || null,
       orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
@@ -869,51 +888,7 @@ const Bill = ({ orderId }) => {
     };
   };
 
-  // ✅ Generate invoice data for Redux
-  const generateInvoiceData = () => {
-    const orderData = prepareOrderData();
-
-    // Create invoice items from combined cart
-    const invoiceItems = combinedCart.map((item) => {
-      const isDiscounted = pwdSeniorDiscountItems.some(
-        (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
-      );
-
-      return {
-        name: item.name,
-        quantity: item.quantity,
-        price: calculateItemTotal(item),
-        originalPrice: safeNumber(item.pricePerQuantity),
-        pricePerQuantity: safeNumber(item.pricePerQuantity),
-        isFree: item.isRedeemed || false,
-        isPwdSeniorDiscounted: isDiscounted,
-      };
-    });
-
-    // Create complete invoice order info
-    return {
-      ...orderData,
-      id: currentOrder?.id,
-      number: currentOrder?.number,
-      items: invoiceItems,
-      customer: {
-        customerName: orderData.customerDetails.name,
-        ...currentOrder?.customer,
-      },
-      bills: {
-        ...orderData.bills,
-        netSales: totals.netSales,
-      },
-      orderStatus: "Completed",
-      orderDate: new Date().toISOString(),
-      cashier: user?.name || "Admin",
-      orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-  };
-
-  // ✅ FIXED: Order mutation - Pass invoice data to completeOrder
+  // ✅ FIXED: Order mutation with improved error handling and invoice display
   const orderMutation = useMutation({
     mutationFn: (reqData) => {
       console.log("📤 Sending order to backend:", reqData);
@@ -928,33 +903,103 @@ const Bill = ({ orderId }) => {
 
       const { data } = res.data;
 
-      // Generate invoice data
-      const invoiceData = generateInvoiceData();
-
-      // Mark order as completed with invoice data
-      if (currentOrder) {
-        console.log("✅ Completing order in Redux with invoice data");
-        dispatch(
-          completeOrder({
-            orderId: currentOrder.id,
-            orderData: {
-              ...invoiceData,
-              _id: data._id || invoiceData._id,
-              orderNumber: data.orderNumber || invoiceData.orderNumber,
-              bills: data.bills || invoiceData.bills,
-            },
-          })
-        );
+      // ✅ FIXED: Ensure we have data for the invoice
+      if (!data) {
+        throw new Error("No order data returned from server");
       }
 
-      enqueueSnackbar("Order placed successfully! Invoice is ready.", {
+      // Get combined cart items for invoice display
+      const invoiceItems = combinedCart.map((item) => {
+        const isDiscounted = pwdSeniorDiscountItems.some(
+          (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
+        );
+
+        return {
+          name: item.name,
+          quantity: item.quantity,
+          price: calculateItemTotal(item),
+          originalPrice: safeNumber(item.pricePerQuantity),
+          pricePerQuantity: safeNumber(item.pricePerQuantity),
+          isFree: item.isRedeemed || false,
+          isPwdSeniorDiscounted: isDiscounted,
+        };
+      });
+
+      // Create complete order info for invoice
+      const invoiceOrderInfo = {
+        ...data,
+        _id: data._id || `temp_${Date.now()}`,
+        customerDetails: {
+          name:
+            customerType === "walk-in"
+              ? "Walk-in Customer"
+              : "Take-out Customer",
+          phone: "",
+          email: "",
+          address: "",
+        },
+        customerType: customerType,
+        customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
+        items: invoiceItems,
+        bills: {
+          total: totals.baseGrossTotal,
+          tax: totals.vatAmount,
+          discount: totals.totalDiscountAmount,
+          totalWithTax: totals.total,
+          pwdSeniorDiscount: totals.pwdSeniorDiscountAmount,
+          pwdSeniorDiscountedValue: totals.discountedItemsTotal,
+          employeeDiscount: totals.employeeDiscountAmount,
+          shareholderDiscount: totals.shareholderDiscountAmount,
+          redemptionDiscount: totals.redemptionAmount,
+          cashAmount: totals.cashAmount,
+          onlineAmount: totals.onlineAmount,
+          onlineMethod: mixedPayment.onlineMethod,
+          change: totals.change,
+          netSales: totals.netSales,
+        },
+        paymentMethod: paymentMethod,
+        paymentDetails: {
+          cashAmount: totals.cashAmount,
+          onlineAmount: totals.onlineAmount,
+          onlineMethod: mixedPayment.onlineMethod,
+          isMixedPayment: mixedPayment.isMixed,
+        },
+        orderStatus: "Completed",
+        orderDate: data.createdAt || new Date().toISOString(),
+        cashier: user?.name || "Admin",
+        pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
+        // ✅ Include user ID in invoice data
+        user: user?._id || "000000000000000000000001",
+        orderNumber: data.orderNumber || `ORD-${Date.now()}`,
+        createdAt: data.createdAt || new Date().toISOString(),
+        updatedAt: data.updatedAt || new Date().toISOString(),
+      };
+
+      console.log("📄 Invoice order info prepared:", invoiceOrderInfo);
+
+      // ✅ FIXED: Show invoice BEFORE dispatching completeOrder
+      setOrderInfo(invoiceOrderInfo);
+      setInvoiceKey(Date.now()); // Force re-render
+      setShowInvoice(true);
+
+      // Mark for auto print
+      setAutoPrintTriggered(true);
+
+      enqueueSnackbar("Order placed successfully! Printing invoice...", {
         variant: "success",
       });
 
       setIsProcessing(false);
+
+      // Mark order as completed in Redux
+      if (currentOrder) {
+        console.log("✅ Completing order in Redux:", currentOrder.id);
+        dispatch(completeOrder(currentOrder.id));
+      }
     },
     onError: (error) => {
       console.error("❌ Order placement error:", error);
+      console.error("Error response:", error.response?.data);
 
       const errorMessage =
         error.response?.data?.message ||
@@ -976,6 +1021,7 @@ const Bill = ({ orderId }) => {
     if (isProcessing) return;
 
     console.log("Starting order placement...");
+    console.log("Current user:", user);
 
     // Validation
     if (!paymentMethod) {
@@ -1068,6 +1114,357 @@ const Bill = ({ orderId }) => {
       });
     }
   };
+
+  // ✅ FIXED: Handle close invoice properly
+  const handleCloseInvoice = () => {
+    console.log("Closing invoice...");
+    setShowInvoice(false);
+    setOrderInfo(null);
+    setAutoPrintTriggered(false);
+
+    // Navigate after invoice is closed
+    setTimeout(() => {
+      navigate("/menu");
+    }, 300);
+  };
+
+  // Function to trigger auto-print
+  const triggerAutoPrint = () => {
+    if (autoPrintTriggered && orderInfo) {
+      console.log("🖨️ Auto-printing invoice...");
+
+      // Small delay to ensure DOM is ready
+      setTimeout(() => {
+        try {
+          // Create a print-friendly HTML
+          const printWindow = window.open("", "_blank");
+          const printContent = `
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+              <meta charset="UTF-8">
+              <meta name="viewport" content="width=device-width, initial-scale=1.0">
+              <title>Invoice - Order ${orderInfo.orderNumber}</title>
+              <style>
+                @media print {
+                  @page { margin: 0; }
+                  body { margin: 1.6cm; }
+                }
+                * { 
+                  margin: 0; 
+                  padding: 0; 
+                  box-sizing: border-box; 
+                  font-family: Arial, sans-serif;
+                }
+                body { 
+                  width: 80mm; 
+                  margin: 0 auto; 
+                  padding: 10px; 
+                  font-size: 14px; 
+                }
+                .receipt-header { 
+                  text-align: center; 
+                  margin-bottom: 15px; 
+                  border-bottom: 2px dashed #000; 
+                  padding-bottom: 10px;
+                }
+                .receipt-title { 
+                  font-size: 20px; 
+                  font-weight: bold; 
+                  margin-bottom: 5px;
+                }
+                .receipt-subtitle { 
+                  font-size: 12px; 
+                  color: #666;
+                }
+                .order-info { 
+                  margin: 10px 0; 
+                  font-size: 12px;
+                }
+                .order-info-row { 
+                  display: flex; 
+                  justify-content: space-between; 
+                  margin-bottom: 3px;
+                }
+                .items-table { 
+                  width: 100%; 
+                  margin: 10px 0; 
+                  border-collapse: collapse;
+                }
+                .items-table th { 
+                  text-align: left; 
+                  border-bottom: 1px solid #000; 
+                  padding: 5px 0;
+                  font-weight: bold;
+                }
+                .items-table td { 
+                  padding: 4px 0; 
+                  border-bottom: 1px dashed #ddd;
+                }
+                .item-name { 
+                  width: 50%;
+                }
+                .item-qty { 
+                  width: 15%; 
+                  text-align: center;
+                }
+                .item-price { 
+                  width: 35%; 
+                  text-align: right;
+                }
+                .totals { 
+                  margin-top: 15px; 
+                  border-top: 2px dashed #000; 
+                  padding-top: 10px;
+                }
+                .total-row { 
+                  display: flex; 
+                  justify-content: space-between; 
+                  margin-bottom: 5px;
+                }
+                .total-row.total { 
+                  font-weight: bold; 
+                  font-size: 16px; 
+                  margin-top: 5px;
+                }
+                .discount { 
+                  color: #dc2626;
+                }
+                .payment-info { 
+                  margin-top: 15px; 
+                  font-size: 13px;
+                }
+                .footer { 
+                  text-align: center; 
+                  margin-top: 20px; 
+                  font-size: 11px; 
+                  color: #666;
+                }
+                .free-badge { 
+                  color: #059669; 
+                  font-weight: bold;
+                }
+                .discount-badge { 
+                  color: #2563eb; 
+                  font-weight: bold;
+                }
+              </style>
+            </head>
+            <body>
+              <div class="receipt-header">
+                <div class="receipt-title">DELISH RESTAURANT</div>
+                <div class="receipt-subtitle">123 Main Street, City, Country</div>
+                <div class="receipt-subtitle">Phone: (123) 456-7890</div>
+                <div class="receipt-subtitle">VAT Registered: 123-456-789</div>
+              </div>
+              
+              <div class="order-info">
+                <div class="order-info-row">
+                  <span>Order #:</span>
+                  <span>${orderInfo.orderNumber}</span>
+                </div>
+                <div class="order-info-row">
+                  <span>Date:</span>
+                  <span>${new Date(orderInfo.createdAt).toLocaleString()}</span>
+                </div>
+                <div class="order-info-row">
+                  <span>Cashier:</span>
+                  <span>${orderInfo.cashier}</span>
+                </div>
+                <div class="order-info-row">
+                  <span>Customer:</span>
+                  <span>${orderInfo.customerDetails.name}</span>
+                </div>
+                ${
+                  orderInfo.pwdSeniorDetails
+                    ? `
+                <div class="order-info-row">
+                  <span>${orderInfo.pwdSeniorDetails.type}:</span>
+                  <span>${orderInfo.pwdSeniorDetails.name}</span>
+                </div>
+                `
+                    : ""
+                }
+              </div>
+              
+              <table class="items-table">
+                <thead>
+                  <tr>
+                    <th class="item-name">Item</th>
+                    <th class="item-qty">Qty</th>
+                    <th class="item-price">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${orderInfo.items
+                    .map(
+                      (item) => `
+                    <tr>
+                      <td class="item-name">
+                        ${item.name}
+                        ${
+                          item.isFree
+                            ? '<span class="free-badge"> (FREE)</span>'
+                            : ""
+                        }
+                        ${
+                          item.isPwdSeniorDiscounted
+                            ? '<span class="discount-badge"> (PWD/SENIOR -20%)</span>'
+                            : ""
+                        }
+                      </td>
+                      <td class="item-qty">${item.quantity}</td>
+                      <td class="item-price">
+                        ${item.isFree ? "FREE" : "₱" + item.price.toFixed(2)}
+                      </td>
+                    </tr>
+                  `
+                    )
+                    .join("")}
+                </tbody>
+              </table>
+              
+              <div class="totals">
+                <div class="order-info-row">
+                  <span>Subtotal:</span>
+                  <span>₱${orderInfo.bills.total.toFixed(2)}</span>
+                </div>
+                
+                ${
+                  orderInfo.bills.pwdSeniorDiscount > 0
+                    ? `
+                <div class="order-info-row discount">
+                  <span>PWD/Senior Discount:</span>
+                  <span>-₱${orderInfo.bills.pwdSeniorDiscount.toFixed(2)}</span>
+                </div>
+                `
+                    : ""
+                }
+                
+                ${
+                  orderInfo.bills.employeeDiscount > 0
+                    ? `
+                <div class="order-info-row discount">
+                  <span>Employee Discount:</span>
+                  <span>-₱${orderInfo.bills.employeeDiscount.toFixed(2)}</span>
+                </div>
+                `
+                    : ""
+                }
+                
+                ${
+                  orderInfo.bills.shareholderDiscount > 0
+                    ? `
+                <div class="order-info-row discount">
+                  <span>Shareholder Discount:</span>
+                  <span>-₱${orderInfo.bills.shareholderDiscount.toFixed(
+                    2
+                  )}</span>
+                </div>
+                `
+                    : ""
+                }
+                
+                ${
+                  orderInfo.bills.redemptionDiscount > 0
+                    ? `
+                <div class="order-info-row discount">
+                  <span>Redemption Discount:</span>
+                  <span>-₱${orderInfo.bills.redemptionDiscount.toFixed(
+                    2
+                  )}</span>
+                </div>
+                `
+                    : ""
+                }
+                
+                <div class="order-info-row">
+                  <span>VAT (12%):</span>
+                  <span>₱${orderInfo.bills.tax.toFixed(2)}</span>
+                </div>
+                
+                <div class="order-info-row total">
+                  <span>TOTAL:</span>
+                  <span>₱${orderInfo.bills.totalWithTax.toFixed(2)}</span>
+                </div>
+                
+                <div class="payment-info">
+                  <div class="order-info-row">
+                    <span>Payment Method:</span>
+                    <span>${orderInfo.paymentMethod}</span>
+                  </div>
+                  
+                  ${
+                    orderInfo.bills.cashAmount > 0
+                      ? `
+                  <div class="order-info-row">
+                    <span>Cash Paid:</span>
+                    <span>₱${orderInfo.bills.cashAmount.toFixed(2)}</span>
+                  </div>
+                  `
+                      : ""
+                  }
+                  
+                  ${
+                    orderInfo.bills.onlineAmount > 0
+                      ? `
+                  <div class="order-info-row">
+                    <span>Online Payment (${
+                      orderInfo.bills.onlineMethod
+                    }):</span>
+                    <span>₱${orderInfo.bills.onlineAmount.toFixed(2)}</span>
+                  </div>
+                  `
+                      : ""
+                  }
+                  
+                  ${
+                    orderInfo.bills.change > 0
+                      ? `
+                  <div class="order-info-row">
+                    <span>Change Due:</span>
+                    <span>₱${orderInfo.bills.change.toFixed(2)}</span>
+                  </div>
+                  `
+                      : ""
+                  }
+                </div>
+              </div>
+              
+              <div class="footer">
+                <p>Thank you for dining with us!</p>
+                <p>Please keep this receipt for your records</p>
+                <p>Generated: ${new Date().toLocaleString()}</p>
+              </div>
+            </body>
+            </html>
+          `;
+
+          printWindow.document.write(printContent);
+          printWindow.document.close();
+
+          // Trigger print after a short delay
+          setTimeout(() => {
+            printWindow.print();
+            printWindow.close();
+          }, 500);
+
+          console.log("✅ Invoice auto-print triggered");
+        } catch (error) {
+          console.error("❌ Auto-print error:", error);
+          // Fallback to simple print
+          window.print();
+        }
+      }, 1000);
+    }
+  };
+
+  // Trigger auto print when showInvoice changes
+  useEffect(() => {
+    if (showInvoice && autoPrintTriggered) {
+      triggerAutoPrint();
+    }
+  }, [showInvoice, autoPrintTriggered]);
 
   // Handle redeem button click
   const handleShowRedeemOptions = () => {
@@ -2015,12 +2412,288 @@ const Bill = ({ orderId }) => {
                   Processing...
                 </>
               ) : (
-                "Place Order & Show Invoice"
+                "Place Order & Print Invoice"
               )}
             </button>
           </div>
         </div>
       </div>
+
+      {/* ✅ FIXED: Invoice Modal - Ensure it's visible */}
+      {showInvoice && orderInfo && (
+        <div className="fixed inset-0 z-[9999] bg-black bg-opacity-70 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <div className="p-4 bg-blue-600 text-white flex justify-between items-center">
+              <h2 className="text-xl font-bold">Invoice - Auto Printing...</h2>
+              <button
+                onClick={handleCloseInvoice}
+                className="text-white hover:text-gray-200 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+            <div className="p-6 max-h-[80vh] overflow-y-auto">
+              {/* Invoice Header */}
+              <div className="text-center mb-6">
+                <h1 className="text-2xl font-bold text-gray-800">
+                  DELISH RESTAURANT
+                </h1>
+                <p className="text-gray-600">123 Main Street, City, Country</p>
+                <p className="text-gray-600">Phone: (123) 456-7890</p>
+                <p className="text-gray-600">VAT Registered: 123-456-789</p>
+              </div>
+
+              {/* Order Info */}
+              <div className="grid grid-cols-2 gap-4 mb-6">
+                <div>
+                  <p className="text-sm text-gray-600">Order Number:</p>
+                  <p className="font-semibold">{orderInfo.orderNumber}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-600">Date:</p>
+                  <p className="font-semibold">
+                    {new Date(orderInfo.createdAt).toLocaleDateString()}{" "}
+                    {new Date(orderInfo.createdAt).toLocaleTimeString()}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-sm text-gray-600">Cashier:</p>
+                  <p className="font-semibold">{orderInfo.cashier}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-600">Customer Type:</p>
+                  <p className="font-semibold">
+                    {orderInfo.customerType === "walk-in"
+                      ? "Dine-in"
+                      : "Take-out"}
+                  </p>
+                </div>
+              </div>
+
+              {/* Customer Details */}
+              {orderInfo.pwdSeniorDetails && (
+                <div className="bg-blue-50 p-4 rounded-lg mb-6">
+                  <h3 className="font-semibold text-blue-800 mb-2">
+                    PWD/Senior Discount Applied
+                  </h3>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <p className="text-sm text-gray-600">Name:</p>
+                      <p className="font-semibold">
+                        {orderInfo.pwdSeniorDetails.name}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">ID Number:</p>
+                      <p className="font-semibold">
+                        {orderInfo.pwdSeniorDetails.idNumber}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-sm text-gray-600">Type:</p>
+                      <p className="font-semibold">
+                        {orderInfo.pwdSeniorDetails.type}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Items Table */}
+              <div className="mb-6">
+                <h3 className="font-semibold text-lg mb-3">Order Items</h3>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Item
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Qty
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Price
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Total
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {orderInfo.items.map((item, index) => (
+                        <tr key={index}>
+                          <td className="px-4 py-3">
+                            <div className="text-sm font-medium text-gray-900">
+                              {item.name}
+                              {item.isFree && (
+                                <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">
+                                  FREE
+                                </span>
+                              )}
+                              {item.isPwdSeniorDiscounted && (
+                                <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded-full">
+                                  -20%
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            {item.quantity}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500">
+                            {item.isFree
+                              ? "FREE"
+                              : `₱${item.pricePerQuantity.toFixed(2)}`}
+                          </td>
+                          <td className="px-4 py-3 text-sm font-semibold">
+                            {item.isFree ? "FREE" : `₱${item.price.toFixed(2)}`}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Totals */}
+              <div className="bg-gray-50 p-6 rounded-lg">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal:</span>
+                    <span className="font-semibold">
+                      ₱{orderInfo.bills.total.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {orderInfo.bills.pwdSeniorDiscount > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>PWD/Senior Discount (20%):</span>
+                      <span>
+                        -₱{orderInfo.bills.pwdSeniorDiscount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+
+                  {orderInfo.bills.employeeDiscount > 0 && (
+                    <div className="flex justify-between text-yellow-600">
+                      <span>Employee Discount (15%):</span>
+                      <span>
+                        -₱{orderInfo.bills.employeeDiscount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+
+                  {orderInfo.bills.shareholderDiscount > 0 && (
+                    <div className="flex justify-between text-purple-600">
+                      <span>Shareholder Discount (10%):</span>
+                      <span>
+                        -₱{orderInfo.bills.shareholderDiscount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+
+                  {orderInfo.bills.redemptionDiscount > 0 && (
+                    <div className="flex justify-between text-blue-600">
+                      <span>Redemption Discount:</span>
+                      <span>
+                        -₱{orderInfo.bills.redemptionDiscount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between pt-2 border-t border-gray-200">
+                    <span className="text-gray-600">
+                      Net Sales (VAT Exclusive):
+                    </span>
+                    <span className="font-semibold">
+                      ₱{orderInfo.bills.netSales.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">VAT (12%):</span>
+                    <span className="font-semibold">
+                      ₱{orderInfo.bills.tax.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between pt-4 border-t border-gray-300 text-lg font-bold">
+                    <span>TOTAL:</span>
+                    <span>₱{orderInfo.bills.totalWithTax.toFixed(2)}</span>
+                  </div>
+
+                  {/* Payment Details */}
+                  <div className="pt-4 border-t border-gray-200">
+                    <div className="flex justify-between mb-2">
+                      <span className="text-gray-600">Payment Method:</span>
+                      <span className="font-semibold">
+                        {orderInfo.paymentMethod}
+                      </span>
+                    </div>
+
+                    {orderInfo.bills.cashAmount > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">Cash Paid:</span>
+                        <span>₱{orderInfo.bills.cashAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    {orderInfo.bills.onlineAmount > 0 && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-600">
+                          Online Payment ({orderInfo.bills.onlineMethod}):
+                        </span>
+                        <span>₱{orderInfo.bills.onlineAmount.toFixed(2)}</span>
+                      </div>
+                    )}
+
+                    {orderInfo.bills.change > 0 && (
+                      <div className="flex justify-between text-green-600 font-semibold">
+                        <span>Change Due:</span>
+                        <span>₱{orderInfo.bills.change.toFixed(2)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Footer */}
+              <div className="text-center mt-8 pt-6 border-t border-gray-200">
+                <p className="text-gray-600 text-sm">
+                  Thank you for your purchase!
+                </p>
+                <p className="text-gray-500 text-xs mt-2">
+                  This serves as your official receipt
+                </p>
+                <p className="text-gray-500 text-xs">
+                  Please keep this invoice for your records
+                </p>
+                <div className="mt-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-yellow-700 text-sm font-medium">
+                    <span className="animate-pulse">🖨️</span> Invoice is
+                    auto-printing...
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 bg-gray-100 flex justify-between">
+              <button
+                onClick={() => window.print()}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+              >
+                Print Again
+              </button>
+              <button
+                onClick={handleCloseInvoice}
+                className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400"
+              >
+                Close Invoice
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 };
