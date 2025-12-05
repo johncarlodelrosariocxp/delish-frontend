@@ -486,10 +486,10 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     // Set alignment and text size for header
     receiptText += thermalCommands.ALIGN_CENTER;
     receiptText += thermalCommands.TEXT_LARGE;
-    receiptText += "DELISH RESTAURANT\n";
+    receiptText += "DELISH CHEESECAKE CAFE\n";
     receiptText += thermalCommands.TEXT_NORMAL;
     receiptText += "--------------------------------\n";
-    receiptText += "Order Receipt\n";
+    receiptText += "Order Slip\n";
     receiptText += "--------------------------------\n\n";
 
     // Order information
@@ -615,8 +615,6 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     receiptText += thermalCommands.ALIGN_CENTER;
     receiptText += "Thank you for dining with us!\n";
     receiptText += "Please visit again!\n\n";
-    receiptText += "This receipt is your official\n";
-    receiptText += "proof of purchase.\n\n";
 
     // Feed 3 lines and cut
     receiptText += thermalCommands.FEED_N_LINES(3);

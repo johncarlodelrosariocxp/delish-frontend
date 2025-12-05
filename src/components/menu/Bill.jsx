@@ -1129,8 +1129,8 @@ const Bill = ({ orderId }) => {
   return (
     <>
       {/* Main content */}
-      {/* FIXED: Added pb-24 (96px) padding-bottom for safe area */}
-      <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6 pb-24">
+      {/* FIXED: Added pb-32 (128px) padding-bottom for extra safe area */}
+      <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6 pb-32">
         {/* Cash Modal */}
         {showCashModal && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1662,7 +1662,7 @@ const Bill = ({ orderId }) => {
           </div>
         )}
 
-        <div className="max-w-[600px] mx-auto space-y-4">
+        <div className="max-w-[600px] mx-auto space-y-4 pb-8">
           {/* 🧾 CUSTOMER TYPE */}
           <div className="bg-white rounded-lg p-4 shadow-md">
             <h2 className="text-gray-900 text-sm font-semibold mb-3">
@@ -2032,12 +2032,12 @@ const Bill = ({ orderId }) => {
             </button>
           </div>
 
-          {/* 🧾 PLACE ORDER - FIXED: Added margin-bottom for safe area */}
-          <div className="flex flex-col sm:flex-row gap-3 mt-6 mb-6">
+          {/* 🧾 PLACE ORDER - FIXED: Added extra padding bottom for visibility */}
+          <div className="flex flex-col sm:flex-row gap-3 mt-6 mb-6 pb-8">
             <button
               onClick={handlePlaceOrder}
               disabled={isProcessing || !paymentMethod || cartData.length === 0}
-              className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+              className="w-full px-4 py-4 rounded-lg font-semibold text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
             >
               {isProcessing ? (
                 <>
@@ -2051,7 +2051,7 @@ const Bill = ({ orderId }) => {
           </div>
 
           {/* Extra spacing for bottom navigation safety */}
-          <div className="h-6"></div>
+          <div className="h-12"></div>
         </div>
       </div>
     </>
