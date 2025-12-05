@@ -669,7 +669,7 @@ export const icedCoffeeItems = [
 export const frappeItems = [
   {
     id: 1,
-    name: "Espresso Blended",
+    name: "Espresso Frappe",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 155 },
@@ -678,7 +678,7 @@ export const frappeItems = [
   },
   {
     id: 2,
-    name: "Hazelnut",
+    name: "Hazelnut Frappe",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 160 },
@@ -687,7 +687,7 @@ export const frappeItems = [
   },
   {
     id: 3,
-    name: "Caramel",
+    name: "Caramel Frappe",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 175 },
@@ -696,7 +696,7 @@ export const frappeItems = [
   },
   {
     id: 4,
-    name: "Mocha",
+    name: "Mocha Frappe",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 175 },
@@ -705,7 +705,7 @@ export const frappeItems = [
   },
   {
     id: 5,
-    name: "White Mocha",
+    name: "White Frappe",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 175 },
@@ -714,7 +714,7 @@ export const frappeItems = [
   },
   {
     id: 6,
-    name: "Biscoff",
+    name: "Biscoff Frappe",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 180 },
@@ -724,7 +724,7 @@ export const frappeItems = [
   {
     id: 7,
     name: "Vanilla Cream",
-    category: "Frappe",
+    category: "Cream",
     variants: [
       { label: "16oz", price: 155 },
       { label: "22oz", price: 170 },
@@ -732,8 +732,8 @@ export const frappeItems = [
   },
   {
     id: 8,
-    name: "Ube",
-    category: "Frappe",
+    name: "Ube Cream",
+    category: "Cream",
     variants: [
       { label: "16oz", price: 160 },
       { label: "22oz", price: 185 },
@@ -742,7 +742,7 @@ export const frappeItems = [
   {
     id: 9,
     name: "Caramel Cream",
-    category: "Frappe",
+    category: "Cream",
     variants: [
       { label: "16oz", price: 165 },
       { label: "22oz", price: 180 },
@@ -751,7 +751,7 @@ export const frappeItems = [
   {
     id: 10,
     name: "Choco Cream",
-    category: "Frappe",
+    category: "Cream",
     variants: [
       { label: "16oz", price: 165 },
       { label: "22oz", price: 180 },
@@ -759,8 +759,8 @@ export const frappeItems = [
   },
   {
     id: 11,
-    name: "Choco Hazelnut",
-    category: "Frappe",
+    name: "Choco Cream",
+    category: "Cream",
     variants: [
       { label: "16oz", price: 165 },
       { label: "22oz", price: 180 },
@@ -768,8 +768,8 @@ export const frappeItems = [
   },
   {
     id: 12,
-    name: "Oreo",
-    category: "Frappe",
+    name: "Oreo Cream",
+    category: "Cream",
     variants: [
       { label: "16oz", price: 165 },
       { label: "22oz", price: 180 },
@@ -777,8 +777,8 @@ export const frappeItems = [
   },
   {
     id: 13,
-    name: "Matcha",
-    category: "Frappe",
+    name: "Matcha Cream",
+    category: "Cream",
     variants: [
       { label: "16oz", price: 165 },
       { label: "22oz", price: 180 },
@@ -786,8 +786,8 @@ export const frappeItems = [
   },
   {
     id: 14,
-    name: "Choco Chip",
-    category: "Frappe",
+    name: "Choco Cream",
+    category: "Cream",
     variants: [
       { label: "16oz", price: 160 },
       { label: "22oz", price: 175 },
@@ -796,7 +796,7 @@ export const frappeItems = [
   {
     id: 15,
     name: "Biscoff Cream",
-    category: "Frappe",
+    category: "Cream",
     variants: [
       { label: "16oz", price: 175 },
       { label: "22oz", price: 190 },

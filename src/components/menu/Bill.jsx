@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   removeItemFromOrder,
@@ -10,27 +10,1310 @@ import {
   processOrder,
   resetOrderStatus,
 } from "../../redux/slices/orderSlice";
-import {
-  addOrder,
-  createOrderRazorpay,
-  updateTable,
-  verifyPaymentRazorpay,
-} from "../../https/index";
+import { addOrder } from "../../https/index";
 import { enqueueSnackbar } from "notistack";
 import { useMutation } from "@tanstack/react-query";
-import Invoice from "../invoice/Invoice";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 
-function loadScript(src) {
-  return new Promise((resolve) => {
-    const script = document.createElement("script");
-    script.src = src;
-    script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
-    document.body.appendChild(script);
-  });
-}
+// --- Custom Icon Components ---
+const IconCheck = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 512 512"
+    fill="currentColor"
+  >
+    <path d="M470.6 105.4c12.5 12.5 12.5 32.8 0 45.3l-256 256c-12.5 12.5-32.8 12.5-45.3 0l-128-128c-12.5 12.5-12.5 32.8 0-45.3s32.8-12.5 45.3 0L192 338.7 425.4 105.4c12.5-12.5 32.8-12.5 45.3 0z" />
+  </svg>
+);
+const IconPrint = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 512 512"
+    fill="currentColor"
+  >
+    <path d="M128 0C92.7 0 64 28.7 64 64v96h64V64H384v96h64V64c0-35.3-28.7-64-64-64H128zM384 352c35.3 0 64-28.7 64-64V224H288 224 64v64c0 35.3 28.7 64 64 64H384zm64 64H128c-35.3 0-64-28.7-64-64V224H128 384 448v128c0 35.3-28.7 64-64 64zM392 480a24 24 0 1 0 0-48 24 24 0 1 0 0 48z" />
+  </svg>
+);
+const IconTimes = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 320 512"
+    fill="currentColor"
+  >
+    <path d="M310.6 150.6c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L160 210.7 54.6 105.4c-12.5-12.5-32.8-12.5-45.3 0s-12.5 32.8 0 45.3L114.7 256 9.4 361.4c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L160 301.3 265.4 406.6c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L205.3 256 310.6 150.6z" />
+  </svg>
+);
+const IconReceipt = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 384 512"
+    fill="currentColor"
+  >
+    <path d="M336 64H48C21.5 64 0 85.5 0 112v288c0 26.5 21.5 48 48 48h288c26.5 0 48-21.5 48-48V112c0-26.5-21.5-48-48-48zm-6 208a10.4 10.4 0 0 1 0 20.8 10.4 10.4 0 1 1 0-20.8zm-192 0a10.4 10.4 0 0 1 0 20.8 10.4 10.4 0 1 1 0-20.8zM240 192a16 16 0 1 1 0 32 16 16 0 1 1 0-32zm-96 0a16 16 0 1 1 0 32 16 16 0 1 1 0-32zM288 384H96a16 16 0 0 1 0-32h192a16 16 0 0 1 0 32z" />
+  </svg>
+);
+const IconBluetooth = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 448 512"
+    fill="currentColor"
+  >
+    <path d="M294.7 32.4L32 232.1h148.2L124.9 397c-6.8 17.7 2.1 37.6 19.8 44.4s37.6-2.1 44.4-19.8l108.5-281.2c4.7-12.2-4.1-25.7-16.3-30.4s-25.7 4.1-30.4 16.3L130.6 307.7l-47.5-123.6 220-141.7c16.5-10.6 37.3-5.2 47.9 11.3s5.2 37.3-11.3 47.9L170.8 256l113.8 113.8c12.5 12.5 12.5 32.8 0 45.3s-32.8 12.5-45.3 0L125.4 278.4 294.7 32.4zM240 376c0-22.1 17.9-40 40-40s40 17.9 40 40-17.9 40-40 40-40-17.9-40-40zM280 40c22.1 0 40 17.9 40 40s-17.9 40-40 40-40-17.9-40-40 17.9-40 40-40z" />
+  </svg>
+);
+const IconCashRegister = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 576 512"
+    fill="currentColor"
+  >
+    <path d="M24 88C10.7 88 0 98.7 0 112v88c0 13.3 10.7 24 24 24H552c13.3 0 24-10.7 24-24V112c0-13.3-10.7-24-24-24H24zM80 480c-17.7 0-32-14.3-32-32s14.3-32 32-32H496c17.7 0 32 14.3 32 32s14.3 32 32 32H80zM552 256H24c-13.3 0-24 10.7-24 24V416c0 13.3 10.7 24 24 24H552c13.3 0 24-10.7 24-24V280c0-13.3-10.7-24-24-24z" />
+  </svg>
+);
+const IconLink = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 512 512"
+    fill="currentColor"
+  >
+    <path d="M192 208v160c0 44.2 35.8 80 80 80h16c44.2 0 80-35.8 80-80V208c0-44.2-35.8-80-80-80h-16c-4.4 0-8 3.6-8 8s3.6 8 8 8h16c35.3 0 64 28.7 64 64v160c0 35.3-28.7 64-64 64h-16c-35.3 0-64-28.7-64-64V208c0-4.4-3.6-8-8-8s-8 3.6-8 8zM128 128H48C21.5 128 0 149.5 0 176v160c0 26.5 21.5 48 48 48h80c4.4 0 8-3.6 8-8s-3.6-8-8-8H48c-17.7 0-32-14.3-32-32V176c0-17.7 14.3-32 32-32h80c4.4 0 8-3.6 8-8s-3.6-8-8-8z" />
+  </svg>
+);
+const IconUnlink = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 512 512"
+    fill="currentColor"
+  >
+    <path d="M485.3 43.1L399.7 128.7 448 176c26.5 0 48-21.5 48-48V48c0-26.5-21.5-48-48-48H368c-26.5 0-48 21.5-48 48v48l-94.8 94.8c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L399.7 192 485.3 277.7c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L430.6 142.1l63.5-63.5c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L448 48c-8.8 0-16 7.2-16 16v48l-80 80L160 384l-80-80V240c0-8.8-7.2-16-16-16H48c-26.5 0-48 21.5-48 48v80c0 26.5 21.5 48 48 48h80c26.5 0 48-21.5 48-48v-48l160-160L469.3 468.9c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L485.3 43.1z" />
+  </svg>
+);
+const IconUser = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 448 512"
+    fill="currentColor"
+  >
+    <path d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512H418.3c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304H178.3z" />
+  </svg>
+);
+const IconIdCard = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 576 512"
+    fill="currentColor"
+  >
+    <path d="M528 160V416c0 8.8-7.2 16-16 16H320c0-44.2-35.8-80-80-80H176c-44.2 0-80 35.8-80 80H64c-8.8 0-16-7.2-16-16V160H528zM64 32C28.7 32 0 60.7 0 96V416c0 35.3 28.7 64 64 64H512c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64H64zM272 256a64 64 0 1 0 -128 0 64 64 0 1 0 128 0zm104-48c-13.3 0-24 10.7-24 24s10.7 24 24 24h80c13.3 0 24-10.7 24-24s-10.7-24-24-24H376zm0 96c-13.3 0-24 10.7-24 24s10.7 24 24 24h80c13.3 0 24-10.7 24-24s-10.7-24-24-24H376z" />
+  </svg>
+);
+// -----------------------------------------------------------------
 
+// Invoice Component (nested inside Bill)
+const Invoice = ({ orderInfo, setShowInvoice }) => {
+  const invoiceRef = useRef(null);
+  const [bluetoothDevice, setBluetoothDevice] = useState(null);
+  const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
+  const [isPrinting, setIsPrinting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
+
+  // Thermal printer ESC/POS commands
+  const thermalCommands = {
+    INIT: "\x1B\x40", // Initialize printer
+    ALIGN_LEFT: "\x1B\x61\x00", // Left alignment
+    ALIGN_CENTER: "\x1B\x61\x01", // Center alignment
+    ALIGN_RIGHT: "\x1B\x61\x02", // Right alignment
+    BOLD_ON: "\x1B\x45\x01", // Bold on
+    BOLD_OFF: "\x1B\x45\x00", // Bold off
+    UNDERLINE_ON: "\x1B\x2D\x01", // Underline on
+    UNDERLINE_OFF: "\x1B\x2D\x00", // Underline off
+    CUT_PARTIAL: "\x1B\x69", // Partial cut
+    CUT_FULL: "\x1B\x6D", // Full cut
+    FEED_LINE: "\x0A", // Line feed
+    FEED_N_LINES: (n) => `\x1B\x64${String.fromCharCode(n)}`, // Feed n lines
+    TEXT_NORMAL: "\x1B\x21\x00", // Normal text
+    TEXT_LARGE: "\x1B\x21\x10", // Double height
+    TEXT_DOUBLE_WIDTH: "\x1B\x21\x20", // Double width
+    TEXT_DOUBLE_SIZE: "\x1B\x21\x30", // Double height & width
+    DRAWER_KICK: "\x1B\x70\x00\x19\xFA", // Kick drawer (pin 2)
+  };
+
+  useEffect(() => {
+    if (errorMessage) {
+      const timer = setTimeout(() => setErrorMessage(""), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [errorMessage]);
+
+  const alertUser = (message, variant = "error") => {
+    setErrorMessage(message);
+    console.log(`${variant.toUpperCase()}: ${message}`);
+  };
+
+  // Connect to Bluetooth printer
+  const connectBluetooth = async () => {
+    if (!navigator.bluetooth) {
+      alertUser(
+        "Bluetooth is not supported in this browser. Please use Chrome/Edge.",
+        "error"
+      );
+      return null;
+    }
+
+    try {
+      setIsConnecting(true);
+      console.log("Searching for Bluetooth printer...");
+
+      const serviceUUID_PRINTER = "000018f0-0000-1000-8000-00805f9b34fb";
+      const serviceUUID_SPP = "00001101-0000-1000-8000-00805f9b34fb";
+      const serviceUUID_GENERIC_ACCESS = "00001800-0000-1000-8000-00805f9b34fb";
+
+      const device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: [
+          serviceUUID_PRINTER,
+          serviceUUID_SPP,
+          serviceUUID_GENERIC_ACCESS,
+        ],
+      });
+
+      console.log("Connecting to GATT server...");
+      const server = await device.gatt.connect();
+
+      let writeCharacteristic = null;
+      const servicesToTry = [serviceUUID_PRINTER, serviceUUID_SPP];
+
+      for (const serviceUuid of servicesToTry) {
+        try {
+          console.log(`Trying service: ${serviceUuid}`);
+          const service = await server.getPrimaryService(serviceUuid);
+          const characteristics = await service.getCharacteristics();
+
+          writeCharacteristic = characteristics.find(
+            (char) =>
+              char.properties.write || char.properties.writeWithoutResponse
+          );
+
+          if (writeCharacteristic) {
+            console.log(
+              `Found writable characteristic in service ${serviceUuid}`
+            );
+            break;
+          }
+        } catch (error) {
+          console.log(`Service ${serviceUuid} not found or accessible.`);
+        }
+      }
+
+      if (!writeCharacteristic) {
+        throw new Error(
+          "No writable characteristic found. Printer uses a non-standard protocol."
+        );
+      }
+
+      setBluetoothDevice({ device, server, writeCharacteristic });
+      setIsConnected(true);
+      setIsConnecting(false);
+
+      localStorage.setItem("bluetoothPrinterId", device.id);
+
+      alertUser(
+        `Connected to printer: ${device.name || "Bluetooth Printer"}`,
+        "success"
+      );
+
+      device.addEventListener("gattserverdisconnected", () => {
+        setIsConnected(false);
+        setBluetoothDevice(null);
+        alertUser("Bluetooth printer disconnected", "warning");
+        console.log("Bluetooth device disconnected");
+      });
+
+      return { device, server, writeCharacteristic };
+    } catch (error) {
+      setIsConnecting(false);
+      console.error("Bluetooth connection failed:", error);
+
+      if (error.name === "NotFoundError") {
+        alertUser(
+          "No printer selected. Ensure printer is ON and in pairing mode.",
+          "warning"
+        );
+      } else if (error.name === "NetworkError") {
+        alertUser(
+          "Connection failed. Check printer range and ensure no other app is connected.",
+          "error"
+        );
+      } else if (error.name === "SecurityError") {
+        alertUser("Security error. Please ensure HTTPS is used.", {
+          variant: "error",
+        });
+      } else {
+        alertUser(`Connection failed: ${error.message}`, "error");
+      }
+      return null;
+    }
+  };
+
+  // Disconnect from Bluetooth printer
+  const disconnectBluetooth = () => {
+    if (bluetoothDevice) {
+      try {
+        bluetoothDevice.device.gatt.disconnect();
+        setIsConnected(false);
+        setBluetoothDevice(null);
+        localStorage.removeItem("bluetoothPrinterId");
+        alertUser("Disconnected from printer", "info");
+      } catch (error) {
+        console.error("Error disconnecting:", error);
+      }
+    }
+  };
+
+  // Send data to printer
+  const sendToPrinter = async (data) => {
+    try {
+      if (!bluetoothDevice || !isConnected) {
+        throw new Error("Not connected to Bluetooth device");
+      }
+
+      const encoder = new TextEncoder();
+      const dataArray = encoder.encode(data);
+
+      const CHUNK_SIZE = 20;
+      for (let i = 0; i < dataArray.length; i += CHUNK_SIZE) {
+        const chunk = dataArray.slice(i, i + CHUNK_SIZE);
+        await bluetoothDevice.writeCharacteristic.writeValue(chunk);
+        await new Promise((resolve) => setTimeout(resolve, 10));
+      }
+
+      console.log("Data sent to printer successfully");
+      return true;
+    } catch (error) {
+      console.error("Error sending data to printer:", error);
+      throw error;
+    }
+  };
+
+  // Print receipt to Bluetooth printer
+  const printReceipt = async () => {
+    setIsPrinting(true);
+    console.log("Starting print process...");
+
+    try {
+      if (!isConnected) {
+        const connected = await connectBluetooth();
+        if (!connected) {
+          throw new Error("Failed to connect to printer");
+        }
+      }
+
+      const receiptText = generateThermalText();
+      console.log("Receipt generated, sending to printer...");
+
+      await sendToPrinter(receiptText);
+
+      console.log("Receipt printed successfully!");
+
+      if (orderInfo.paymentMethod === "Cash") {
+        try {
+          await sendToPrinter(thermalCommands.DRAWER_KICK);
+          console.log("Cash drawer command sent");
+          await new Promise((resolve) => setTimeout(resolve, 500));
+        } catch (drawerError) {
+          console.warn("Could not open cash drawer:", drawerError);
+          alertUser(
+            "Cash drawer command failed. Please open manually.",
+            "warning"
+          );
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error("Print receipt error:", error);
+      throw error;
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  // Safe number conversion helper
+  const safeNumber = (value) => {
+    const num = Number(value);
+    return isNaN(num) ? 0 : num;
+  };
+
+  // Generate thermal printer text
+  const generateThermalText = () => {
+    const LINE_WIDTH = 32;
+
+    const centerText = (text, width = LINE_WIDTH) => {
+      if (text.length >= width) return text;
+      const padding = Math.floor((width - text.length) / 2);
+      return (
+        " ".repeat(padding) + text + " ".repeat(width - text.length - padding)
+      );
+    };
+
+    const rightText = (text, width = LINE_WIDTH) => {
+      if (text.length >= width) return text;
+      return " ".repeat(width - text.length) + text;
+    };
+
+    const orderId =
+      orderInfo._id?.slice(-8) ||
+      (orderInfo.orderDate
+        ? Math.floor(new Date(orderInfo.orderDate).getTime())
+            .toString()
+            .slice(-6)
+        : "N/A");
+
+    const cashier = orderInfo.cashier || "Admin";
+    const customerType = orderInfo.customerType || "walk-in";
+    const paymentMethod = orderInfo.paymentMethod || "Cash";
+
+    const totals = {
+      baseGrossTotal: safeNumber(orderInfo.bills?.total || 0),
+      pwdSeniorDiscountAmount: safeNumber(
+        orderInfo.bills?.pwdSeniorDiscount || 0
+      ),
+      redemptionAmount: safeNumber(orderInfo.bills?.redemptionDiscount || 0),
+      employeeDiscountAmount: safeNumber(
+        orderInfo.bills?.employeeDiscount || 0
+      ),
+      shareholderDiscountAmount: safeNumber(
+        orderInfo.bills?.shareholderDiscount || 0
+      ),
+      vatAmount: safeNumber(orderInfo.bills?.tax || 0),
+      total: safeNumber(orderInfo.bills?.totalWithTax || 0),
+      cashAmount: safeNumber(orderInfo.bills?.cashAmount || 0),
+      change: safeNumber(orderInfo.bills?.change || 0),
+      netSales: safeNumber(orderInfo.bills?.netSales || 0),
+    };
+
+    const pwdSeniorDetails = orderInfo.pwdSeniorDetails;
+    const pwdSeniorDiscountApplied = !!pwdSeniorDetails;
+
+    const items = orderInfo.items || [];
+
+    let receiptText = thermalCommands.INIT;
+
+    receiptText += thermalCommands.ALIGN_CENTER;
+    receiptText += thermalCommands.TEXT_LARGE;
+    receiptText += "DELISH RESTAURANT\n";
+    receiptText += thermalCommands.TEXT_NORMAL;
+    receiptText += "--------------------------------\n";
+    receiptText += "Order Receipt\n";
+    receiptText += "--------------------------------\n\n";
+
+    receiptText += thermalCommands.ALIGN_LEFT;
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += `Order #: ${orderId}\n`;
+    receiptText += thermalCommands.BOLD_OFF;
+    receiptText += `Date: ${new Date().toLocaleDateString("en-PH")}\n`;
+    receiptText += `Time: ${new Date().toLocaleTimeString("en-PH", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    })}\n`;
+    receiptText += `Cashier: ${cashier}\n`;
+    receiptText += `Customer: ${
+      customerType === "walk-in" ? "Dine-in" : "Take-out"
+    }\n`;
+    receiptText += "--------------------------------\n\n";
+
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += "QTY  ITEM                AMOUNT\n";
+    receiptText += thermalCommands.BOLD_OFF;
+    receiptText += "--------------------------------\n";
+
+    items.forEach((item) => {
+      const name = item.name || "Unknown Item";
+      const quantity = item.quantity || 1;
+      const price = safeNumber(
+        item.pricePerQuantity || item.originalPrice || 0
+      );
+      const total = safeNumber(item.price || 0);
+      const isRedeemed = item.isRedeemed || item.isFree || false;
+      const isPwdSeniorDiscounted = item.isPwdSeniorDiscounted || false;
+
+      const qtyStr = quantity.toString().padStart(2, " ");
+
+      let nameStr = name;
+      if (nameStr.length > 20) {
+        nameStr = nameStr.substring(0, 17) + "...";
+      } else {
+        nameStr = nameStr.padEnd(20, " ");
+      }
+
+      const amountStr = (isRedeemed ? "FREE" : `₱${total.toFixed(2)}`).padStart(
+        8,
+        " "
+      );
+
+      receiptText += `${qtyStr}   ${nameStr}${amountStr}\n`;
+
+      if (isRedeemed) {
+        receiptText += "     *REDEEMED\n";
+      } else if (isPwdSeniorDiscounted) {
+        const originalTotal = price * quantity;
+        const discountAmount = originalTotal * 0.2;
+        receiptText += `     *PWD/SENIOR -₱${discountAmount.toFixed(2)}\n`;
+      }
+    });
+
+    receiptText += "--------------------------------\n";
+
+    receiptText += thermalCommands.ALIGN_RIGHT;
+    receiptText += `SUBTOTAL:   ₱${totals.baseGrossTotal.toFixed(2)}\n`;
+
+    if (totals.pwdSeniorDiscountAmount > 0) {
+      receiptText += `PWD/SENIOR: -₱${totals.pwdSeniorDiscountAmount.toFixed(
+        2
+      )}\n`;
+    }
+
+    if (totals.redemptionAmount > 0) {
+      receiptText += `REDEMPTION: -₱${totals.redemptionAmount.toFixed(2)}\n`;
+    }
+
+    if (totals.employeeDiscountAmount > 0) {
+      receiptText += `EMP DISC:   -₱${totals.employeeDiscountAmount.toFixed(
+        2
+      )}\n`;
+    }
+
+    if (totals.shareholderDiscountAmount > 0) {
+      receiptText += `SHAREHOLDER:-₱${totals.shareholderDiscountAmount.toFixed(
+        2
+      )}\n`;
+    }
+
+    receiptText += `VAT (12%):  ₱${totals.vatAmount.toFixed(2)}\n`;
+    receiptText += "--------------------------------\n";
+
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += `TOTAL:      ₱${totals.total.toFixed(2)}\n`;
+    receiptText += thermalCommands.BOLD_OFF;
+    receiptText += "--------------------------------\n";
+
+    receiptText += thermalCommands.ALIGN_LEFT;
+    receiptText += `Payment: ${paymentMethod}\n`;
+
+    if (paymentMethod === "Cash" && totals.cashAmount > 0) {
+      receiptText += `Cash:    ₱${totals.cashAmount.toFixed(2)}\n`;
+      receiptText += `Change:  ₱${totals.change.toFixed(2)}\n`;
+    }
+
+    if (pwdSeniorDiscountApplied && pwdSeniorDetails?.name) {
+      receiptText += "--------------------------------\n";
+      receiptText += "PWD/SENIOR DETAILS:\n";
+      receiptText += `Name: ${pwdSeniorDetails.name}\n`;
+      receiptText += `ID #: ${pwdSeniorDetails.idNumber || ""}\n`;
+      receiptText += `Type: ${pwdSeniorDetails.type || "PWD"}\n`;
+    }
+
+    receiptText += "--------------------------------\n";
+
+    receiptText += thermalCommands.ALIGN_CENTER;
+    receiptText += "Thank you for dining with us!\n";
+    receiptText += "Please visit again!\n\n";
+    receiptText += "This receipt is your official\n";
+    receiptText += "proof of purchase.\n\n";
+
+    receiptText += thermalCommands.FEED_N_LINES(3);
+    receiptText += thermalCommands.CUT_PARTIAL;
+
+    return receiptText;
+  };
+
+  // Print via Bluetooth
+  const printViaBluetooth = async () => {
+    try {
+      if (!isConnected) {
+        alertUser("Please connect to Bluetooth printer first.", "warning");
+        return;
+      }
+
+      await printReceipt();
+      alertUser("Receipt printed successfully!", "success");
+    } catch (error) {
+      console.error("Bluetooth printing failed:", error);
+      alertUser(`Printing error: ${error.message}. Please try again.`, "error");
+    }
+  };
+
+  // Print via Web Print API (HTML)
+  const handlePrint = () => {
+    if (!invoiceRef.current) return;
+
+    const printContent = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Order Receipt - DELISH RESTAURANT</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <style>
+            @media print {
+              body { 
+                margin: 0 !important; 
+                padding: 0 !important;
+                font-family: 'Courier New', monospace !important;
+                font-size: 10px !important;
+                width: 80mm !important;
+                background: white !important;
+                color: black !important;
+                -webkit-print-color-adjust: exact !important;
+              }
+              * {
+                box-shadow: none !important;
+                background: transparent !important;
+              }
+              .no-print { display: none !important; }
+              .text-center { text-align: center !important; }
+              .text-right { text-align: right !important; }
+              .text-bold { font-weight: bold !important; }
+              .border-line { 
+                border-top: 1px solid #000 !important; 
+                margin: 2px 0 !important;
+              }
+              .success-icon { 
+                text-align: center !important; 
+                margin: 4px 0 !important;
+                font-size: 16px !important;
+                color: green !important;
+              }
+            }
+            .receipt-container { 
+              width: 100%;
+              padding: 4px;
+              background: white;
+            }
+            .header {
+              text-align: center;
+              margin-bottom: 4px;
+            }
+            .company-name {
+              font-size: 14px;
+              font-weight: bold;
+              margin-bottom: 2px;
+            }
+            .receipt-title {
+              font-size: 12px;
+              margin-bottom: 4px;
+            }
+            .items-table {
+              width: 100%;
+              border-collapse: collapse;
+              margin: 4px 0;
+            }
+            .items-table td {
+              padding: 0;
+              font-size: 9px;
+              line-height: 1.1;
+            }
+            .discount-item {
+              color: #059669;
+              font-size: 8px;
+            }
+            .free-item {
+              color: #dc2626;
+              font-weight: bold;
+              font-size: 8px;
+            }
+            .thank-you {
+              text-align: center;
+              margin-top: 8px;
+              font-style: italic;
+              font-size: 9px;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="receipt-container">
+            <div class="header">
+              <div class="company-name">DELISH RESTAURANT</div>
+              <div class="receipt-title">ORDER RECEIPT</div>
+              <div class="border-line"></div>
+            </div>
+            
+            <table width="100%" style="font-size: 9px; line-height: 1.1;">
+              <tr><td><strong>Order ID:</strong></td><td>${
+                orderInfo._id?.slice(-8) ||
+                (orderInfo.orderDate
+                  ? Math.floor(new Date(orderInfo.orderDate).getTime())
+                      .toString()
+                      .slice(-6)
+                  : "N/A")
+              }</td></tr>
+              <tr><td><strong>Date:</strong></td><td>${new Date(
+                orderInfo.orderDate || Date.now()
+              ).toLocaleDateString("en-PH")}</td></tr>
+              <tr><td><strong>Time:</strong></td><td>${new Date(
+                orderInfo.orderDate || Date.now()
+              ).toLocaleTimeString("en-PH", {
+                hour: "2-digit",
+                minute: "2-digit",
+                hour12: false,
+              })}</td></tr>
+              <tr><td><strong>Cashier:</strong></td><td>${
+                orderInfo.cashier || "Admin"
+              }</td></tr>
+              <tr><td><strong>Customer:</strong></td><td>${
+                orderInfo.customerType === "walk-in" ? "Dine-in" : "Take-out"
+              }</td></tr>
+            </table>
+            
+            <div class="border-line"></div>
+            
+            <table class="items-table">
+              <tr>
+                <td><strong>QTY</strong></td>
+                <td><strong>ITEM</strong></td>
+                <td class="text-right"><strong>AMOUNT</strong></td>
+              </tr>
+              <div class="border-line"></div>
+              ${(orderInfo.items || [])
+                .map(
+                  (item) => `
+                  <tr>
+                    <td>${item.quantity || 1}</td>
+                    <td>
+                      ${item.name || "Unknown Item"}
+                      ${
+                        item.isRedeemed || item.isFree
+                          ? '<span class="free-item"> (FREE)</span>'
+                          : ""
+                      }
+                      ${
+                        item.isPwdSeniorDiscounted
+                          ? '<span class="discount-item"> (PWD/SENIOR -20%)</span>'
+                          : ""
+                      }
+                    </td>
+                    <td class="text-right">${
+                      item.isRedeemed || item.isFree
+                        ? "FREE"
+                        : `₱${safeNumber(item.price || 0).toFixed(2)}`
+                    }</td>
+                  </tr>
+                `
+                )
+                .join("")}
+            </table>
+            
+            <div class="border-line"></div>
+            
+            <table width="100%" style="font-size: 9px; line-height: 1.1;">
+              <tr><td>Subtotal:</td><td class="text-right">₱${safeNumber(
+                orderInfo.bills?.total || 0
+              ).toFixed(2)}</td></tr>
+              ${
+                safeNumber(orderInfo.bills?.pwdSeniorDiscount || 0) > 0
+                  ? `<tr><td class="discount-item">PWD/SENIOR:</td><td class="text-right discount-item">-₱${safeNumber(
+                      orderInfo.bills?.pwdSeniorDiscount || 0
+                    ).toFixed(2)}</td></tr>`
+                  : ""
+              }
+              ${
+                safeNumber(orderInfo.bills?.redemptionDiscount || 0) > 0
+                  ? `<tr><td class="discount-item">REDEMPTION:</td><td class="text-right discount-item">-₱${safeNumber(
+                      orderInfo.bills?.redemptionDiscount || 0
+                    ).toFixed(2)}</td></tr>`
+                  : ""
+              }
+              ${
+                safeNumber(orderInfo.bills?.employeeDiscount || 0) > 0
+                  ? `<tr><td class="discount-item">EMP DISC:</td><td class="text-right discount-item">-₱${safeNumber(
+                      orderInfo.bills?.employeeDiscount || 0
+                    ).toFixed(2)}</td></tr>`
+                  : ""
+              }
+              ${
+                safeNumber(orderInfo.bills?.shareholderDiscount || 0) > 0
+                  ? `<tr><td class="discount-item">SHAREHOLDER:</td><td class="text-right discount-item">-₱${safeNumber(
+                      orderInfo.bills?.shareholderDiscount || 0
+                    ).toFixed(2)}</td></tr>`
+                  : ""
+              }
+              <tr><td>VAT (12%):</td><td class="text-right">₱${safeNumber(
+                orderInfo.bills?.tax || 0
+              ).toFixed(2)}</td></tr>
+              <div class="border-line"></div>
+              <tr class="text-bold"><td>TOTAL:</td><td class="text-right">₱${safeNumber(
+                orderInfo.bills?.totalWithTax || 0
+              ).toFixed(2)}</td></tr>
+              ${
+                orderInfo.paymentMethod === "Cash" &&
+                safeNumber(orderInfo.bills?.cashAmount || 0) > 0
+                  ? `
+                  <tr><td>Cash:</td><td class="text-right">₱${safeNumber(
+                    orderInfo.bills?.cashAmount || 0
+                  ).toFixed(2)}</td></tr>
+                  <tr><td>Change:</td><td class="text-right">₱${safeNumber(
+                    orderInfo.bills?.change || 0
+                  ).toFixed(2)}</td></tr>
+                  `
+                  : ""
+              }
+            </table>
+            
+            <div class="border-line"></div>
+            
+            <table width="100%" style="font-size: 9px; line-height: 1.1;">
+              <tr><td><strong>Payment:</strong></td><td>${
+                orderInfo.paymentMethod || "Cash"
+              }</td></tr>
+              ${
+                orderInfo.pwdSeniorDetails
+                  ? `
+                  <tr><td colspan="2"><strong>PWD/SENIOR DETAILS:</strong></td></tr>
+                  <tr><td>Name:</td><td>${
+                    orderInfo.pwdSeniorDetails.name
+                  }</td></tr>
+                  <tr><td>ID #:</td><td>${
+                    orderInfo.pwdSeniorDetails.idNumber || ""
+                  }</td></tr>
+                  <tr><td>Type:</td><td>${
+                    orderInfo.pwdSeniorDetails.type || "PWD"
+                  }</td></tr>
+                  `
+                  : ""
+              }
+            </table>
+            
+            <div class="thank-you">
+              <div>Thank you for dining with us!</div>
+              <div>Please visit again!</div>
+              <div>This receipt is your official proof of purchase.</div>
+            </div>
+          </div>
+        </body>
+      </html>
+    `;
+
+    const printWindow = window.open("", "_blank", "width=300,height=600");
+    if (!printWindow) {
+      alertUser("Please allow popups for printing", "warning");
+      return;
+    }
+
+    printWindow.document.write(printContent);
+    printWindow.document.close();
+
+    printWindow.onload = () => {
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.onafterprint = () => {
+          setTimeout(() => printWindow.close(), 100);
+        };
+      }, 250);
+    };
+  };
+
+  const handleThermalPrint = () => {
+    const receiptText = generateThermalText();
+
+    const cleanText = receiptText
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, (char) => {
+        return char === "\x0A" ? "\n" : "";
+      })
+      .trim();
+
+    const textBlob = new Blob([cleanText], { type: "text/plain" });
+    const textUrl = URL.createObjectURL(textBlob);
+
+    const textWindow = window.open(textUrl, "_blank");
+    if (textWindow) {
+      textWindow.document.write(
+        `<pre style="font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.1; white-space: pre-wrap; word-wrap: break-word; max-width: 80mm; margin: 0 auto;">${cleanText}</pre>`
+      );
+      textWindow.document.close();
+
+      textWindow.onload = () => {
+        setTimeout(() => {
+          textWindow.print();
+          setTimeout(() => {
+            textWindow.close();
+            URL.revokeObjectURL(textUrl);
+          }, 100);
+        }, 500);
+      };
+    } else {
+      alertUser(
+        "Please allow popups to open the text print preview.",
+        "warning"
+      );
+    }
+  };
+
+  // Function to open cash drawer
+  const openCashDrawer = async () => {
+    try {
+      console.log("Attempting to open cash drawer...");
+
+      if (isConnected && bluetoothDevice) {
+        await sendToPrinter(thermalCommands.DRAWER_KICK);
+        alertUser("Cash drawer opened successfully!", "success");
+      } else {
+        alertUser(
+          "Not connected to printer. Please connect to Bluetooth first or open drawer manually.",
+          "warning"
+        );
+      }
+    } catch (error) {
+      console.error("Failed to open cash drawer:", error);
+      alertUser(
+        "Failed to send drawer command. Please open the cash drawer manually.",
+        "warning"
+      );
+    }
+  };
+
+  if (!orderInfo) {
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-3">
+        <div className="bg-white p-3 rounded-lg shadow-lg text-center max-w-[280px]">
+          <p className="text-red-500 font-semibold text-xs">
+            Invalid order data.
+          </p>
+          <button
+            onClick={() => setShowInvoice(false)}
+            className="mt-2 text-blue-500 hover:underline text-[10px] px-3 py-1.5"
+          >
+            Close
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-50 p-3">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.9 }}
+        transition={{ duration: 0.15 }}
+        className="bg-white rounded-lg shadow-xl w-full max-w-[320px] max-h-[90vh] overflow-hidden flex flex-col"
+      >
+        {/* Header */}
+        <div className="text-center p-4 border-b">
+          <motion.div
+            initial={{ scale: 0, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            transition={{ duration: 0.2 }}
+            className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-2"
+          >
+            <IconCheck className="text-white text-base" />
+          </motion.div>
+          <h2 className="text-xl font-bold text-gray-800">Order Confirmed!</h2>
+          <p className="text-gray-600 text-xs mt-1">Thank you for your order</p>
+
+          {/* Connection Status */}
+          <div
+            className={`mt-2 px-3 py-1 rounded-full text-xs font-semibold ${
+              isConnected
+                ? "bg-green-100 text-green-800"
+                : isConnecting
+                ? "bg-yellow-100 text-yellow-800"
+                : "bg-red-100 text-red-800"
+            }`}
+          >
+            {isConnected
+              ? "✓ Bluetooth Connected"
+              : isConnecting
+              ? "Connecting..."
+              : "Bluetooth Disconnected"}
+          </div>
+
+          {/* Error Message Display */}
+          {errorMessage && (
+            <motion.div
+              initial={{ opacity: 0, y: -10 }}
+              animate={{ opacity: 1, y: 0 }}
+              className="mt-2 p-2 bg-red-50 text-red-700 text-[10px] rounded-lg border border-red-300 font-medium"
+            >
+              {errorMessage}
+            </motion.div>
+          )}
+        </div>
+
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-3" ref={invoiceRef}>
+          {/* Order Details */}
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <h3 className="font-semibold text-gray-700 text-sm mb-2">
+              Order Details
+            </h3>
+            <div className="grid grid-cols-2 gap-2 text-xs">
+              <div>
+                <span className="text-gray-600">ID:</span>
+                <p className="font-medium truncate">
+                  {orderInfo._id?.slice(-8) ||
+                    (orderInfo.orderDate
+                      ? Math.floor(new Date(orderInfo.orderDate).getTime())
+                          .toString()
+                          .slice(-6)
+                      : "N/A")}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-600">Date:</span>
+                <p className="font-medium">
+                  {new Date(
+                    orderInfo.orderDate || Date.now()
+                  ).toLocaleDateString("en-PH")}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-600">Time:</span>
+                <p className="font-medium">
+                  {new Date(
+                    orderInfo.orderDate || Date.now()
+                  ).toLocaleTimeString("en-PH", {
+                    hour: "2-digit",
+                    minute: "2-digit",
+                    hour12: false,
+                  })}
+                </p>
+              </div>
+              <div>
+                <span className="text-gray-600">Cashier:</span>
+                <p className="font-medium truncate text-green-600">
+                  {orderInfo.cashier || "Admin"}
+                </p>
+              </div>
+              <div className="col-span-2">
+                <span className="text-gray-600">Customer:</span>
+                <p className="font-medium truncate text-blue-600">
+                  {orderInfo.customerType === "walk-in"
+                    ? "Dine-in"
+                    : "Take-out"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* PWD/Senior Details */}
+          {orderInfo.pwdSeniorDetails && (
+            <div className="bg-green-50 p-3 rounded-lg border border-green-200">
+              <h3 className="font-semibold text-green-700 text-sm mb-2 flex items-center gap-2">
+                <IconIdCard className="w-4 h-4" />
+                PWD/SENIOR Details
+              </h3>
+              <div className="space-y-1 text-xs">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Type:</span>
+                  <span className="font-medium text-green-700">
+                    {orderInfo.pwdSeniorDetails.type || "PWD"}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Name:</span>
+                  <span className="font-medium truncate">
+                    {orderInfo.pwdSeniorDetails.name}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">ID Number:</span>
+                  <span className="font-medium">
+                    {orderInfo.pwdSeniorDetails.idNumber || "N/A"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Items Ordered */}
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <h3 className="font-semibold text-gray-700 text-sm mb-2">
+              Items Ordered ({(orderInfo.items || []).length})
+            </h3>
+            <div className="space-y-2 max-h-32 overflow-y-auto">
+              {(orderInfo.items || []).map((item, index) => (
+                <div
+                  key={index}
+                  className={`flex justify-between items-start p-2 rounded text-xs ${
+                    item.isRedeemed || item.isFree
+                      ? "bg-red-50 border border-red-200"
+                      : item.isPwdSeniorDiscounted
+                      ? "bg-green-50 border border-green-200"
+                      : "bg-white border border-gray-200"
+                  }`}
+                >
+                  <div className="flex-1 pr-2">
+                    <p className="font-medium truncate">
+                      {item.name}
+                      {item.isRedeemed || item.isFree ? (
+                        <span className="ml-1 text-red-600 font-semibold text-[10px]">
+                          (FREE)
+                        </span>
+                      ) : item.isPwdSeniorDiscounted ? (
+                        <span className="ml-1 text-green-600 font-semibold text-[10px]">
+                          (PWD/SENIOR -20%)
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-gray-600 text-[10px]">
+                      {item.quantity || 1} × ₱
+                      {(
+                        item.pricePerQuantity ||
+                        item.originalPrice ||
+                        0
+                      ).toFixed(2)}
+                    </p>
+                  </div>
+                  <div className="text-right min-w-16">
+                    <p
+                      className={`font-semibold ${
+                        item.isRedeemed || item.isFree
+                          ? "text-red-600"
+                          : item.isPwdSeniorDiscounted
+                          ? "text-green-600"
+                          : "text-gray-800"
+                      }`}
+                    >
+                      {item.isRedeemed || item.isFree
+                        ? "FREE"
+                        : `₱${safeNumber(item.price || 0).toFixed(2)}`}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Bill Summary */}
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <h3 className="font-semibold text-gray-700 text-sm mb-2">
+              Bill Summary
+            </h3>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span>Subtotal:</span>
+                <span>
+                  ₱{safeNumber(orderInfo.bills?.total || 0).toFixed(2)}
+                </span>
+              </div>
+
+              {safeNumber(orderInfo.bills?.pwdSeniorDiscount || 0) > 0 && (
+                <div className="flex justify-between text-green-600">
+                  <span>PWD/SENIOR:</span>
+                  <span>
+                    -₱
+                    {safeNumber(
+                      orderInfo.bills?.pwdSeniorDiscount || 0
+                    ).toFixed(2)}
+                  </span>
+                </div>
+              )}
+
+              {safeNumber(orderInfo.bills?.redemptionDiscount || 0) > 0 && (
+                <div className="flex justify-between text-blue-600">
+                  <span>REDEMPTION:</span>
+                  <span>
+                    -₱
+                    {safeNumber(
+                      orderInfo.bills?.redemptionDiscount || 0
+                    ).toFixed(2)}
+                  </span>
+                </div>
+              )}
+
+              {safeNumber(orderInfo.bills?.employeeDiscount || 0) > 0 && (
+                <div className="flex justify-between text-yellow-600">
+                  <span>EMP DISC:</span>
+                  <span>
+                    -₱
+                    {safeNumber(orderInfo.bills?.employeeDiscount || 0).toFixed(
+                      2
+                    )}
+                  </span>
+                </div>
+              )}
+
+              {safeNumber(orderInfo.bills?.shareholderDiscount || 0) > 0 && (
+                <div className="flex justify-between text-purple-600">
+                  <span>SHAREHOLDER:</span>
+                  <span>
+                    -₱
+                    {safeNumber(
+                      orderInfo.bills?.shareholderDiscount || 0
+                    ).toFixed(2)}
+                  </span>
+                </div>
+              )}
+
+              <div className="flex justify-between border-t pt-1">
+                <span>VAT (12%):</span>
+                <span>₱{safeNumber(orderInfo.bills?.tax || 0).toFixed(2)}</span>
+              </div>
+
+              <div className="border-t pt-2 mt-2 flex justify-between font-bold text-sm">
+                <span>TOTAL:</span>
+                <span className="text-green-600">
+                  ₱{safeNumber(orderInfo.bills?.totalWithTax || 0).toFixed(2)}
+                </span>
+              </div>
+
+              {orderInfo.paymentMethod === "Cash" &&
+                safeNumber(orderInfo.bills?.cashAmount || 0) > 0 && (
+                  <>
+                    <div className="border-t pt-2 flex justify-between">
+                      <span className="text-gray-600">Cash:</span>
+                      <span className="text-gray-800">
+                        ₱
+                        {safeNumber(orderInfo.bills?.cashAmount || 0).toFixed(
+                          2
+                        )}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Change:</span>
+                      <span className="text-green-600 font-semibold">
+                        ₱{safeNumber(orderInfo.bills?.change || 0).toFixed(2)}
+                      </span>
+                    </div>
+                  </>
+                )}
+            </div>
+          </div>
+
+          {/* Payment Information */}
+          <div className="bg-gray-50 p-3 rounded-lg">
+            <h3 className="font-semibold text-gray-700 text-sm mb-2">
+              Payment Information
+            </h3>
+            <div className="space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span>Method:</span>
+                <span className="font-medium">
+                  {orderInfo.paymentMethod || "Cash"}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span>Status:</span>
+                <span className="font-medium text-green-600">
+                  {orderInfo.customerType === "walk-in"
+                    ? "Dine-in"
+                    : "Take-out"}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="p-4 border-t bg-gray-50">
+          {/* Connection Buttons */}
+          <div className="grid grid-cols-2 gap-2 mb-3">
+            <button
+              onClick={isConnected ? disconnectBluetooth : connectBluetooth}
+              disabled={isConnecting}
+              className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg transition-colors text-xs font-semibold ${
+                isConnected
+                  ? "bg-red-600 text-white hover:bg-red-700"
+                  : isConnecting
+                  ? "bg-gray-400 text-white cursor-not-allowed"
+                  : "bg-blue-600 text-white hover:bg-blue-700"
+              }`}
+            >
+              {isConnecting ? (
+                <IconBluetooth className="text-xs w-4 h-4 animate-pulse" />
+              ) : isConnected ? (
+                <IconUnlink className="text-xs w-4 h-4" />
+              ) : (
+                <IconLink className="text-xs w-4 h-4" />
+              )}
+              {isConnecting
+                ? "Connecting..."
+                : isConnected
+                ? "Disconnect"
+                : "Connect BT"}
+            </button>
+
+            <button
+              onClick={openCashDrawer}
+              disabled={!isConnected}
+              className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg transition-colors text-xs font-semibold ${
+                isConnected
+                  ? "bg-orange-600 text-white hover:bg-orange-700"
+                  : "bg-gray-400 text-white cursor-not-allowed"
+              }`}
+            >
+              <IconCashRegister className="text-xs w-4 h-4" />
+              Open Drawer
+            </button>
+          </div>
+
+          {/* Print Buttons */}
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              onClick={handlePrint}
+              className="flex items-center justify-center gap-2 bg-blue-600 text-white px-2 py-3 rounded-lg hover:bg-blue-700 transition-colors text-xs font-semibold"
+            >
+              <IconPrint className="text-xs w-4 h-4" />
+              Browser
+            </button>
+
+            <button
+              onClick={printViaBluetooth}
+              disabled={!isConnected || isPrinting}
+              className={`flex items-center justify-center gap-2 px-2 py-3 rounded-lg transition-colors text-xs font-semibold ${
+                isConnected && !isPrinting
+                  ? "bg-purple-600 text-white hover:bg-purple-700"
+                  : "bg-gray-400 text-white cursor-not-allowed"
+              }`}
+            >
+              {isPrinting ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Printing
+                </>
+              ) : (
+                <>
+                  <IconBluetooth className="text-xs w-4 h-4" />
+                  BT Print
+                </>
+              )}
+            </button>
+
+            <button
+              onClick={handleThermalPrint}
+              className="flex items-center justify-center gap-2 bg-green-600 text-white px-2 py-3 rounded-lg hover:bg-green-700 transition-colors text-xs font-semibold"
+            >
+              <IconReceipt className="text-xs w-4 h-4" />
+              Text Print
+            </button>
+
+            <button
+              onClick={() => setShowInvoice(false)}
+              className="col-span-3 flex items-center justify-center gap-2 bg-gray-600 text-white px-3 py-3 rounded-lg hover:bg-gray-700 transition-colors text-xs font-semibold mt-2"
+            >
+              <IconTimes className="text-xs w-4 h-4" />
+              Close Invoice
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
+};
+
+// Main Bill Component
 const Bill = ({ orderId }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
@@ -39,22 +1322,26 @@ const Bill = ({ orderId }) => {
   const orders = useSelector((state) => state.order.orders);
   const activeOrderId = useSelector((state) => state.order.activeOrderId);
 
-  // FIXED: Safe access to user data from auth state
+  // Safe access to user data from auth state
   const userState = useSelector((state) => state.auth);
-  const user = userState?.user || userState?.data?.user || { name: "Admin" };
+  const user = userState?.user ||
+    userState?.data?.user || {
+      _id: "000000000000000000000001",
+      name: "Admin",
+    };
 
   const currentOrder =
     orders.find((order) => order.id === orderId) ||
     orders.find((order) => order.id === activeOrderId);
-  const customerData = currentOrder?.customer || {};
   const cartData = currentOrder?.items || [];
 
   const vatRate = 12;
-  const pwdSssDiscountRate = 0.2;
+  const pwdSeniorDiscountRate = 0.2;
   const employeeDiscountRate = 0.15;
   const shareholderDiscountRate = 0.1;
 
-  const [pwdSssDiscountApplied, setPwdSssDiscountApplied] = useState(false);
+  const [pwdSeniorDiscountApplied, setPwdSeniorDiscountApplied] =
+    useState(false);
   const [employeeDiscountApplied, setEmployeeDiscountApplied] = useState(false);
   const [shareholderDiscountApplied, setShareholderDiscountApplied] =
     useState(false);
@@ -63,13 +1350,24 @@ const Bill = ({ orderId }) => {
   const [orderInfo, setOrderInfo] = useState(null);
   const [showRedeemOptions, setShowRedeemOptions] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [pwdSssDiscountItems, setPwdSssDiscountItems] = useState([]);
-  const [showPwdSssSelection, setShowPwdSssSelection] = useState(false);
-  const [pwdSssDetails, setPwdSssDetails] = useState({
+  const [pwdSeniorDiscountItems, setPwdSeniorDiscountItems] = useState([]);
+  const [showPwdSeniorSelection, setShowPwdSeniorSelection] = useState(false);
+  const [pwdSeniorDetails, setPwdSeniorDetails] = useState({
     name: "",
     idNumber: "",
-    type: "PWD", // or "SSS"
+    type: "PWD",
   });
+  const [customerType, setCustomerType] = useState("walk-in");
+  const [cashAmount, setCashAmount] = useState(0);
+  const [showCashModal, setShowCashModal] = useState(false);
+  const [showOnlineOptions, setShowOnlineOptions] = useState(false);
+  const [mixedPayment, setMixedPayment] = useState({
+    isMixed: false,
+    cashAmount: 0,
+    onlineAmount: 0,
+    onlineMethod: null,
+  });
+  const [showMixedPaymentModal, setShowMixedPaymentModal] = useState(false);
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -116,7 +1414,15 @@ const Bill = ({ orderId }) => {
       name.includes("softdrink") ||
       name.includes("beverage") ||
       name.includes("cola") ||
-      name.includes("lemonade")
+      name.includes("lemonade") ||
+      name.includes("frappe") ||
+      name.includes("latte") ||
+      name.includes("mocha") ||
+      name.includes("americano") ||
+      name.includes("cappuccino") ||
+      name.includes("macchiato") ||
+      name.includes("iced tea") ||
+      name.includes("espresso")
     );
   };
 
@@ -146,8 +1452,27 @@ const Bill = ({ orderId }) => {
       name.includes("entree") ||
       name.includes("dessert") ||
       name.includes("cake") ||
+      name.includes("cheesecake") ||
       name.includes("pie") ||
-      name.includes("ice cream")
+      name.includes("ice cream") ||
+      name.includes("breakfast") ||
+      name.includes("omelette") ||
+      name.includes("longganisa") ||
+      name.includes("tapa") ||
+      name.includes("tocino") ||
+      name.includes("bacon") ||
+      name.includes("spam") ||
+      name.includes("embutido") ||
+      name.includes("shanghai") ||
+      name.includes("hungarian") ||
+      name.includes("carbonara") ||
+      name.includes("pesto") ||
+      name.includes("snack") ||
+      name.includes("wedge") ||
+      name.includes("potato") ||
+      name.includes("nachos") ||
+      name.includes("bento") ||
+      name.includes("mini")
     );
   };
 
@@ -156,7 +1481,7 @@ const Bill = ({ orderId }) => {
     return `${item.id}-${item.pricePerQuantity}-${item.isRedeemed}`;
   };
 
-  // Calculate totals with PWD/SSS discount on selected items
+  // Calculate totals
   const calculateTotals = () => {
     try {
       const baseGrossTotal = cartData.reduce(
@@ -165,40 +1490,34 @@ const Bill = ({ orderId }) => {
         0
       );
 
-      // Calculate PWD/SSS discount only on selected items
-      let pwdSssDiscountAmount = 0;
+      let pwdSeniorDiscountAmount = 0;
       let discountedItemsTotal = 0;
 
-      if (pwdSssDiscountApplied && pwdSssDiscountItems.length > 0) {
-        // Calculate total value of selected items
-        discountedItemsTotal = pwdSssDiscountItems.reduce(
+      if (pwdSeniorDiscountApplied && pwdSeniorDiscountItems.length > 0) {
+        discountedItemsTotal = pwdSeniorDiscountItems.reduce(
           (sum, item) =>
             sum + safeNumber(item.quantity) * safeNumber(item.pricePerQuantity),
           0
         );
-        pwdSssDiscountAmount = discountedItemsTotal * pwdSssDiscountRate;
+        pwdSeniorDiscountAmount = discountedItemsTotal * pwdSeniorDiscountRate;
       }
 
-      // Calculate redemption amount
       const redemptionAmount = cartData.reduce((sum, item) => {
         return item.isRedeemed
           ? sum + safeNumber(item.quantity) * safeNumber(item.pricePerQuantity)
           : sum;
       }, 0);
 
-      // Calculate subtotals
-      const subtotalAfterPwdSssAndRedemption =
-        baseGrossTotal - pwdSssDiscountAmount - redemptionAmount;
+      const subtotalAfterPwdSeniorAndRedemption =
+        baseGrossTotal - pwdSeniorDiscountAmount - redemptionAmount;
 
-      // Employee discount
       const employeeDiscountAmount = employeeDiscountApplied
-        ? subtotalAfterPwdSssAndRedemption * employeeDiscountRate
+        ? subtotalAfterPwdSeniorAndRedemption * employeeDiscountRate
         : 0;
 
       const subtotalAfterEmployeeDiscount =
-        subtotalAfterPwdSssAndRedemption - employeeDiscountAmount;
+        subtotalAfterPwdSeniorAndRedemption - employeeDiscountAmount;
 
-      // Shareholder discount
       const shareholderDiscountAmount = shareholderDiscountApplied
         ? subtotalAfterEmployeeDiscount * shareholderDiscountRate
         : 0;
@@ -212,14 +1531,26 @@ const Bill = ({ orderId }) => {
       const total = Math.max(0, Number(discountedTotal.toFixed(2)));
 
       const totalDiscountAmount =
-        pwdSssDiscountAmount +
+        pwdSeniorDiscountAmount +
         employeeDiscountAmount +
         shareholderDiscountAmount +
         redemptionAmount;
 
+      // Calculate change
+      const cashAmountNum = safeNumber(cashAmount);
+      const onlineAmountNum = safeNumber(mixedPayment.onlineAmount);
+
+      let change = 0;
+      if (paymentMethod === "Cash") {
+        change = Math.max(0, cashAmountNum - total);
+      } else if (mixedPayment.isMixed) {
+        const totalPaid = cashAmountNum + onlineAmountNum;
+        change = Math.max(0, totalPaid - total);
+      }
+
       return {
         baseGrossTotal,
-        pwdSssDiscountAmount,
+        pwdSeniorDiscountAmount,
         discountedItemsTotal,
         redemptionAmount,
         employeeDiscountAmount,
@@ -228,13 +1559,16 @@ const Bill = ({ orderId }) => {
         vatAmount,
         total,
         totalDiscountAmount,
-        subtotalAfterPwdSssAndRedemption,
+        subtotalAfterPwdSeniorAndRedemption,
+        cashAmount: cashAmountNum,
+        onlineAmount: onlineAmountNum,
+        change,
       };
     } catch (error) {
       console.error("Error calculating totals:", error);
       return {
         baseGrossTotal: 0,
-        pwdSssDiscountAmount: 0,
+        pwdSeniorDiscountAmount: 0,
         discountedItemsTotal: 0,
         redemptionAmount: 0,
         employeeDiscountAmount: 0,
@@ -243,7 +1577,10 @@ const Bill = ({ orderId }) => {
         vatAmount: 0,
         total: 0,
         totalDiscountAmount: 0,
-        subtotalAfterPwdSssAndRedemption: 0,
+        subtotalAfterPwdSeniorAndRedemption: 0,
+        cashAmount: 0,
+        onlineAmount: 0,
+        change: 0,
       };
     }
   };
@@ -264,22 +1601,20 @@ const Bill = ({ orderId }) => {
   const processedCart = addDefaultDiscountedPrice(cartData);
   const combinedCart = combineCartItems(processedCart);
 
-  // Calculate item total with PWD/SSS discount if applicable
+  // Calculate item total
   const calculateItemTotal = (item) => {
     if (item.isRedeemed) {
       return 0;
     }
 
-    // Check if this item is selected for PWD/SSS discount
-    const isDiscounted = pwdSssDiscountItems.some(
+    const isDiscounted = pwdSeniorDiscountItems.some(
       (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
     );
 
     if (isDiscounted) {
-      // Apply 20% discount to this specific item
       const originalTotal =
         safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
-      const discountedTotal = originalTotal * (1 - pwdSssDiscountRate);
+      const discountedTotal = originalTotal * (1 - pwdSeniorDiscountRate);
       return discountedTotal;
     }
 
@@ -297,16 +1632,14 @@ const Bill = ({ orderId }) => {
       return safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
     }
 
-    // Check if this item is selected for PWD/SSS discount
-    const isDiscounted = pwdSssDiscountItems.some(
+    const isDiscounted = pwdSeniorDiscountItems.some(
       (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
     );
 
     if (isDiscounted) {
-      // Calculate 20% discount amount
       const originalTotal =
         safeNumber(item.quantity) * safeNumber(item.pricePerQuantity);
-      return originalTotal * pwdSssDiscountRate;
+      return originalTotal * pwdSeniorDiscountRate;
     }
 
     return 0;
@@ -328,7 +1661,7 @@ const Bill = ({ orderId }) => {
     dispatch(decrementQuantityInOrder({ orderId: currentOrder.id, itemId }));
   };
 
-  // Individual redeem handler for each item
+  // Individual redeem handler
   const handleRedeemItem = (itemId, itemName) => {
     if (!currentOrder) return;
     dispatch(redeemItemInOrder({ orderId: currentOrder.id, itemId }));
@@ -351,109 +1684,89 @@ const Bill = ({ orderId }) => {
 
   // Get discounted items info for display
   const getDiscountedItemsInfo = () => {
-    if (!pwdSssDiscountApplied || totals.pwdSssDiscountAmount === 0)
+    if (!pwdSeniorDiscountApplied || totals.pwdSeniorDiscountAmount === 0)
       return null;
 
-    const drinkCount = pwdSssDiscountItems.filter((item) =>
+    const drinkCount = pwdSeniorDiscountItems.filter((item) =>
       isDrinkItem(item)
     ).length;
 
-    const foodCount = pwdSssDiscountItems.filter((item) =>
+    const foodCount = pwdSeniorDiscountItems.filter((item) =>
       isFoodItem(item)
     ).length;
 
-    let info = "PWD/SSS Discount (20% on selected items)";
+    let info = "PWD/Senior Discount (20% on selected items)";
 
     if (drinkCount === 1 && foodCount === 2) {
-      info = "PWD/SSS Discount (20% – 1 drink + 2 food)";
+      info = "PWD/Senior Discount (20% – 1 drink + 2 food)";
     } else if (drinkCount === 1 && foodCount === 1) {
-      info = "PWD/SSS Discount (20% – 1 drink + 1 food)";
+      info = "PWD/Senior Discount (20% – 1 drink + 1 food)";
     } else if (drinkCount === 1) {
-      info = "PWD/SSS Discount (20% – 1 drink)";
+      info = "PWD/Senior Discount (20% – 1 drink)";
     } else if (foodCount === 2) {
-      info = "PWD/SSS Discount (20% – 2 food)";
+      info = "PWD/Senior Discount (20% – 2 food)";
     } else if (foodCount === 1) {
-      info = "PWD/SSS Discount (20% – 1 food)";
+      info = "PWD/Senior Discount (20% – 1 food)";
     }
 
-    const discountAmount = totals.pwdSssDiscountAmount.toFixed(2);
+    const discountAmount = totals.pwdSeniorDiscountAmount.toFixed(2);
     return `${info} (-₱${discountAmount})`;
   };
 
   const discountedItemsInfo = getDiscountedItemsInfo();
 
-  // Get eligible items count for PWD/SSS discount
-  const getEligibleItemsCount = () => {
-    const drinks = combinedCart.filter((item) => isDrinkItem(item));
-    const foods = combinedCart.filter((item) => isFoodItem(item));
-    const totalEligible = drinks.length + foods.length;
-
-    return {
-      drinks,
-      foods,
-      totalEligible,
-      maxDrinks: Math.min(drinks.length, 1), // Can select up to 1 drink
-      maxFoods: Math.min(foods.length, 2), // Can select up to 2 foods
-      maxTotal: Math.min(totalEligible, 3), // Can select up to 3 items total
-    };
-  };
-
-  // Handle PWD/SSS discount - open selection modal
-  const handlePwdSssDiscount = () => {
-    if (!pwdSssDiscountApplied) {
-      // Open selection modal with PWD/SSS details form
-      setShowPwdSssSelection(true);
+  // Handle PWD/Senior discount
+  const handlePwdSeniorDiscount = () => {
+    if (!pwdSeniorDiscountApplied) {
+      setShowPwdSeniorSelection(true);
     } else {
-      // Turn off discount
-      setPwdSssDiscountApplied(false);
-      setPwdSssDiscountItems([]);
-      setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
+      setPwdSeniorDiscountApplied(false);
+      setPwdSeniorDiscountItems([]);
+      setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
       setEmployeeDiscountApplied(false);
       setShareholderDiscountApplied(false);
-      enqueueSnackbar("PWD/SSS discount removed", { variant: "info" });
+      enqueueSnackbar("PWD/Senior discount removed", { variant: "info" });
     }
   };
 
   const handleEmployeeDiscount = () => {
     setEmployeeDiscountApplied(!employeeDiscountApplied);
-    setPwdSssDiscountApplied(false);
-    setPwdSssDiscountItems([]);
-    setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
+    setPwdSeniorDiscountApplied(false);
+    setPwdSeniorDiscountItems([]);
+    setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
     setShareholderDiscountApplied(false);
   };
 
   const handleShareholderDiscount = () => {
     setShareholderDiscountApplied(!shareholderDiscountApplied);
-    setPwdSssDiscountApplied(false);
-    setPwdSssDiscountItems([]);
-    setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
+    setPwdSeniorDiscountApplied(false);
+    setPwdSeniorDiscountItems([]);
+    setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
     setEmployeeDiscountApplied(false);
   };
 
   // Toggle item selection in modal
   const toggleItemSelection = (item) => {
     const itemKey = getItemKey(item);
-    const isSelected = pwdSssDiscountItems.some(
+    const isSelected = pwdSeniorDiscountItems.some(
       (selected) => getItemKey(selected) === itemKey
     );
 
     if (isSelected) {
-      // Remove item
-      setPwdSssDiscountItems(
-        pwdSssDiscountItems.filter(
+      setPwdSeniorDiscountItems(
+        pwdSeniorDiscountItems.filter(
           (selected) => getItemKey(selected) !== itemKey
         )
       );
     } else {
-      // Check eligibility rules
-      const drinks = pwdSssDiscountItems.filter((item) => isDrinkItem(item));
-      const foods = pwdSssDiscountItems.filter((item) => isFoodItem(item));
+      const drinks = pwdSeniorDiscountItems.filter((item) => isDrinkItem(item));
+      const foods = pwdSeniorDiscountItems.filter((item) => isFoodItem(item));
 
+      // PWD/SENIOR DISCOUNT: Can select 1-3 items (1 drink max, 2 food max)
       if (isDrinkItem(item)) {
-        // Can only select 1 drink
         if (drinks.length >= 1) {
           enqueueSnackbar(
-            "Maximum 1 drink can be selected for PWD/SSS discount",
+            "Maximum 1 drink can be selected for PWD/Senior discount",
             {
               variant: "warning",
             }
@@ -461,10 +1774,9 @@ const Bill = ({ orderId }) => {
           return;
         }
       } else if (isFoodItem(item)) {
-        // Can only select 2 food items
         if (foods.length >= 2) {
           enqueueSnackbar(
-            "Maximum 2 food items can be selected for PWD/SSS discount",
+            "Maximum 2 food items can be selected for PWD/Senior discount",
             {
               variant: "warning",
             }
@@ -472,9 +1784,8 @@ const Bill = ({ orderId }) => {
           return;
         }
       } else {
-        // Not a drink or food - don't allow selection
         enqueueSnackbar(
-          "Only drinks and food items are eligible for PWD/SSS discount",
+          "Only drinks and food items are eligible for PWD/Senior discount",
           {
             variant: "warning",
           }
@@ -482,103 +1793,86 @@ const Bill = ({ orderId }) => {
         return;
       }
 
-      setPwdSssDiscountItems([...pwdSssDiscountItems, item]);
+      // Check total items
+      if (pwdSeniorDiscountItems.length >= 3) {
+        enqueueSnackbar(
+          "Maximum 3 items can be selected for PWD/Senior discount",
+          {
+            variant: "warning",
+          }
+        );
+        return;
+      }
+
+      setPwdSeniorDiscountItems([...pwdSeniorDiscountItems, item]);
     }
   };
 
-  // Apply the selection with PWD/SSS details
-  const handleApplyPwdSssSelection = () => {
-    const eligible = getEligibleItemsCount();
-
-    // Check if we have at least 1 item selected
-    if (pwdSssDiscountItems.length === 0) {
-      enqueueSnackbar("Please select at least 1 item for PWD/SSS discount", {
+  // Apply the selection with PWD/Senior details
+  const handleApplyPwdSeniorSelection = () => {
+    if (pwdSeniorDiscountItems.length === 0) {
+      enqueueSnackbar("Please select at least 1 item for PWD/Senior discount", {
         variant: "warning",
       });
       return;
     }
 
-    // Check PWD/SSS details
-    if (!pwdSssDetails.name.trim()) {
-      enqueueSnackbar("Please enter PWD/SSS holder name", {
+    if (!pwdSeniorDetails.name.trim()) {
+      enqueueSnackbar("Please enter PWD/Senior holder name", {
         variant: "warning",
       });
       return;
     }
 
-    if (!pwdSssDetails.idNumber.trim()) {
-      enqueueSnackbar("Please enter PWD/SSS ID number", {
+    if (!pwdSeniorDetails.idNumber.trim()) {
+      enqueueSnackbar("Please enter PWD/Senior ID number", {
         variant: "warning",
       });
       return;
     }
 
-    // Check the breakdown
-    const drinks = pwdSssDiscountItems.filter((item) => isDrinkItem(item));
-    const foods = pwdSssDiscountItems.filter((item) => isFoodItem(item));
-
-    // Validate selection based on available items
-    if (drinks.length > eligible.maxDrinks) {
-      enqueueSnackbar(
-        `Cannot select more than ${eligible.maxDrinks} drink(s)`,
-        {
-          variant: "warning",
-        }
-      );
-      return;
-    }
-
-    if (foods.length > eligible.maxFoods) {
-      enqueueSnackbar(
-        `Cannot select more than ${eligible.maxFoods} food item(s)`,
-        {
-          variant: "warning",
-        }
-      );
-      return;
-    }
-
-    setPwdSssDiscountApplied(true);
+    setPwdSeniorDiscountApplied(true);
     setEmployeeDiscountApplied(false);
     setShareholderDiscountApplied(false);
-    setShowPwdSssSelection(false);
+    setShowPwdSeniorSelection(false);
 
-    // Calculate total value of selected items
-    const selectedValue = pwdSssDiscountItems.reduce(
+    const selectedValue = pwdSeniorDiscountItems.reduce(
       (sum, item) => sum + calculateItemTotalPrice(item),
       0
     );
 
-    const discountAmount = selectedValue * pwdSssDiscountRate;
+    const discountAmount = selectedValue * pwdSeniorDiscountRate;
 
-    // Create message based on selection
-    let message = `PWD/SSS discount applied to ${
-      pwdSssDiscountItems.length
+    const drinks = pwdSeniorDiscountItems.filter((item) => isDrinkItem(item));
+    const foods = pwdSeniorDiscountItems.filter((item) => isFoodItem(item));
+
+    let message = `PWD/Senior discount applied to ${
+      pwdSeniorDiscountItems.length
     } item(s) (-₱${discountAmount.toFixed(2)})`;
 
     if (drinks.length === 1 && foods.length === 2) {
-      message = `PWD/SSS discount applied to 1 drink and 2 food items (-₱${discountAmount.toFixed(
+      message = `PWD/Senior discount applied to 1 drink and 2 food items (-₱${discountAmount.toFixed(
         2
       )})`;
     } else if (drinks.length === 1 && foods.length === 1) {
-      message = `PWD/SSS discount applied to 1 drink and 1 food item (-₱${discountAmount.toFixed(
+      message = `PWD/Senior discount applied to 1 drink and 1 food item (-₱${discountAmount.toFixed(
         2
       )})`;
     } else if (drinks.length === 1) {
-      message = `PWD/SSS discount applied to 1 drink (-₱${discountAmount.toFixed(
+      message = `PWD/Senior discount applied to 1 drink (-₱${discountAmount.toFixed(
         2
       )})`;
     } else if (foods.length === 2) {
-      message = `PWD/SSS discount applied to 2 food items (-₱${discountAmount.toFixed(
+      message = `PWD/Senior discount applied to 2 food items (-₱${discountAmount.toFixed(
         2
       )})`;
     } else if (foods.length === 1) {
-      message = `PWD/SSS discount applied to 1 food item (-₱${discountAmount.toFixed(
+      message = `PWD/Senior discount applied to 1 food item (-₱${discountAmount.toFixed(
         2
       )})`;
     }
 
-    message += ` for ${pwdSssDetails.type}: ${pwdSssDetails.name}`;
+    message += ` for ${pwdSeniorDetails.type}: ${pwdSeniorDetails.name}`;
 
     enqueueSnackbar(message, {
       variant: "success",
@@ -586,447 +1880,234 @@ const Bill = ({ orderId }) => {
   };
 
   // Cancel selection
-  const handleCancelPwdSssSelection = () => {
-    setShowPwdSssSelection(false);
-    // Don't clear selections on cancel - let user keep their selections
+  const handleCancelPwdSeniorSelection = () => {
+    setShowPwdSeniorSelection(false);
   };
 
-  // Clear PWD/SSS discount
-  const clearPwdSssDiscount = () => {
-    setPwdSssDiscountApplied(false);
-    setPwdSssDiscountItems([]);
-    setPwdSssDetails({ name: "", idNumber: "", type: "PWD" });
-    enqueueSnackbar("PWD/SSS discount removed", {
+  // Clear PWD/Senior discount
+  const clearPwdSeniorDiscount = () => {
+    setPwdSeniorDiscountApplied(false);
+    setPwdSeniorDiscountItems([]);
+    setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
+    enqueueSnackbar("PWD/Senior discount removed", {
       variant: "info",
     });
   };
 
-  // Handle PWD/SSS details change
-  const handlePwdSssDetailsChange = (e) => {
+  // Handle PWD/Senior details change
+  const handlePwdSeniorDetailsChange = (e) => {
     const { name, value } = e.target;
-    setPwdSssDetails((prev) => ({
+    setPwdSeniorDetails((prev) => ({
       ...prev,
       [name]: value,
     }));
   };
 
-  // Print to Bluetooth Thermal Printer
-  const printToBluetoothPrinter = async (orderData) => {
-    try {
-      // Create receipt text
-      const receiptText = generateReceiptText(orderData);
-
-      // Try Web Bluetooth API for mobile/tablet
-      if (navigator.bluetooth) {
-        try {
-          const device = await navigator.bluetooth.requestDevice({
-            acceptAllDevices: true,
-            optionalServices: ["generic_access"],
-          });
-
-          console.log("Connecting to Bluetooth device:", device.name);
-          enqueueSnackbar(`Connecting to ${device.name}...`, {
-            variant: "info",
-          });
-
-          // For thermal printers, we typically need to use serial over Bluetooth
-          // This is a simplified approach - actual implementation may vary by printer model
-          await sendToPrinter(receiptText);
-        } catch (error) {
-          console.warn("Bluetooth printing failed:", error);
-          // Fallback to mobile printing
-          mobilePrint(receiptText);
-        }
-      } else {
-        // Web Bluetooth not supported, use mobile printing
-        mobilePrint(receiptText);
+  // Handle customer type change
+  const handleCustomerTypeChange = (type) => {
+    setCustomerType(type);
+    enqueueSnackbar(
+      `Customer type set to ${type === "walk-in" ? "Walk-in" : "Take-out"}`,
+      {
+        variant: "info",
       }
-    } catch (error) {
-      console.error("Printing error:", error);
-      enqueueSnackbar("Printing failed", { variant: "error" });
-      // Still try mobile print fallback
-      const receiptText = generateReceiptText(orderData);
-      mobilePrint(receiptText);
+    );
+  };
+
+  // Handle online payment selection
+  const handleOnlinePaymentSelect = (method) => {
+    setPaymentMethod(method);
+    setShowOnlineOptions(false);
+
+    // Check if cash was already entered and offer mixed payment
+    if (cashAmount > 0 && cashAmount < totals.total) {
+      const remaining = totals.total - cashAmount;
+      setShowMixedPaymentModal(true);
+      setMixedPayment({
+        isMixed: true,
+        cashAmount: cashAmount,
+        onlineAmount: remaining,
+        onlineMethod: method,
+      });
+    } else {
+      enqueueSnackbar(`Payment method set to ${method}`, {
+        variant: "success",
+      });
     }
   };
 
-  // Generate receipt text for thermal printer
-  const generateReceiptText = (orderData) => {
-    const lineBreak = "\n";
-    const dashedLine = "--------------------------------";
-    const doubleLine = "===============================";
+  // Handle mixed payment selection
+  const handleMixedPaymentSelect = () => {
+    const remaining = totals.total - cashAmount;
+    if (remaining > 0) {
+      setShowMixedPaymentModal(true);
+    }
+  };
 
-    let receipt = "";
+  // Handle mixed payment confirmation
+  const handleMixedPaymentConfirm = () => {
+    if (!mixedPayment.onlineMethod) {
+      enqueueSnackbar("Please select an online payment method", {
+        variant: "warning",
+      });
+      return;
+    }
 
-    // Header
-    receipt += doubleLine + lineBreak;
-    receipt += "      DELISH RESTAURANT" + lineBreak;
-    receipt += doubleLine + lineBreak;
-    receipt += `Order: #${orderData._id?.slice(-8) || "N/A"}` + lineBreak;
+    if (mixedPayment.onlineAmount <= 0) {
+      enqueueSnackbar("Please enter valid online payment amount", {
+        variant: "warning",
+      });
+      return;
+    }
 
-    // FIXED: Proper date formatting with locale
-    const currentDate = new Date();
-    const dateOptions = {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-      hour12: true,
+    const totalPaid = mixedPayment.cashAmount + mixedPayment.onlineAmount;
+    if (totalPaid < totals.total) {
+      enqueueSnackbar("Total payment is less than order total", {
+        variant: "error",
+      });
+      return;
+    }
+
+    setPaymentMethod(`Mixed (Cash + ${mixedPayment.onlineMethod})`);
+    setShowMixedPaymentModal(false);
+    setShowCashModal(false);
+
+    enqueueSnackbar(
+      `Mixed payment set: ₱${mixedPayment.cashAmount.toFixed(
+        2
+      )} Cash + ₱${mixedPayment.onlineAmount.toFixed(2)} ${
+        mixedPayment.onlineMethod
+      }`,
+      {
+        variant: "success",
+      }
+    );
+
+    // Continue with order placement
+    handlePlaceOrder();
+  };
+
+  // Handle denomination button click
+  const handleDenominationClick = (amount) => {
+    setCashAmount((prev) => safeNumber(prev) + amount);
+  };
+
+  // Handle cash amount change for mixed payment
+  const handleMixedPaymentCashChange = (e) => {
+    const newCashAmount = safeNumber(e.target.value);
+    setCashAmount(newCashAmount);
+
+    // Calculate remaining amount
+    const remaining = Math.max(0, totals.total - newCashAmount);
+    setMixedPayment((prev) => ({
+      ...prev,
+      cashAmount: newCashAmount,
+      onlineAmount: remaining,
+    }));
+  };
+
+  // Prepare order data for submission
+  const prepareOrderData = () => {
+    // Determine payment method details
+    let paymentMethodDetails = paymentMethod;
+    let cashPaymentAmount = 0;
+    let onlinePaymentAmount = 0;
+    let onlinePaymentMethod = null;
+
+    if (paymentMethod === "Cash") {
+      cashPaymentAmount = totals.cashAmount;
+    } else if (paymentMethod === "BDO" || paymentMethod === "GCASH") {
+      onlinePaymentAmount = totals.total;
+      onlinePaymentMethod = paymentMethod;
+    } else if (mixedPayment.isMixed) {
+      cashPaymentAmount = mixedPayment.cashAmount;
+      onlinePaymentAmount = mixedPayment.onlineAmount;
+      onlinePaymentMethod = mixedPayment.onlineMethod;
+      paymentMethodDetails = `Mixed (Cash + ${onlinePaymentMethod})`;
+    }
+
+    // Prepare bills data
+    const bills = {
+      total: Number(totals.baseGrossTotal.toFixed(2)),
+      tax: Number(totals.vatAmount.toFixed(2)),
+      totalWithTax: Number(totals.total.toFixed(2)),
+      discount: Number(totals.totalDiscountAmount.toFixed(2)),
+      pwdSeniorDiscount: Number(totals.pwdSeniorDiscountAmount.toFixed(2)),
+      pwdSeniorDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
+      employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
+      shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
+      redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
+      netSales: Number(totals.netSales.toFixed(2)),
+      cashAmount: Number(cashPaymentAmount.toFixed(2)),
+      onlineAmount: Number(onlinePaymentAmount.toFixed(2)),
+      onlineMethod: onlinePaymentMethod,
+      change: Number(totals.change.toFixed(2)),
     };
 
-    // Use English-US locale for consistent formatting
-    receipt +=
-      `Date: ${currentDate.toLocaleString("en-US", dateOptions)}` + lineBreak;
-    receipt +=
-      `Customer: ${orderData.customerDetails?.name || "Walk-in"}` + lineBreak;
-    receipt +=
-      `Table: ${
-        customerData.tables?.[0]?.tableId ||
-        customerData.table?.tableId ||
-        customerData.tableId ||
-        "N/A"
-      }` + lineBreak;
-    receipt += dashedLine + lineBreak;
-
-    // Items
-    receipt += "           ORDER ITEMS" + lineBreak;
-    receipt += dashedLine + lineBreak;
-
-    combinedCart.forEach((item) => {
-      const itemName =
-        item.name.length > 20 ? item.name.substring(0, 17) + "..." : item.name;
-
-      // Check if item is discounted
-      const isDiscounted = pwdSssDiscountItems.some(
+    // Prepare items data
+    const items = cartData.map((item) => {
+      const isPwdSeniorDiscounted = pwdSeniorDiscountItems.some(
         (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
       );
 
-      const originalPrice = safeNumber(item.pricePerQuantity);
-      const quantity = item.quantity;
-      const originalTotal = originalPrice * quantity;
-      const discountAmount = isDiscounted
-        ? originalTotal * pwdSssDiscountRate
-        : 0;
-      const finalPrice = originalTotal - discountAmount;
-
-      let priceText;
-      if (item.isRedeemed) {
-        priceText = "FREE";
-      } else if (isDiscounted) {
-        priceText = `₱${finalPrice.toFixed(2)} (was ₱${originalTotal.toFixed(
-          2
-        )})`;
-      } else {
-        priceText = `₱${originalTotal.toFixed(2)}`;
-      }
-
-      receipt += `${itemName}` + lineBreak;
-      receipt += `  ${quantity}x ₱${originalPrice.toFixed(2)}` + lineBreak;
-
-      if (isDiscounted) {
-        receipt +=
-          `  PWD/SSS 20% Discount: -₱${discountAmount.toFixed(2)}` + lineBreak;
-      }
-
-      receipt +=
-        `  ${priceText}${item.isRedeemed ? " (REDEEMED)" : ""}` + lineBreak;
-      receipt += lineBreak;
+      return {
+        name: item.name || "Unknown Item",
+        quantity: safeNumber(item.quantity),
+        pricePerQuantity: safeNumber(item.pricePerQuantity),
+        price: calculateItemTotal(item),
+        originalPrice: safeNumber(item.pricePerQuantity),
+        isRedeemed: Boolean(item.isRedeemed),
+        isPwdSeniorDiscounted: isPwdSeniorDiscounted,
+        category: isDrinkItem(item) ? "drink" : "food",
+        id: item.id || Date.now().toString(),
+      };
     });
 
-    receipt += dashedLine + lineBreak;
+    // Prepare customer details based on type
+    const customerName =
+      customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer";
 
-    // PWD/SSS Details
-    if (pwdSssDiscountApplied) {
-      receipt += "PWD/SSS DETAILS:" + lineBreak;
-      receipt += `  Type: ${pwdSssDetails.type}` + lineBreak;
-      receipt += `  Name: ${pwdSssDetails.name}` + lineBreak;
-      receipt += `  ID: ${pwdSssDetails.idNumber}` + lineBreak;
-      receipt += dashedLine + lineBreak;
-    }
-
-    // Show PWD/SSS discounted items if any
-    if (pwdSssDiscountItems.length > 0) {
-      receipt += "PWD/SSS DISCOUNTED ITEMS (20% off):" + lineBreak;
-      pwdSssDiscountItems.forEach((item, idx) => {
-        const itemName =
-          item.name.length > 20
-            ? item.name.substring(0, 17) + "..."
-            : item.name;
-        const itemType = isDrinkItem(item) ? "Drink" : "Food";
-        const originalTotal = calculateItemTotalPrice(item);
-        const discountAmount = originalTotal * pwdSssDiscountRate;
-        const discountedTotal = originalTotal - discountAmount;
-
-        receipt += `  ${idx + 1}. ${itemName} (${itemType})` + lineBreak;
-        receipt +=
-          `     ${item.quantity}x ₱${safeNumber(item.pricePerQuantity).toFixed(
-            2
-          )}` + lineBreak;
-        receipt +=
-          `     Was: ₱${originalTotal.toFixed(
-            2
-          )}, Discount: -₱${discountAmount.toFixed(
-            2
-          )}, Now: ₱${discountedTotal.toFixed(2)}` + lineBreak;
-      });
-      receipt += dashedLine + lineBreak;
-    }
-
-    // Totals
-    receipt +=
-      "SUBTOTAL:" +
-      padLeft(`₱${totals.baseGrossTotal.toFixed(2)}`, 20) +
-      lineBreak;
-
-    if (totals.pwdSssDiscountAmount > 0) {
-      receipt +=
-        "PWD/SSS DISC:" +
-        padLeft(`-₱${totals.pwdSssDiscountAmount.toFixed(2)}`, 17) +
-        lineBreak;
-    }
-
-    if (totals.redemptionAmount > 0) {
-      receipt +=
-        "REDEMPTION:" +
-        padLeft(`-₱${totals.redemptionAmount.toFixed(2)}`, 19) +
-        lineBreak;
-    }
-
-    if (totals.employeeDiscountAmount > 0) {
-      receipt +=
-        "EMP DISCOUNT:" +
-        padLeft(`-₱${totals.employeeDiscountAmount.toFixed(2)}`, 17) +
-        lineBreak;
-    }
-
-    if (totals.shareholderDiscountAmount > 0) {
-      receipt +=
-        "SH DISCOUNT:" +
-        padLeft(`-₱${totals.shareholderDiscountAmount.toFixed(2)}`, 18) +
-        lineBreak;
-    }
-
-    receipt +=
-      "VAT (12%):" + padLeft(`₱${totals.vatAmount.toFixed(2)}`, 20) + lineBreak;
-    receipt += doubleLine + lineBreak;
-    receipt +=
-      "TOTAL:" + padLeft(`₱${totals.total.toFixed(2)}`, 24) + lineBreak;
-    receipt += doubleLine + lineBreak;
-
-    // Cashier info - FIXED: using user.name with fallback
-    const cashierName =
-      user?.name || user?.username || user?.fullName || "Admin";
-    receipt += `Cashier: ${cashierName}` + lineBreak;
-    receipt += `Payment: ${paymentMethod}` + lineBreak;
-    receipt += lineBreak;
-    receipt += "Thank you for dining with us!" + lineBreak;
-    receipt += "Visit us again soon!" + lineBreak;
-    receipt += lineBreak;
-    receipt += lineBreak;
-    receipt += lineBreak; // Extra lines for paper cut
-
-    return receipt;
-  };
-
-  // Helper function to pad text for alignment
-  const padLeft = (text, length) => {
-    return text.padStart(length, " ");
-  };
-
-  // Send to printer (simplified - actual implementation depends on printer)
-  const sendToPrinter = async (receiptText) => {
-    // This is a simplified version
-    // Actual implementation would use printer-specific Bluetooth protocols
-    console.log("Sending to printer:", receiptText);
-
-    // Try to print using thermal printer commands
-    try {
-      // Open serial port connection (for thermal printers)
-      // Note: This requires a printer that supports Web Bluetooth or serial over Bluetooth
-      if (navigator.serial) {
-        // Web Serial API for Chrome-based browsers
-        const port = await navigator.serial.requestPort();
-        await port.open({ baudRate: 9600 });
-        const encoder = new TextEncoder();
-        const writer = port.writable.getWriter();
-        await writer.write(encoder.encode(receiptText));
-        writer.releaseLock();
-        await port.close();
-
-        enqueueSnackbar("Receipt printed successfully", {
-          variant: "success",
-        });
-      } else {
-        // Fallback to mobile printing
-        mobilePrint(receiptText);
-      }
-    } catch (error) {
-      console.warn("Direct printing failed:", error);
-      mobilePrint(receiptText);
-    }
-  };
-
-  // Mobile/Tablet printing method
-  const mobilePrint = (receiptText) => {
-    try {
-      // Create a printable HTML content for mobile
-      const printContent = `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <title>Delish Restaurant Receipt</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            @media print {
-              body { margin: 0; padding: 0; font-family: monospace; }
-              .receipt { width: 80mm; margin: 0 auto; padding: 10px; }
-              .line { white-space: pre-line; line-height: 1.2; }
-              .center { text-align: center; }
-              .right { text-align: right; }
-              .bold { font-weight: bold; }
-              .double-line { border-top: 2px solid #000; }
-              .dashed-line { border-top: 1px dashed #666; }
-              @page { margin: 0; }
-            }
-            body { font-family: monospace; }
-            .receipt { width: 80mm; margin: 0 auto; padding: 10px; }
-          </style>
-        </head>
-        <body>
-          <div class="receipt">
-            ${receiptText
-              .split("\n")
-              .map((line) => {
-                if (line.includes("======")) {
-                  return `<div class="line double-line">${line}</div>`;
-                } else if (line.includes("---")) {
-                  return `<div class="line dashed-line">${line}</div>`;
-                } else if (
-                  line.includes("DELISH RESTAURANT") ||
-                  line.includes("TOTAL:")
-                ) {
-                  return `<div class="line bold center">${line}</div>`;
-                } else {
-                  return `<div class="line">${line}</div>`;
-                }
-              })
-              .join("")}
-          </div>
-          <script>
-            // Auto-print on mobile/tablet
-            window.onload = function() {
-              setTimeout(function() {
-                if (window.print) {
-                  window.print();
-                }
-                // Close window after printing (if in new window)
-                setTimeout(function() {
-                  window.close();
-                }, 1000);
-              }, 500);
-            };
-          </script>
-        </body>
-        </html>
-      `;
-
-      // For mobile/tablet, open in new window and auto-print
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.open();
-        printWindow.document.write(printContent);
-        printWindow.document.close();
-
-        enqueueSnackbar("Opening print dialog...", { variant: "info" });
-      } else {
-        // Fallback to iframe printing
-        fallbackPrint(receiptText);
-      }
-    } catch (error) {
-      console.error("Mobile printing failed:", error);
-      // Ultimate fallback
-      fallbackPrint(receiptText);
-    }
-  };
-
-  // Ultimate fallback printing method
-  const fallbackPrint = (receiptText) => {
-    try {
-      // Try to use browser's print functionality
-      const printWindow = window.open("", "_blank");
-      if (printWindow) {
-        printWindow.document.write(`
-          <html>
-            <head>
-              <title>Delish Restaurant Receipt</title>
-              <style>
-                body { font-family: monospace; white-space: pre; margin: 20px; }
-              </style>
-            </head>
-            <body>${receiptText}</body>
-          </html>
-        `);
-        printWindow.document.close();
-        printWindow.focus();
-
-        // Try to print
-        setTimeout(() => {
-          if (printWindow.print) {
-            printWindow.print();
-          }
-        }, 500);
-
-        enqueueSnackbar("Receipt opened for printing", { variant: "success" });
-      } else {
-        // Last resort - copy to clipboard
-        navigator.clipboard
-          .writeText(receiptText)
-          .then(() => {
-            enqueueSnackbar("Receipt copied to clipboard", { variant: "info" });
-          })
-          .catch(() => {
-            // Create textarea for manual copy
-            const textArea = document.createElement("textarea");
-            textArea.value = receiptText;
-            textArea.style.position = "fixed";
-            textArea.style.left = "-9999px";
-            textArea.style.top = "0";
-            document.body.appendChild(textArea);
-            textArea.select();
-            document.execCommand("copy");
-            document.body.removeChild(textArea);
-            enqueueSnackbar("Receipt copied to clipboard", { variant: "info" });
-          });
-      }
-    } catch (error) {
-      console.error("Fallback printing failed:", error);
-      enqueueSnackbar("Printing failed. Receipt copied to clipboard.", {
-        variant: "error",
-      });
-
-      // Final attempt to copy to clipboard
-      try {
-        navigator.clipboard.writeText(receiptText);
-      } catch (e) {
-        console.error("Could not copy to clipboard:", e);
-      }
-    }
-  };
-
-  // Open cash drawer
-  const openCashDrawer = () => {
-    // Cash drawer command for thermal printers
-    const cashDrawerCommand = "\x1B\x70\x00\x19\xFA";
-    console.log("Cash drawer command sent");
-    enqueueSnackbar("Cash drawer opened", { variant: "info" });
+    return {
+      customerDetails: {
+        name: customerName,
+        phone: "",
+        guests: 1,
+        email: "",
+        address: "",
+      },
+      customerType: customerType,
+      customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
+      items,
+      bills,
+      paymentMethod: paymentMethodDetails,
+      paymentDetails: {
+        cashAmount: cashPaymentAmount,
+        onlineAmount: onlinePaymentAmount,
+        onlineMethod: onlinePaymentMethod,
+        isMixedPayment: mixedPayment.isMixed,
+      },
+      paymentStatus: "Completed",
+      orderStatus: "Completed",
+      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
+      pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
+      pwdSeniorSelectedItems: pwdSeniorDiscountApplied
+        ? pwdSeniorDiscountItems
+        : [],
+      cashier: user?.name || "Admin",
+      user: user?._id || "000000000000000000000001",
+      tableId: currentOrder?.tableId || null,
+      orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
+      totalAmount: Number(totals.total.toFixed(2)),
+      cashAmount: Number(cashPaymentAmount.toFixed(2)),
+      onlineAmount: Number(onlinePaymentAmount.toFixed(2)),
+      change: Number(totals.change.toFixed(2)),
+    };
   };
 
   // Order mutation with complete order handling
   const orderMutation = useMutation({
     mutationFn: (reqData) => addOrder(reqData),
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       console.log("Order success response:", res);
 
       if (!res || !res.data) {
@@ -1035,15 +2116,19 @@ const Bill = ({ orderId }) => {
 
       const { data } = res.data;
 
+      // Create complete order info for invoice
       const invoiceOrderInfo = {
         ...data,
         customerDetails: {
-          name: customerData.customerName || "Walk-in",
-          phone: customerData.customerPhone || "Not provided",
-          guests: customerData.guests || 1,
+          name:
+            customerType === "walk-in"
+              ? "Walk-in Customer"
+              : "Take-out Customer",
+          type: customerType,
+          status: customerType === "walk-in" ? "Dine-in" : "Take-out",
         },
         items: combinedCart.map((item) => {
-          const isDiscounted = pwdSssDiscountItems.some(
+          const isDiscounted = pwdSeniorDiscountItems.some(
             (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
           );
 
@@ -1054,7 +2139,7 @@ const Bill = ({ orderId }) => {
             originalPrice: safeNumber(item.pricePerQuantity),
             pricePerQuantity: safeNumber(item.pricePerQuantity),
             isFree: item.isRedeemed || false,
-            isPwdSssDiscounted: isDiscounted,
+            isPwdSeniorDiscounted: isDiscounted,
           };
         }),
         bills: {
@@ -1062,37 +2147,32 @@ const Bill = ({ orderId }) => {
           tax: totals.vatAmount,
           discount: totals.totalDiscountAmount,
           totalWithTax: totals.total,
-          pwdSssDiscount: totals.pwdSssDiscountAmount,
-          pwdSssDiscountedValue: totals.discountedItemsTotal,
+          pwdSeniorDiscount: totals.pwdSeniorDiscountAmount,
+          pwdSeniorDiscountedValue: totals.discountedItemsTotal,
           employeeDiscount: totals.employeeDiscountAmount,
           shareholderDiscount: totals.shareholderDiscountAmount,
           redemptionDiscount: totals.redemptionAmount,
+          cashAmount: totals.cashAmount,
+          onlineAmount: totals.onlineAmount,
+          onlineMethod: mixedPayment.onlineMethod,
+          change: totals.change,
         },
         paymentMethod: paymentMethod,
+        paymentDetails: {
+          cashAmount: totals.cashAmount,
+          onlineAmount: totals.onlineAmount,
+          onlineMethod: mixedPayment.onlineMethod,
+          isMixedPayment: mixedPayment.isMixed,
+        },
+        orderStatus: "Completed",
+        customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
         orderDate: new Date().toISOString(),
-        cashier: user?.name || user?.username || user?.fullName || "Admin", // Add cashier info
-        pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null, // Add PWD/SSS details
+        cashier: user?.name || "Admin",
+        pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
+        user: user?._id || "000000000000000000000001",
       };
 
       setOrderInfo(invoiceOrderInfo);
-
-      const tableId =
-        customerData.tables?.[0]?.tableId ||
-        customerData.table?.tableId ||
-        customerData.tableId ||
-        null;
-
-      if (tableId) {
-        const tableData = {
-          status: "Booked",
-          orderId: data._id,
-          tableId: tableId,
-        };
-
-        updateTable(tableData).catch((error) => {
-          console.error("Table update failed:", error);
-        });
-      }
 
       // MARK ORDER AS COMPLETED IN REDUX
       if (currentOrder) {
@@ -1102,26 +2182,9 @@ const Bill = ({ orderId }) => {
 
       enqueueSnackbar("Order placed successfully!", { variant: "success" });
 
-      // AUTO PRINT RECEIPT AND OPEN CASH DRAWER
-      setTimeout(() => {
-        // Print receipt - will automatically print on mobile/tablet
-        printToBluetoothPrinter(data);
-
-        // Open cash drawer for cash payments
-        if (paymentMethod === "Cash") {
-          openCashDrawer();
-        }
-
-        // Show invoice
-        setShowInvoice(true);
-        setIsProcessing(false);
-
-        // Force navigation to menu after 3 seconds
-        setTimeout(() => {
-          setShowInvoice(false);
-          navigate("/menu");
-        }, 3000);
-      }, 500);
+      // SHOW INVOICE IMMEDIATELY
+      setShowInvoice(true);
+      setIsProcessing(false);
     },
     onError: (error) => {
       console.error("Order placement error:", error);
@@ -1133,14 +2196,14 @@ const Bill = ({ orderId }) => {
       enqueueSnackbar(errorMessage, { variant: "error" });
       setIsProcessing(false);
 
-      // Reset order status on error - change back to active
+      // Reset order status on error
       if (currentOrder) {
         dispatch(resetOrderStatus(currentOrder.id));
       }
     },
   });
 
-  // Handle place order with better validation
+  // Handle place order
   const handlePlaceOrder = async () => {
     if (isProcessing) return;
 
@@ -1167,27 +2230,32 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    // Validate PWD/SSS discount selection - now allows 1-3 items
-    if (pwdSssDiscountApplied && pwdSssDiscountItems.length === 0) {
-      enqueueSnackbar(
-        "PWD/SSS discount requires at least 1 item to be selected",
-        {
-          variant: "error",
-        }
-      );
-      return;
-    }
-
-    // Validate PWD/SSS details if discount is applied
-    if (pwdSssDiscountApplied) {
-      if (!pwdSssDetails.name.trim()) {
-        enqueueSnackbar("Please enter PWD/SSS holder name", {
+    // Validate PWD/Senior discount if applied
+    if (pwdSeniorDiscountApplied) {
+      if (!pwdSeniorDetails.name.trim()) {
+        enqueueSnackbar("Please enter PWD/Senior holder name", {
           variant: "error",
         });
         return;
       }
-      if (!pwdSssDetails.idNumber.trim()) {
-        enqueueSnackbar("Please enter PWD/SSS ID number", {
+      if (!pwdSeniorDetails.idNumber.trim()) {
+        enqueueSnackbar("Please enter PWD/Senior ID number", {
+          variant: "error",
+        });
+        return;
+      }
+    }
+
+    // Validate payment amounts
+    if (paymentMethod === "Cash") {
+      if (totals.cashAmount < totals.total) {
+        setShowCashModal(true);
+        return;
+      }
+    } else if (mixedPayment.isMixed) {
+      const totalPaid = mixedPayment.cashAmount + mixedPayment.onlineAmount;
+      if (totalPaid < totals.total) {
+        enqueueSnackbar("Total payment is less than order total", {
           variant: "error",
         });
         return;
@@ -1199,192 +2267,46 @@ const Bill = ({ orderId }) => {
     // MARK ORDER AS PROCESSING FIRST
     if (currentOrder) {
       console.log("Dispatching processOrder for:", currentOrder.id);
-      dispatch(processOrder(currentOrder.id)); // This changes status from "active" to "processing"
+      dispatch(processOrder(currentOrder.id));
     }
 
-    const tableId =
-      customerData.tables?.[0]?.tableId ||
-      customerData.table?.tableId ||
-      customerData.tableId ||
-      null;
+    const orderData = prepareOrderData();
+    console.log("Sending order data:", JSON.stringify(orderData, null, 2));
 
-    // Prepare bills data
-    const bills = {
-      netSales: Number(totals.netSales.toFixed(2)),
-      tax: Number(totals.vatAmount.toFixed(2)),
-      discount: Number(totals.totalDiscountAmount.toFixed(2)),
-      total: Number(totals.total.toFixed(2)),
-      totalWithTax: Number(totals.total.toFixed(2)),
-      pwdSssDiscount: Number(totals.pwdSssDiscountAmount.toFixed(2)),
-      pwdSssDiscountedValue: Number(totals.discountedItemsTotal.toFixed(2)),
-      employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
-      shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
-      redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
-    };
+    // Submit order
+    orderMutation.mutate(orderData);
+  };
 
-    // Prepare items data
-    const items = cartData.map((item) => {
-      const isPwdSssDiscounted = pwdSssDiscountItems.some(
-        (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
-      );
+  // Handle cash amount submission
+  const handleCashSubmit = () => {
+    const cashAmountNum = safeNumber(cashAmount);
 
-      return {
-        name: item.name || "Unknown Item",
-        quantity: safeNumber(item.quantity),
-        pricePerQuantity: safeNumber(item.pricePerQuantity),
-        price: calculateItemTotal(item), // This includes the discount if applicable
-        originalPrice: safeNumber(item.pricePerQuantity),
-        isRedeemed: Boolean(item.isRedeemed),
-        isPwdSssDiscounted: isPwdSssDiscounted,
-        category: item.category || "general",
-        id: item.id || Date.now().toString(),
-      };
-    });
-
-    // Get cashier name with multiple fallback options
-    const cashierName =
-      user?.name || user?.username || user?.fullName || "Admin";
-
-    // Prepare order data
-    const orderData = {
-      customerDetails: {
-        name: customerData.customerName || "Walk-in",
-        phone: customerData.customerPhone || "Not provided",
-        guests: safeNumber(customerData.guests) || 1,
-      },
-      orderStatus: "Completed",
-      bills,
-      items,
-      table: tableId,
-      paymentMethod,
-      pwdSssDiscountApplied: pwdSssDiscountApplied,
-      pwdSssDetails: pwdSssDiscountApplied ? pwdSssDetails : null,
-      pwdSssSelectedItems: pwdSssDiscountItems.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        pricePerQuantity: item.pricePerQuantity,
-        type: isDrinkItem(item) ? "drink" : "food",
-      })),
-      cashier: cashierName, // Add cashier info to order data
-    };
-
-    console.log("Sending order data:", orderData);
-
-    // Handle payment methods
-    if (paymentMethod === "Online") {
-      try {
-        console.log("Loading Razorpay script...");
-        const loaded = await loadScript(
-          "https://checkout.razorpay.com/v1/checkout.js"
-        );
-
-        if (!loaded) {
-          enqueueSnackbar("Razorpay SDK failed to load!", { variant: "error" });
-          setIsProcessing(false);
-          // Reset order status on error
-          if (currentOrder) {
-            dispatch(resetOrderStatus(currentOrder.id));
-          }
-          return;
-        }
-
-        console.log("Creating Razorpay order...");
-        const reqData = {
-          amount: Math.round(totals.total * 100),
-          currency: "INR",
-        };
-
-        const { data } = await createOrderRazorpay(reqData);
-        console.log("Razorpay order created:", data);
-
-        if (!data || !data.order) {
-          throw new Error("Invalid response from Razorpay");
-        }
-
-        const options = {
-          key: import.meta.env.VITE_RAZORPAY_KEY_ID,
-          amount: data.order.amount,
-          currency: data.order.currency,
-          name: "DELISH",
-          description: "Restaurant Order Payment",
-          order_id: data.order.id,
-          handler: async (response) => {
-            console.log("Payment successful:", response);
-            try {
-              const verification = await verifyPaymentRazorpay(response);
-              console.log("Payment verified:", verification);
-
-              enqueueSnackbar("Payment successful! Placing order...", {
-                variant: "success",
-              });
-
-              // Add payment data to order
-              orderData.paymentData = {
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_signature: response.razorpay_signature,
-              };
-
-              // Submit order
-              orderMutation.mutate(orderData);
-            } catch (verificationError) {
-              console.error("Payment verification failed:", verificationError);
-              enqueueSnackbar("Payment verification failed!", {
-                variant: "error",
-              });
-              setIsProcessing(false);
-              // Reset order status on error
-              if (currentOrder) {
-                dispatch(resetOrderStatus(currentOrder.id));
-              }
-            }
-          },
-          prefill: {
-            name: customerData.customerName || "Customer",
-            email: "",
-            contact: customerData.customerPhone || "",
-          },
-          theme: { color: "#2563eb" },
-          modal: {
-            ondismiss: function () {
-              enqueueSnackbar("Payment cancelled", { variant: "info" });
-              setIsProcessing(false);
-              // Reset order status on cancellation
-              if (currentOrder) {
-                dispatch(resetOrderStatus(currentOrder.id));
-              }
-            },
-          },
-        };
-
-        const razorpay = new window.Razorpay(options);
-        razorpay.open();
-      } catch (err) {
-        console.error("Razorpay error:", err);
-        enqueueSnackbar(
-          err.response?.data?.message || "Payment initialization failed!",
-          { variant: "error" }
-        );
-        setIsProcessing(false);
-        // Reset order status on error
-        if (currentOrder) {
-          dispatch(resetOrderStatus(currentOrder.id));
-        }
-      }
+    if (cashAmountNum >= totals.total) {
+      // Full cash payment
+      setShowCashModal(false);
+      handlePlaceOrder();
+    } else if (cashAmountNum > 0) {
+      // Partial cash payment - offer mixed payment
+      const remaining = totals.total - cashAmountNum;
+      setShowMixedPaymentModal(true);
+      setMixedPayment((prev) => ({
+        ...prev,
+        cashAmount: cashAmountNum,
+        onlineAmount: remaining,
+      }));
     } else {
-      // Cash payment - directly submit order
-      console.log("Processing cash order...");
-      orderMutation.mutate(orderData);
+      enqueueSnackbar("Please enter a valid cash amount", {
+        variant: "error",
+      });
     }
   };
 
   const handleCloseInvoice = () => {
     setShowInvoice(false);
-    // Navigate to menu immediately
     navigate("/menu");
   };
 
-  // Handle redeem button click - show redeem options
+  // Handle redeem button click
   const handleShowRedeemOptions = () => {
     if (combinedCart.length === 0) {
       enqueueSnackbar("Cart is empty!", { variant: "warning" });
@@ -1418,18 +2340,312 @@ const Bill = ({ orderId }) => {
 
   return (
     <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
-      {/* PWD/SSS Selection Modal with Name/ID Fields */}
-      {showPwdSssSelection && (
+      {/* Cash Modal */}
+      {showCashModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+              Enter Cash Amount
+            </h3>
+
+            <div className="mb-4">
+              <p className="text-gray-600 mb-2">
+                Total Amount: ₱{totals.total.toFixed(2)}
+              </p>
+              <input
+                type="number"
+                value={cashAmount}
+                onChange={(e) => setCashAmount(e.target.value)}
+                className="w-full px-3 py-3 border border-gray-300 rounded-lg text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none mb-4"
+                placeholder="Enter cash amount"
+                min="0"
+                step="0.01"
+                autoFocus
+              />
+
+              <div className="grid grid-cols-3 gap-2 mb-4">
+                <button
+                  onClick={() => handleDenominationClick(10)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱10
+                </button>
+                <button
+                  onClick={() => handleDenominationClick(20)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱20
+                </button>
+                <button
+                  onClick={() => handleDenominationClick(50)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱50
+                </button>
+                <button
+                  onClick={() => handleDenominationClick(100)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱100
+                </button>
+                <button
+                  onClick={() => handleDenominationClick(500)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱500
+                </button>
+                <button
+                  onClick={() => handleDenominationClick(1000)}
+                  className="px-3 py-2 bg-gray-100 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-200 transition-colors"
+                >
+                  ₱1000
+                </button>
+              </div>
+
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-600">Entered Amount:</span>
+                <span className="text-lg font-bold text-gray-900">
+                  ₱{safeNumber(cashAmount).toFixed(2)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm text-gray-600">Remaining:</span>
+                <span className="text-lg font-bold text-orange-600">
+                  ₱
+                  {Math.max(0, totals.total - safeNumber(cashAmount)).toFixed(
+                    2
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center justify-between mb-4">
+                <span className="text-sm text-gray-600">Change:</span>
+                <span className="text-lg font-bold text-green-600">
+                  ₱
+                  {Math.max(0, safeNumber(cashAmount) - totals.total).toFixed(
+                    2
+                  )}
+                </span>
+              </div>
+
+              {safeNumber(cashAmount) < totals.total && (
+                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                  <p className="text-sm text-yellow-800">
+                    <span className="font-semibold">Note:</span> Cash amount is
+                    insufficient. You can pay the remaining ₱
+                    {(totals.total - safeNumber(cashAmount)).toFixed(2)} online.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowCashModal(false)}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleCashSubmit}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors"
+              >
+                {safeNumber(cashAmount) >= totals.total
+                  ? "Confirm Full Payment"
+                  : "Continue with Partial Payment"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Mixed Payment Modal */}
+      {showMixedPaymentModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+              Mixed Payment - Complete Payment Online
+            </h3>
+
+            <div className="mb-4">
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-1">
+                  Cash Amount
+                </label>
+                <input
+                  type="number"
+                  value={cashAmount}
+                  onChange={handleMixedPaymentCashChange}
+                  className="w-full px-3 py-3 border border-gray-300 rounded-lg text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg mb-4">
+                <div className="flex justify-between mb-1">
+                  <span className="text-sm text-gray-600">Order Total:</span>
+                  <span className="text-sm font-bold text-gray-900">
+                    ₱{totals.total.toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between mb-1">
+                  <span className="text-sm text-gray-600">Cash Payment:</span>
+                  <span className="text-sm font-bold text-gray-900">
+                    ₱{safeNumber(cashAmount).toFixed(2)}
+                  </span>
+                </div>
+                <div className="flex justify-between mb-2">
+                  <span className="text-sm text-gray-600">Remaining:</span>
+                  <span className="text-sm font-bold text-orange-600">
+                    ₱
+                    {Math.max(0, totals.total - safeNumber(cashAmount)).toFixed(
+                      2
+                    )}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t pt-2">
+                  <span className="text-sm text-gray-600">Change Due:</span>
+                  <span className="text-sm font-bold text-green-600">
+                    ₱
+                    {Math.max(0, safeNumber(cashAmount) - totals.total).toFixed(
+                      2
+                    )}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Pay Remaining Online with:
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    onClick={() =>
+                      setMixedPayment((prev) => ({
+                        ...prev,
+                        onlineMethod: "BDO",
+                      }))
+                    }
+                    className={`px-4 py-3 rounded-lg font-semibold text-sm ${
+                      mixedPayment.onlineMethod === "BDO"
+                        ? "bg-blue-600 text-white"
+                        : "bg-blue-100 text-blue-700 hover:bg-blue-200"
+                    } transition-colors`}
+                  >
+                    BDO
+                  </button>
+                  <button
+                    onClick={() =>
+                      setMixedPayment((prev) => ({
+                        ...prev,
+                        onlineMethod: "GCASH",
+                      }))
+                    }
+                    className={`px-4 py-3 rounded-lg font-semibold text-sm ${
+                      mixedPayment.onlineMethod === "GCASH"
+                        ? "bg-green-600 text-white"
+                        : "bg-green-100 text-green-700 hover:bg-green-200"
+                    } transition-colors`}
+                  >
+                    GCASH
+                  </button>
+                </div>
+              </div>
+
+              {mixedPayment.onlineMethod && (
+                <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg mb-4">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-sm font-medium text-blue-800">
+                        Online Payment ({mixedPayment.onlineMethod})
+                      </p>
+                      <p className="text-xs text-blue-600">
+                        Amount: ₱
+                        {Math.max(
+                          0,
+                          totals.total - safeNumber(cashAmount)
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-lg font-bold text-blue-800">
+                        ₱
+                        {Math.max(
+                          0,
+                          totals.total - safeNumber(cashAmount)
+                        ).toFixed(2)}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => {
+                  setShowMixedPaymentModal(false);
+                  setShowCashModal(true);
+                }}
+                className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+              >
+                Back
+              </button>
+              <button
+                onClick={handleMixedPaymentConfirm}
+                disabled={!mixedPayment.onlineMethod}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Confirm Mixed Payment
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Online Payment Options Modal */}
+      {showOnlineOptions && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+              Select Digital Payment Method
+            </h3>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleOnlinePaymentSelect("BDO")}
+                className="w-full px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition-colors"
+              >
+                BDO
+              </button>
+              <button
+                onClick={() => handleOnlinePaymentSelect("GCASH")}
+                className="w-full px-4 py-3 bg-green-600 text-white rounded-lg font-semibold text-sm hover:bg-green-700 transition-colors"
+              >
+                GCASH
+              </button>
+              <button
+                onClick={() => setShowOnlineOptions(false)}
+                className="w-full px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* PWD/Senior Selection Modal */}
+      {showPwdSeniorSelection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full max-h-[90vh] overflow-y-auto">
             <h3 className="text-lg font-semibold mb-4 text-gray-900">
-              PWD/SSS Discount Application
+              PWD/Senior Discount Application
             </h3>
 
-            {/* PWD/SSS Details Form */}
+            {/* PWD/Senior Details Form */}
             <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
               <h4 className="text-sm font-semibold text-blue-800 mb-3">
-                PWD/SSS Holder Information
+                PWD/Senior Holder Information
               </h4>
               <div className="space-y-3">
                 <div>
@@ -1442,8 +2658,8 @@ const Bill = ({ orderId }) => {
                         type="radio"
                         name="type"
                         value="PWD"
-                        checked={pwdSssDetails.type === "PWD"}
-                        onChange={handlePwdSssDetailsChange}
+                        checked={pwdSeniorDetails.type === "PWD"}
+                        onChange={handlePwdSeniorDetailsChange}
                         className="mr-2"
                       />
                       <span className="text-sm">PWD</span>
@@ -1452,12 +2668,12 @@ const Bill = ({ orderId }) => {
                       <input
                         type="radio"
                         name="type"
-                        value="SSS"
-                        checked={pwdSssDetails.type === "SSS"}
-                        onChange={handlePwdSssDetailsChange}
+                        value="Senior"
+                        checked={pwdSeniorDetails.type === "Senior"}
+                        onChange={handlePwdSeniorDetailsChange}
                         className="mr-2"
                       />
-                      <span className="text-sm">SSS</span>
+                      <span className="text-sm">Senior Citizen</span>
                     </label>
                   </div>
                 </div>
@@ -1469,10 +2685,10 @@ const Bill = ({ orderId }) => {
                   <input
                     type="text"
                     name="name"
-                    value={pwdSssDetails.name}
-                    onChange={handlePwdSssDetailsChange}
+                    value={pwdSeniorDetails.name}
+                    onChange={handlePwdSeniorDetailsChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    placeholder="Enter PWD/SSS holder name"
+                    placeholder="Enter PWD/Senior holder name"
                     required
                   />
                 </div>
@@ -1484,10 +2700,10 @@ const Bill = ({ orderId }) => {
                   <input
                     type="text"
                     name="idNumber"
-                    value={pwdSssDetails.idNumber}
-                    onChange={handlePwdSssDetailsChange}
+                    value={pwdSeniorDetails.idNumber}
+                    onChange={handlePwdSeniorDetailsChange}
                     className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                    placeholder="Enter PWD/SSS ID number"
+                    placeholder="Enter PWD/Senior ID number"
                     required
                   />
                 </div>
@@ -1500,14 +2716,14 @@ const Bill = ({ orderId }) => {
                   Selected Items:
                 </span>
                 <span className="text-sm font-bold text-yellow-800">
-                  {pwdSssDiscountItems.length}/3
+                  {pwdSeniorDiscountItems.length}/3
                 </span>
               </div>
               <div className="grid grid-cols-2 gap-2">
                 <div className="text-xs text-yellow-700">
                   Drinks:{" "}
                   {
-                    pwdSssDiscountItems.filter((item) => isDrinkItem(item))
+                    pwdSeniorDiscountItems.filter((item) => isDrinkItem(item))
                       .length
                   }
                   /1
@@ -1515,7 +2731,7 @@ const Bill = ({ orderId }) => {
                 <div className="text-xs text-yellow-700">
                   Food:{" "}
                   {
-                    pwdSssDiscountItems.filter((item) => isFoodItem(item))
+                    pwdSeniorDiscountItems.filter((item) => isFoodItem(item))
                       .length
                   }
                   /2
@@ -1525,11 +2741,11 @@ const Bill = ({ orderId }) => {
 
             <div className="space-y-3 mb-6 max-h-[300px] overflow-y-auto">
               <p className="text-sm font-medium text-gray-700 mb-2">
-                Select items for 20% discount:
+                Select items for 20% discount (1-3 items allowed):
               </p>
               {combinedCart.map((item, index) => {
                 const itemKey = getItemKey(item);
-                const isSelected = pwdSssDiscountItems.some(
+                const isSelected = pwdSeniorDiscountItems.some(
                   (selected) => getItemKey(selected) === itemKey
                 );
                 const isDrink = isDrinkItem(item);
@@ -1540,7 +2756,7 @@ const Bill = ({ orderId }) => {
 
                 const itemType = isDrink ? "Drink" : "Food";
                 const itemValue = calculateItemTotalPrice(item);
-                const discountAmount = itemValue * pwdSssDiscountRate;
+                const discountAmount = itemValue * pwdSeniorDiscountRate;
                 const discountedValue = itemValue - discountAmount;
 
                 return (
@@ -1555,7 +2771,7 @@ const Bill = ({ orderId }) => {
                   >
                     <div className="flex items-center flex-1">
                       <div
-                        className={`w-5 h-5 rounded-full border mr-3 flex items-center justify-center flex-shrink-0 ${
+                        className={`w-5 h-5 rounded-full border mr-3 flex-shrink-0 ${
                           isSelected
                             ? "bg-green-500 border-green-500"
                             : "border-gray-400"
@@ -1603,7 +2819,7 @@ const Bill = ({ orderId }) => {
               <div>
                 <p className="text-sm font-medium text-gray-900">
                   Selected Value: ₱
-                  {pwdSssDiscountItems
+                  {pwdSeniorDiscountItems
                     .reduce(
                       (sum, item) => sum + calculateItemTotalPrice(item),
                       0
@@ -1613,32 +2829,32 @@ const Bill = ({ orderId }) => {
                 <p className="text-xs text-gray-600">
                   After 20% discount (-₱
                   {(
-                    pwdSssDiscountItems.reduce(
+                    pwdSeniorDiscountItems.reduce(
                       (sum, item) => sum + calculateItemTotalPrice(item),
                       0
-                    ) * pwdSssDiscountRate
+                    ) * pwdSeniorDiscountRate
                   ).toFixed(2)}
                   ): ₱
                   {(
-                    pwdSssDiscountItems.reduce(
+                    pwdSeniorDiscountItems.reduce(
                       (sum, item) => sum + calculateItemTotalPrice(item),
                       0
                     ) *
-                    (1 - pwdSssDiscountRate)
+                    (1 - pwdSeniorDiscountRate)
                   ).toFixed(2)}
                 </p>
               </div>
               <div className="flex gap-2">
                 <button
-                  onClick={handleCancelPwdSssSelection}
+                  onClick={handleCancelPwdSeniorSelection}
                   className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
-                  onClick={handleApplyPwdSssSelection}
+                  onClick={handleApplyPwdSeniorSelection}
                   className="px-4 py-2 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                  disabled={pwdSssDiscountItems.length === 0}
+                  disabled={pwdSeniorDiscountItems.length === 0}
                 >
                   Apply Discount
                 </button>
@@ -1649,6 +2865,39 @@ const Bill = ({ orderId }) => {
       )}
 
       <div className="max-w-[600px] mx-auto space-y-4">
+        {/* 🧾 CUSTOMER TYPE */}
+        <div className="bg-white rounded-lg p-4 shadow-md">
+          <h2 className="text-gray-900 text-sm font-semibold mb-3">
+            Customer Type
+          </h2>
+          <div className="flex gap-3">
+            <button
+              onClick={() => handleCustomerTypeChange("walk-in")}
+              className={`flex-1 px-4 py-3 rounded-lg font-semibold text-sm ${
+                customerType === "walk-in"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              } transition-colors`}
+            >
+              Walk-in
+            </button>
+            <button
+              onClick={() => handleCustomerTypeChange("take-out")}
+              className={`flex-1 px-4 py-3 rounded-lg font-semibold text-sm ${
+                customerType === "take-out"
+                  ? "bg-blue-600 text-white"
+                  : "bg-gray-200 text-gray-700 hover:bg-gray-300"
+              } transition-colors`}
+            >
+              Take-out
+            </button>
+          </div>
+          <p className="text-xs text-gray-500 mt-2">
+            Status will be updated to{" "}
+            {customerType === "walk-in" ? "Dine-in" : "Take-out"} on receipt
+          </p>
+        </div>
+
         {/* 🛒 CART ITEMS */}
         <div className="bg-white rounded-lg p-4 shadow-md max-h-64 overflow-y-auto">
           <h2 className="text-gray-900 text-sm font-semibold mb-2">
@@ -1659,7 +2908,7 @@ const Bill = ({ orderId }) => {
           ) : (
             combinedCart.map((item, index) => {
               const itemKey = getItemKey(item);
-              const isDiscounted = pwdSssDiscountItems.some(
+              const isDiscounted = pwdSeniorDiscountItems.some(
                 (discountedItem) => getItemKey(discountedItem) === itemKey
               );
               const isDrink = isDrinkItem(item);
@@ -1692,7 +2941,7 @@ const Bill = ({ orderId }) => {
                         )}
                         {isDiscounted && !item.isRedeemed && (
                           <span className="ml-2 bg-green-600 text-white text-xs px-2 py-1 rounded-full">
-                            PWD/SSS -20%
+                            PWD/SENIOR -20%
                           </span>
                         )}
                       </p>
@@ -1796,15 +3045,15 @@ const Bill = ({ orderId }) => {
             </h1>
           </div>
 
-          {pwdSssDiscountApplied && totals.pwdSssDiscountAmount > 0 && (
+          {pwdSeniorDiscountApplied && totals.pwdSeniorDiscountAmount > 0 && (
             <div className="flex justify-between items-center text-green-600">
               <div className="flex items-center">
                 <p className="text-xs font-medium mr-2">
                   {discountedItemsInfo}
-                  {pwdSssDetails.name && ` (${pwdSssDetails.name})`}
+                  {pwdSeniorDetails.name && ` (${pwdSeniorDetails.name})`}
                 </p>
                 <button
-                  onClick={clearPwdSssDiscount}
+                  onClick={clearPwdSeniorDiscount}
                   className="text-xs text-red-500 hover:text-red-700 font-medium"
                   disabled={isProcessing}
                 >
@@ -1812,7 +3061,7 @@ const Bill = ({ orderId }) => {
                 </button>
               </div>
               <h1 className="text-md font-bold">
-                -₱{totals.pwdSssDiscountAmount.toFixed(2)}
+                -₱{totals.pwdSeniorDiscountAmount.toFixed(2)}
               </h1>
             </div>
           )}
@@ -1855,96 +3104,101 @@ const Bill = ({ orderId }) => {
           </div>
 
           <div className="flex justify-between items-center">
-            <p className="text-xs text-gray-500 font-medium">
-              Total (VAT inclusive)
-            </p>
+            <p className="text-xs text-gray-500 font-medium">VAT (12%)</p>
             <h1 className="text-gray-900 text-md font-bold">
+              ₱{totals.vatAmount.toFixed(2)}
+            </h1>
+          </div>
+
+          <div className="flex justify-between items-center border-t pt-2">
+            <p className="text-sm text-gray-700 font-semibold">TOTAL</p>
+            <h1 className="text-gray-900 text-xl font-bold">
               ₱{totals.total.toFixed(2)}
             </h1>
           </div>
+
+          {(paymentMethod === "Cash" || mixedPayment.isMixed) &&
+            totals.cashAmount > 0 && (
+              <>
+                <div className="flex justify-between items-center border-t pt-2">
+                  <p className="text-xs text-gray-600 font-medium">Cash</p>
+                  <p className="text-md text-gray-800 font-bold">
+                    ₱{totals.cashAmount.toFixed(2)}
+                  </p>
+                </div>
+                {mixedPayment.isMixed && totals.onlineAmount > 0 && (
+                  <div className="flex justify-between items-center">
+                    <p className="text-xs text-gray-600 font-medium">
+                      Online ({mixedPayment.onlineMethod})
+                    </p>
+                    <p className="text-md text-blue-800 font-bold">
+                      ₱{totals.onlineAmount.toFixed(2)}
+                    </p>
+                  </div>
+                )}
+                <div className="flex justify-between items-center">
+                  <p className="text-xs text-gray-600 font-medium">Change</p>
+                  <p className="text-md text-green-600 font-bold">
+                    ₱{totals.change.toFixed(2)}
+                  </p>
+                </div>
+              </>
+            )}
         </div>
 
         {/* 🎟 DISCOUNT & REDEMPTION BUTTONS */}
-        <div className="flex flex-col sm:flex-row gap-3 mt-4">
+        <div className="grid grid-cols-4 gap-2">
           <button
-            onClick={handlePwdSssDiscount}
+            onClick={handlePwdSeniorDiscount}
             disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
-              pwdSssDiscountApplied
+            className={`px-2 py-2 rounded-lg font-semibold text-xs ${
+              pwdSeniorDiscountApplied
                 ? "bg-green-500 text-white hover:bg-green-600"
                 : "bg-green-100 text-green-700 hover:bg-green-200"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {pwdSssDiscountApplied ? (
-              <span className="flex items-center justify-center gap-1">
-                <span>✓ PWD/SSS Applied</span>
-                {pwdSssDetails.name && (
-                  <span className="text-xs truncate">
-                    ({pwdSssDetails.name})
-                  </span>
-                )}
-              </span>
-            ) : (
-              "PWD/SSS (20% - Select 1-3 items)"
-            )}
+            {pwdSeniorDiscountApplied ? "✓ PWD/SENIOR" : "PWD/SENIOR"}
           </button>
 
           <button
             onClick={handleEmployeeDiscount}
             disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
+            className={`px-2 py-2 rounded-lg font-semibold text-xs ${
               employeeDiscountApplied
                 ? "bg-yellow-500 text-white hover:bg-yellow-600"
                 : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {employeeDiscountApplied
-              ? "✓ Employee Discount (15%)"
-              : "Employee (15%)"}
+            {employeeDiscountApplied ? "✓ Employee" : "Employee"}
           </button>
 
           <button
             onClick={handleShareholderDiscount}
             disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
+            className={`px-2 py-2 rounded-lg font-semibold text-xs ${
               shareholderDiscountApplied
                 ? "bg-purple-500 text-white hover:bg-purple-600"
                 : "bg-purple-100 text-purple-700 hover:bg-purple-200"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            {shareholderDiscountApplied
-              ? "✓ Shareholder Discount (10%)"
-              : "Shareholder (10%)"}
+            {shareholderDiscountApplied ? "✓ Shareholder" : "Shareholder"}
           </button>
-        </div>
 
-        {/* 🎟 REDEMPTION BUTTON */}
-        <div className="flex flex-col sm:flex-row gap-3">
           {!hasRedeemedItem ? (
-            showRedeemOptions ? (
-              <button
-                onClick={handleCancelRedeem}
-                disabled={isProcessing}
-                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-gray-500 text-white hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Cancel Redeem
-              </button>
-            ) : (
-              <button
-                onClick={handleShowRedeemOptions}
-                disabled={isProcessing || combinedCart.length === 0}
-                className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Redeem (Free 1 Item)
-              </button>
-            )
+            <button
+              onClick={handleShowRedeemOptions}
+              disabled={isProcessing || combinedCart.length === 0}
+              className="px-2 py-2 rounded-lg font-semibold text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              Redeem
+            </button>
           ) : (
             <button
               onClick={handleRemoveRedemption}
               disabled={isProcessing}
-              className="flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow bg-red-500 text-white hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-2 py-2 rounded-lg font-semibold text-xs bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Remove Redemption
+              Remove
             </button>
           )}
         </div>
@@ -1954,25 +3208,29 @@ const Bill = ({ orderId }) => {
           <button
             onClick={() => setPaymentMethod("Cash")}
             disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
-              paymentMethod === "Cash"
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
+              paymentMethod === "Cash" || mixedPayment.isMixed
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-gray-200 text-gray-600 hover:bg-gray-300"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            Cash
+            {mixedPayment.isMixed ? "✓ Mixed Payment" : "Cash"}
           </button>
 
           <button
-            onClick={() => setPaymentMethod("Online")}
+            onClick={() => setShowOnlineOptions(true)}
             disabled={isProcessing}
-            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs shadow transition-colors ${
-              paymentMethod === "Online"
+            className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
+              paymentMethod === "BDO" || paymentMethod === "GCASH"
                 ? "bg-blue-600 text-white hover:bg-blue-700"
                 : "bg-gray-200 text-gray-600 hover:bg-gray-300"
             } disabled:opacity-50 disabled:cursor-not-allowed`}
           >
-            Online
+            {paymentMethod === "BDO"
+              ? "✓ BDO"
+              : paymentMethod === "GCASH"
+              ? "✓ GCASH"
+              : "Online"}
           </button>
         </div>
 
@@ -1981,7 +3239,7 @@ const Bill = ({ orderId }) => {
           <button
             onClick={handlePlaceOrder}
             disabled={isProcessing || !paymentMethod || cartData.length === 0}
-            className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white shadow hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
+            className="w-full px-4 py-3 rounded-lg font-semibold text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
           >
             {isProcessing ? (
               <>
@@ -1989,12 +3247,12 @@ const Bill = ({ orderId }) => {
                 Processing...
               </>
             ) : (
-              "Place Order & Print"
+              "Place Order & Show Invoice"
             )}
           </button>
         </div>
 
-        {/* 📄 INVOICE MODAL */}
+        {/* 📄 INVOICE MODAL - Shows after successful order placement */}
         {showInvoice && orderInfo && (
           <Invoice orderInfo={orderInfo} setShowInvoice={handleCloseInvoice} />
         )}
