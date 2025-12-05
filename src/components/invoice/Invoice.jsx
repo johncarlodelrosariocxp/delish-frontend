@@ -118,7 +118,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
   const [isPrinting, setIsPrinting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
 
-  // Thermal printer ESC/POS commands (same as in Bill)
+  // Thermal printer ESC/POS commands
   const thermalCommands = {
     INIT: "\x1B\x40", // Initialize printer
     ALIGN_LEFT: "\x1B\x61\x00", // Left alignment
@@ -316,7 +316,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         }
       }
 
-      // Generate receipt text (EXACT same format as in Bill)
+      // Generate receipt text
       const receiptText = generateThermalText();
       console.log("Receipt generated, sending to printer...");
 
@@ -349,7 +349,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     }
   };
 
-  // Generate thermal printer text - EXACT SAME FORMAT AS IN BILL
+  // Generate thermal printer text
   const generateThermalText = () => {
     const LINE_WIDTH = 32; // Standard 58mm thermal printer width
 
@@ -484,7 +484,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
     receiptText += "--------------------------------\n";
 
-    // Totals - right aligned (EXACT same format as Bill)
+    // Totals - right aligned
     receiptText += thermalCommands.ALIGN_RIGHT;
     receiptText += `SUBTOTAL:   ₱${totals.baseGrossTotal.toFixed(2)}\n`;
 
@@ -1112,7 +1112,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             </div>
           </div>
 
-          {/* Bill Summary - EXACT SAME FORMAT AS BILL */}
+          {/* Bill Summary */}
           <div className="bg-gray-50 p-3 rounded-lg">
             <h3 className="font-semibold text-gray-700 text-sm mb-2">
               Bill Summary
