@@ -92,6 +92,36 @@ const IconIdCard = (props) => (
     <path d="M528 160V416c0 8.8-7.2 16-16 16H320c0-44.2-35.8-80-80-80H176c-44.2 0-80 35.8-80 80H64c-8.8 0-16-7.2-16-16V160H528zM64 32C28.7 32 0 60.7 0 96V416c0 35.3 28.7 64 64 64H512c35.3 0 64-28.7 64-64V96c0-35.3-28.7-64-64-64H64zM272 256a64 64 0 1 0 -128 0 64 64 0 1 0 128 0zm104-48c-13.3 0-24 10.7-24 24s10.7 24 24 24h80c13.3 0 24-10.7 24-24s-10.7-24-24-24H376zm0 96c-13.3 0-24 10.7-24 24s10.7 24 24 24h80c13.3 0 24-10.7 24-24s-10.7-24-24-24H376z" />
   </svg>
 );
+const IconFacebook = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 320 512"
+    fill="currentColor"
+  >
+    <path d="M279.14 288l14.22-92.66h-88.91v-60.13c0-25.35 12.42-50.06 52.24-50.06h40.42V6.26S260.43 0 225.36 0c-73.22 0-121.08 44.38-121.08 124.72v70.62H22.89V288h81.39v224h100.17V288z" />
+  </svg>
+);
+const IconInstagram = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 448 512"
+    fill="currentColor"
+  >
+    <path d="M224.1 141c-63.6 0-114.9 51.3-114.9 114.9s51.3 114.9 114.9 114.9S339 319.5 339 255.9 287.7 141 224.1 141zm0 189.6c-41.1 0-74.7-33.5-74.7-74.7s33.5-74.7 74.7-74.7 74.7 33.5 74.7 74.7-33.6 74.7-74.7 74.7zm146.4-194.3c0 14.9-12 26.8-26.8 26.8-14.9 0-26.8-12-26.8-26.8s12-26.8 26.8-26.8 26.8 12 26.8 26.8zm76.1 27.2c-1.7-35.9-9.9-67.7-36.2-93.9-26.2-26.2-58-34.4-93.9-36.2-37-2.1-147.9-2.1-184.9 0-35.8 1.7-67.6 9.9-93.9 36.1s-34.4 58-36.2 93.9c-2.1 37-2.1 147.9 0 184.9 1.7 35.9 9.9 67.7 36.2 93.9s58 34.4 93.9 36.2c37 2.1 147.9 2.1 184.9 0 35.9-1.7 67.7-9.9 93.9-36.2 26.2-26.2 34.4-58 36.2-93.9 2.1-37 2.1-147.8 0-184.8zM398.8 388c-7.8 19.6-22.9 34.7-42.6 42.6-29.5 11.7-99.5 9-132.1 9s-102.7 2.6-132.1-9c-19.6-7.8-34.7-22.9-42.6-42.6-11.7-29.5-9-99.5-9-132.1s-2.6-102.7 9-132.1c7.8-19.6 22.9-34.7 42.6-42.6 29.5-11.7 99.5-9 132.1-9s102.7-2.6 132.1 9c19.6 7.8 34.7 22.9 42.6 42.6 11.7 29.5 9 99.5 9 132.1s2.7 102.7-9 132.1z" />
+  </svg>
+);
+const IconTiktok = (props) => (
+  <svg
+    {...props}
+    xmlns="http://www.w3.org/2000/svg"
+    viewBox="0 0 448 512"
+    fill="currentColor"
+  >
+    <path d="M448,209.91a210.06,210.06,0,0,1-122.77-39.25V349.38A162.55,162.55,0,1,1,185,188.31V278.2a74.62,74.62,0,1,0,52.23,71.18V0h88a121.18,121.18,0,0,0,1.86,22.17h0A122.18,122.18,0,0,0,381,102.39a121.43,121.43,0,0,0,67,20.14Z" />
+  </svg>
+);
 // -----------------------------------------------------------------
 
 // Safe number conversion helper
@@ -611,8 +641,20 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
     receiptText += "--------------------------------\n";
 
-    // Footer
+    // Footer with social media and branding
     receiptText += thermalCommands.ALIGN_CENTER;
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += "Follow us on:\n";
+    receiptText += thermalCommands.BOLD_OFF;
+
+    // Social media icons (using text characters as thermal printers can't render SVG)
+    receiptText += " F  I  T \n"; // Facebook, Instagram, TikTok
+    receiptText += "◼ ◼ ◼\n"; // Simple block characters for logos
+
+    receiptText += thermalCommands.BOLD_ON;
+    receiptText += "delish cheesecake\n";
+    receiptText += thermalCommands.BOLD_OFF;
+
     receiptText += "Thank you for dining with us!\n";
     receiptText += "Please visit again!\n\n";
 
@@ -981,6 +1023,45 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                     </div>
                   </>
                 )}
+            </div>
+          </div>
+
+          {/* Social Media Footer in Preview */}
+          <div className="bg-gradient-to-r from-pink-50 to-purple-50 p-2 rounded-lg border border-pink-200">
+            <h3 className="font-semibold text-gray-700 text-xs mb-1 text-center">
+              Follow us on Social Media
+            </h3>
+            <div className="flex justify-center items-center gap-3 mt-1">
+              <div className="flex flex-col items-center">
+                <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
+                  <IconFacebook className="text-white text-xs" />
+                </div>
+                <span className="text-[8px] text-gray-600 mt-0.5">
+                  Facebook
+                </span>
+              </div>
+              <div className="flex flex-col items-center">
+                <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
+                  <IconInstagram className="text-white text-xs" />
+                </div>
+                <span className="text-[8px] text-gray-600 mt-0.5">
+                  Instagram
+                </span>
+              </div>
+              <div className="flex flex-col items-center">
+                <div className="w-6 h-6 bg-black rounded-full flex items-center justify-center">
+                  <IconTiktok className="text-white text-xs" />
+                </div>
+                <span className="text-[8px] text-gray-600 mt-0.5">TikTok</span>
+              </div>
+            </div>
+            <div className="text-center mt-1">
+              <p className="text-[10px] font-bold text-purple-700">
+                delish cheesecake
+              </p>
+              <p className="text-[9px] text-gray-600">
+                Best cheesecake in town!
+              </p>
             </div>
           </div>
         </div>
