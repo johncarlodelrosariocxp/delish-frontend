@@ -220,5 +220,4 @@ export {
   isAuthenticated,
   getAuthToken,
   setAuthToken,
-  // removeAuthToken is not exported (removed as requested)
 };
