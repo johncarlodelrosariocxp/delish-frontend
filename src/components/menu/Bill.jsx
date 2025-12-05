@@ -662,6 +662,22 @@ const Bill = ({ orderId }) => {
     );
   };
 
+  // Handle cash payment selection
+  const handleCashPayment = () => {
+    // Clear any existing payment method
+    setPaymentMethod(null);
+    setCashAmount(0);
+    setMixedPayment({
+      isMixed: false,
+      cashAmount: 0,
+      onlineAmount: 0,
+      onlineMethod: null,
+    });
+
+    // Open cash modal
+    setShowCashModal(true);
+  };
+
   // Handle online payment selection
   const handleOnlinePaymentSelect = (method) => {
     setPaymentMethod(method);
@@ -1051,6 +1067,7 @@ const Bill = ({ orderId }) => {
 
     if (cashAmountNum >= totals.total) {
       // Full cash payment
+      setPaymentMethod("Cash");
       setShowCashModal(false);
       handlePlaceOrder();
     } else if (cashAmountNum > 0) {
@@ -1067,6 +1084,14 @@ const Bill = ({ orderId }) => {
         variant: "error",
       });
     }
+  };
+
+  // Handle cancel in cash modal
+  const handleCancelCashModal = () => {
+    setShowCashModal(false);
+    // Reset payment method so Cash button can be clicked again
+    setPaymentMethod(null);
+    setCashAmount(0);
   };
 
   // Handle redeem button click
@@ -1207,7 +1232,7 @@ const Bill = ({ orderId }) => {
 
               <div className="flex gap-2">
                 <button
-                  onClick={() => setShowCashModal(false)}
+                  onClick={handleCancelCashModal}
                   className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
                 >
                   Cancel
@@ -1393,7 +1418,11 @@ const Bill = ({ orderId }) => {
                   GCASH
                 </button>
                 <button
-                  onClick={() => setShowOnlineOptions(false)}
+                  onClick={() => {
+                    setShowOnlineOptions(false);
+                    // Reset payment method when canceling online payment selection
+                    setPaymentMethod(null);
+                  }}
                   className="w-full px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-300 transition-colors"
                 >
                   Cancel
@@ -1975,7 +2004,7 @@ const Bill = ({ orderId }) => {
           {/* 💳 PAYMENT BUTTONS */}
           <div className="flex flex-col sm:flex-row gap-3">
             <button
-              onClick={() => setPaymentMethod("Cash")}
+              onClick={handleCashPayment}
               disabled={isProcessing}
               className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
                 paymentMethod === "Cash" || mixedPayment.isMixed
