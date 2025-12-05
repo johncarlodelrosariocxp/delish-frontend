@@ -11,11 +11,14 @@ import MenuContainer from "../components/menu/MenuContainer";
 import CustomerInfo from "../components/menu/CustomerInfo";
 import CartInfo from "../components/menu/CartInfo";
 import Bill from "../components/menu/Bill";
+import Invoice from "../components/invoice/Invoice"; // Import Invoice component
 import { useSelector, useDispatch } from "react-redux";
 import {
   createNewOrder,
   switchOrder,
   closeOrder,
+  hideInvoice,
+  clearRecentCompletedOrder,
 } from "../redux/slices/orderSlice";
 
 const Menu = () => {
@@ -24,14 +27,25 @@ const Menu = () => {
   }, []);
 
   const dispatch = useDispatch();
-  const { orders, activeOrderId, completedOrders } = useSelector(
-    (state) => state.order
-  );
+  const {
+    orders,
+    activeOrderId,
+    completedOrders,
+    recentCompletedOrder,
+    showInvoiceForOrder,
+  } = useSelector((state) => state.order);
+
   const [activeTab, setActiveTab] = useState("active");
   const [printingOrderId, setPrintingOrderId] = useState(null);
 
   // Filter orders - only active and completed
   const activeOrders = orders.filter((order) => order.status === "active");
+
+  // ✅ Handle invoice close
+  const handleCloseInvoice = () => {
+    dispatch(hideInvoice());
+    dispatch(clearRecentCompletedOrder());
+  };
 
   const handleAddNewOrder = () => {
     dispatch(createNewOrder());
@@ -39,7 +53,6 @@ const Menu = () => {
   };
 
   const handleSwitchOrder = (orderId) => {
-    // Only allow switching to active orders
     const order = orders.find((order) => order.id === orderId);
     if (order && order.status === "active") {
       dispatch(switchOrder(orderId));
@@ -49,7 +62,6 @@ const Menu = () => {
 
   const handleCloseOrder = (orderId, event) => {
     event.stopPropagation();
-    // Only close if there's more than one active order
     if (activeOrders.length > 1) {
       dispatch(closeOrder(orderId));
     }
@@ -84,10 +96,7 @@ const Menu = () => {
     setPrintingOrderId(order.id);
 
     try {
-      // Create receipt text
       const receiptText = generateReceiptText(order);
-
-      // Create a hidden textarea with the receipt content
       const textArea = document.createElement("textarea");
       textArea.value = receiptText;
       textArea.style.position = "fixed";
@@ -97,10 +106,8 @@ const Menu = () => {
       textArea.select();
 
       try {
-        // Try to print using browser print
         window.print();
       } catch (error) {
-        // Copy to clipboard as last resort
         document.execCommand("copy");
         alert(
           "Receipt copied to clipboard. Please paste into a text editor to print."
@@ -216,7 +223,7 @@ const Menu = () => {
     receipt += "Visit us again soon!" + lineBreak;
     receipt += lineBreak;
     receipt += lineBreak;
-    receipt += lineBreak; // Extra lines for paper cut
+    receipt += lineBreak;
 
     return receipt;
   };
@@ -245,14 +252,29 @@ const Menu = () => {
     return formatCurrency(total);
   };
 
-  // Calculate item price per quantity for display
-  const calculateItemPrice = (item) => {
-    const price = item.pricePerQuantity || item.price || 0;
-    return formatCurrency(price);
-  };
-
   return (
     <section className="bg-white min-h-screen flex flex-col">
+      {/* ✅ INVOICE MODAL - Show when recentCompletedOrder exists */}
+      {showInvoiceForOrder && recentCompletedOrder && (
+        <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="relative">
+              <button
+                onClick={handleCloseInvoice}
+                className="absolute top-4 right-4 z-10 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+              >
+                ✕
+              </button>
+              <Invoice
+                key={Date.now()}
+                orderInfo={recentCompletedOrder}
+                setShowInvoice={handleCloseInvoice}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Tabs */}
       <div className="bg-gray-200 px-3 pt-3 flex items-center gap-2 overflow-x-auto border-b">
         <button
