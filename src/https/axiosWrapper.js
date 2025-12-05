@@ -177,7 +177,7 @@ const testApiConnection = async () => {
 const isAuthenticated = () => !!localStorage.getItem("authToken");
 const getAuthToken = () => localStorage.getItem("authToken");
 const setAuthToken = (token) => localStorage.setItem("authToken", token);
-const removeAuthToken = () => localStorage.removeItem("authToken");
+// Note: removeAuthToken function removed as requested
 
 // ✅ Quick connection test on page load
 if (typeof window !== "undefined") {
@@ -220,5 +220,5 @@ export {
   isAuthenticated,
   getAuthToken,
   setAuthToken,
-  removeAuthToken,
+  // removeAuthToken is not exported (removed as requested)
 };
