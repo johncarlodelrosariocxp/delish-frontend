@@ -352,57 +352,60 @@ const Menu = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col md:flex-col lg:flex-row gap-3 p-3 pb-20 lg:pb-3">
         {activeTab === "active" ? (
-          activeOrders.length === 0 ? (
-            // No active orders state
-            <div className="flex-1 flex flex-col items-center justify-center bg-gray-50 rounded-lg p-8">
-              <div className="text-center">
-                <MdRestaurantMenu className="text-gray-300 text-6xl mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-gray-600 mb-2">
-                  No Active Orders
-                </h3>
-                <p className="text-gray-500 mb-6">
-                  Create a new order to get started
-                </p>
-                <button
-                  onClick={handleAddNewOrder}
-                  className="bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600 transition-colors font-semibold"
-                >
-                  Create New Order
-                </button>
-              </div>
-            </div>
-          ) : (
-            <>
-              {/* Left Div - Menu Section */}
-              <div className="flex-1 lg:flex-[3] flex flex-col min-h-0 order-1">
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <MenuContainer orderId={activeOrderId} />
-                </div>
-              </div>
+          // Always show the menu interface, even if no active orders
+          // Create a default order if none exists
+          (() => {
+            // If no active orders exist, create one automatically
+            if (activeOrders.length === 0) {
+              // Dispatch createNewOrder but don't wait for it
+              setTimeout(() => {
+                dispatch(createNewOrder());
+              }, 0);
 
-              {/* Right Div - Sidebar */}
-              <div className="flex-1 lg:flex-[1] bg-gray-100 rounded-lg shadow-md mt-3 lg:mt-0 h-auto lg:h-[calc(100vh-11rem)] flex flex-col order-2">
-                {/* Customer Info */}
-                <div className="flex-shrink-0">
-                  <CustomerInfo orderId={activeOrderId} />
+              // Show loading state briefly
+              return (
+                <div className="flex-1 flex items-center justify-center">
+                  <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Creating new order...</p>
+                  </div>
+                </div>
+              );
+            }
+
+            return (
+              <>
+                {/* Left Div - Menu Section */}
+                <div className="flex-1 lg:flex-[3] flex flex-col min-h-0 order-1">
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <MenuContainer orderId={activeOrderId} />
+                  </div>
                 </div>
 
-                <hr className="border-gray-300 border-t-2" />
+                {/* Right Div - Sidebar */}
+                <div className="flex-1 lg:flex-[1] bg-gray-100 rounded-lg shadow-md mt-3 lg:mt-0 h-auto lg:h-[calc(100vh-11rem)] flex flex-col order-2">
+                  {/* Customer Info */}
+                  <div className="flex-shrink-0">
+                    <CustomerInfo orderId={activeOrderId} />
+                  </div>
 
-                {/* Cart Info with scroll */}
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <CartInfo orderId={activeOrderId} />
+                  <hr className="border-gray-300 border-t-2" />
+
+                  {/* Cart Info with scroll */}
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <CartInfo orderId={activeOrderId} />
+                  </div>
+
+                  <hr className="border-gray-300 border-t-2" />
+
+                  {/* Bills - Fixed at bottom */}
+                  <div className="flex-shrink-0">
+                    <Bill orderId={activeOrderId} />
+                  </div>
                 </div>
-
-                <hr className="border-gray-300 border-t-2" />
-
-                {/* Bills - Fixed at bottom */}
-                <div className="flex-shrink-0">
-                  <Bill orderId={activeOrderId} />
-                </div>
-              </div>
-            </>
-          )
+              </>
+            );
+          })()
         ) : (
           /* Completed Orders View */
           <div className="flex-1 bg-white rounded-lg p-6">
