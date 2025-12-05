@@ -216,7 +216,7 @@ export const regularCheesecakes = [
   },
 ];
 
-// 🍰 Keto Cheesecakes (Updated from image)
+// 🍰 Keto Cheesecakes (Updated from image) - FIXED: Keto Cheesecake - Slices now has ketoMiniFlavorOptions
 export const ketoCheesecakes = [
   {
     id: 1,
@@ -236,7 +236,7 @@ export const ketoCheesecakes = [
     category: "Keto Cheesecake",
     variants: [{ label: "Original", price: 330 }],
     hasFlavorSelection: true,
-    flavorOptions: cheesecakeFlavorOptions,
+    flavorOptions: ketoMiniFlavorOptions, // Changed from cheesecakeFlavorOptions to ketoMiniFlavorOptions
   },
   {
     id: 4,
@@ -669,7 +669,7 @@ export const icedCoffeeItems = [
 export const frappeItems = [
   {
     id: 1,
-    name: "Espresso Frappe",
+    name: "Espresso Blended",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 155 },
@@ -678,7 +678,7 @@ export const frappeItems = [
   },
   {
     id: 2,
-    name: "Hazelnut Frappe",
+    name: "Hazelnut",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 160 },
@@ -687,7 +687,7 @@ export const frappeItems = [
   },
   {
     id: 3,
-    name: "Caramel Frappe",
+    name: "Caramel",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 175 },
@@ -696,7 +696,7 @@ export const frappeItems = [
   },
   {
     id: 4,
-    name: "Mocha Frappe",
+    name: "Mocha",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 175 },
@@ -705,7 +705,7 @@ export const frappeItems = [
   },
   {
     id: 5,
-    name: "White Frappe",
+    name: "White Mocha",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 175 },
@@ -714,7 +714,7 @@ export const frappeItems = [
   },
   {
     id: 6,
-    name: "Biscoff Frappe",
+    name: "Biscoff",
     category: "Frappe",
     variants: [
       { label: "16oz", price: 180 },
@@ -724,7 +724,7 @@ export const frappeItems = [
   {
     id: 7,
     name: "Vanilla Cream",
-    category: "Cream",
+    category: "Frappe",
     variants: [
       { label: "16oz", price: 155 },
       { label: "22oz", price: 170 },
@@ -732,8 +732,8 @@ export const frappeItems = [
   },
   {
     id: 8,
-    name: "Ube Cream",
-    category: "Cream",
+    name: "Ube",
+    category: "Frappe",
     variants: [
       { label: "16oz", price: 160 },
       { label: "22oz", price: 185 },
@@ -742,7 +742,7 @@ export const frappeItems = [
   {
     id: 9,
     name: "Caramel Cream",
-    category: "Cream",
+    category: "Frappe",
     variants: [
       { label: "16oz", price: 165 },
       { label: "22oz", price: 180 },
@@ -751,7 +751,7 @@ export const frappeItems = [
   {
     id: 10,
     name: "Choco Cream",
-    category: "Cream",
+    category: "Frappe",
     variants: [
       { label: "16oz", price: 165 },
       { label: "22oz", price: 180 },
@@ -759,8 +759,8 @@ export const frappeItems = [
   },
   {
     id: 11,
-    name: "Choco Cream",
-    category: "Cream",
+    name: "Choco Hazelnut",
+    category: "Frappe",
     variants: [
       { label: "16oz", price: 165 },
       { label: "22oz", price: 180 },
@@ -768,8 +768,8 @@ export const frappeItems = [
   },
   {
     id: 12,
-    name: "Oreo Cream",
-    category: "Cream",
+    name: "Oreo",
+    category: "Frappe",
     variants: [
       { label: "16oz", price: 165 },
       { label: "22oz", price: 180 },
@@ -777,8 +777,8 @@ export const frappeItems = [
   },
   {
     id: 13,
-    name: "Matcha Cream",
-    category: "Cream",
+    name: "Matcha",
+    category: "Frappe",
     variants: [
       { label: "16oz", price: 165 },
       { label: "22oz", price: 180 },
@@ -786,8 +786,8 @@ export const frappeItems = [
   },
   {
     id: 14,
-    name: "Choco Cream",
-    category: "Cream",
+    name: "Choco Chip",
+    category: "Frappe",
     variants: [
       { label: "16oz", price: 160 },
       { label: "22oz", price: 175 },
@@ -796,7 +796,7 @@ export const frappeItems = [
   {
     id: 15,
     name: "Biscoff Cream",
-    category: "Cream",
+    category: "Frappe",
     variants: [
       { label: "16oz", price: 175 },
       { label: "22oz", price: 190 },
@@ -1048,6 +1048,50 @@ export const orders = [
   },
 ];
 
+// 🛍️ Popular Dishes (sample data - adjust as needed)
+export const popularDishes = [
+  {
+    id: 1,
+    name: "Longganisa Breakfast",
+    numberOfOrders: 150,
+  },
+  {
+    id: 2,
+    name: "Tapa Breakfast",
+    numberOfOrders: 140,
+  },
+  {
+    id: 3,
+    name: "Carbonara Pasta",
+    numberOfOrders: 135,
+  },
+  {
+    id: 4,
+    name: "Regular Cheesecake Slice",
+    numberOfOrders: 120,
+  },
+  {
+    id: 5,
+    name: "Bento Combo",
+    numberOfOrders: 110,
+  },
+  {
+    id: 6,
+    name: "Keto Cheesecake Slice",
+    numberOfOrders: 100,
+  },
+  {
+    id: 7,
+    name: "Caramel Frappe",
+    numberOfOrders: 180,
+  },
+  {
+    id: 8,
+    name: "Spanish Latte",
+    numberOfOrders: 200,
+  },
+];
+
 // ✅ Aliases for component compatibility
 export const itemsData = popularDishes;
 export const metricsData = menus;
@@ -1143,47 +1187,3 @@ export const hasFlavorSelection = (item) => {
 export const getFlavorOptions = (item) => {
   return item.flavorOptions || [];
 };
-
-// 🛍️ Popular Dishes (sample data - adjust as needed)
-export const popularDishes = [
-  {
-    id: 1,
-    name: "Longganisa Breakfast",
-    numberOfOrders: 150,
-  },
-  {
-    id: 2,
-    name: "Tapa Breakfast",
-    numberOfOrders: 140,
-  },
-  {
-    id: 3,
-    name: "Carbonara Pasta",
-    numberOfOrders: 135,
-  },
-  {
-    id: 4,
-    name: "Regular Cheesecake Slice",
-    numberOfOrders: 120,
-  },
-  {
-    id: 5,
-    name: "Bento Combo",
-    numberOfOrders: 110,
-  },
-  {
-    id: 6,
-    name: "Keto Cheesecake Slice",
-    numberOfOrders: 100,
-  },
-  {
-    id: 7,
-    name: "Caramel Frappe",
-    numberOfOrders: 180,
-  },
-  {
-    id: 8,
-    name: "Spanish Latte",
-    numberOfOrders: 200,
-  },
-];
