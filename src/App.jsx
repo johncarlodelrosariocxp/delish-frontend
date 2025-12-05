@@ -1,638 +1,344 @@
-import React, { useState, useEffect } from "react";
-import {
-  BrowserRouter as Router,
-  Routes,
-  Route,
-  useLocation,
-  Navigate,
-} from "react-router-dom";
-import {
-  Home,
-  Auth,
-  Orders,
-  Tables,
-  Menu,
-  Dashboard,
-  Inventory,
-} from "./pages";
-import Header from "./components/shared/Header";
-import { useSelector, useDispatch } from "react-redux";
-import useLoadData from "./hooks/useLoadData";
-import FullScreenLoader from "./components/shared/FullScreenLoader";
-import PropTypes from "prop-types";
-import { setUser } from "./redux/slices/userSlice";
+const express = require("express");
+const connectDB = require("./config/database");
+const config = require("./config/config");
+const globalErrorHandler = require("./middlewares/globalErrorHandler");
+const cookieParser = require("cookie-parser");
+const cors = require("cors");
 
-// Custom hook for landscape detection
-const useLandscape = () => {
-  const [isLandscape, setIsLandscape] = useState(
-    window.innerWidth > window.innerHeight
-  );
+// Route imports
+const inventoryRoutes = require("./routes/inventory");
+const userRoutes = require("./routes/userRoute");
+const orderRoutes = require("./routes/orderRoute");
+const tableRoutes = require("./routes/tableRoute");
+const paymentRoutes = require("./routes/paymentRoute");
+const salesRoutes = require("./routes/salesRoute");
 
-  useEffect(() => {
-    const handleResize = () => {
-      setIsLandscape(window.innerWidth > window.innerHeight);
-    };
+const app = express();
+const PORT = process.env.PORT || 8000;
 
-    window.addEventListener("resize", handleResize);
-    window.addEventListener("orientationchange", handleResize);
+// Connect to database
+connectDB();
 
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      window.removeEventListener("orientationchange", handleResize);
-    };
-  }, []);
+// Enhanced CORS configuration for production
+const allowedOrigins = [
+  "http://localhost:3000",
+  "http://localhost:5173",
+  "https://delish-frontend-eight.vercel.app",
+  "https://delish-final-pos.vercel.app",
+  "https://final-delish-pos.vercel.app",
+  "https://delish-pos-final.vercel.app",
+];
 
-  return isLandscape;
-};
+// Create custom CORS middleware
+const corsOptions = {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
 
-// Debug component - remove after testing
-function DebugAuth() {
-  const user = useSelector((state) => state.user);
-  const token = localStorage.getItem("token");
-  console.log("🔍 AUTH DEBUG:", {
-    reduxIsAuth: user.isAuth,
-    reduxToken: user.token,
-    localStorageToken: token,
-    userData: user,
-  });
-  return null;
-}
-
-// Simple localStorage-based persistence functions
-const saveAppData = (key, data) => {
-  try {
-    const dataToStore = {
-      data,
-      timestamp: new Date().toISOString(),
-      version: "1.0",
-    };
-    localStorage.setItem(`delish_${key}`, JSON.stringify(dataToStore));
-    return true;
-  } catch (error) {
-    console.error("Error saving data:", error);
-    return false;
-  }
-};
-
-const loadAppData = (key, defaultValue = null) => {
-  try {
-    const storedData = localStorage.getItem(`delish_${key}`);
-    if (!storedData) return defaultValue;
-
-    const parsedData = JSON.parse(storedData);
-    return parsedData.data || defaultValue;
-  } catch (error) {
-    console.error("Error loading data:", error);
-    return defaultValue;
-  }
-};
-
-// Service Worker Registration
-const registerServiceWorker = async () => {
-  if ("serviceWorker" in navigator) {
-    try {
-      const registration = await navigator.serviceWorker.register("/sw.js", {
-        scope: "/",
-        updateViaCache: "none",
-      });
-
-      console.log("✅ Service Worker registered:", registration.scope);
-      return registration;
-    } catch (error) {
-      console.error("❌ Service Worker registration failed:", error);
-      return null;
-    }
-  }
-  return null;
-};
-
-// Install Prompt Component (Landscape Optimized)
-const InstallPrompt = () => {
-  const [showPrompt, setShowPrompt] = useState(false);
-  const [isStandalone, setIsStandalone] = useState(false);
-  const isLandscape = useLandscape();
-
-  useEffect(() => {
-    // Check if already installed
-    const checkIfStandalone = () => {
-      const standalone =
-        window.matchMedia("(display-mode: standalone)").matches ||
-        window.navigator.standalone === true;
-      setIsStandalone(standalone);
-
-      if (!standalone) {
-        // Check if user declined recently (24-hour cooldown)
-        const declinedTime = localStorage.getItem("install_prompt_declined");
-        if (declinedTime) {
-          const hoursSinceDecline =
-            (Date.now() - parseInt(declinedTime)) / (1000 * 60 * 60);
-          if (hoursSinceDecline < 24) {
-            return;
-          }
-        }
-
-        // Show prompt after 10 seconds
-        setTimeout(() => {
-          setShowPrompt(true);
-        }, 10000);
-      }
-    };
-
-    checkIfStandalone();
-  }, []);
-
-  const handleInstallClick = () => {
-    setShowPrompt(false);
-
-    // Show browser-specific instructions
-    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
-    const isAndroid = /Android/.test(navigator.userAgent);
-
-    let message = "";
-    if (isIOS) {
-      message =
-        'To install:\n1. Tap the Share button (square with arrow up)\n2. Scroll down and tap "Add to Home Screen"\n\nDelish POS works best in landscape mode!';
-    } else if (isAndroid) {
-      message =
-        'To install:\n1. Tap the menu (⋮) in your browser\n2. Select "Install app" or "Add to Home Screen"\n\nDelish POS works best in landscape mode!';
+    if (allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
     } else {
-      message =
-        "To install:\nClick the install icon (📱) in your browser address bar\n\nDelish POS works best in landscape mode!";
+      console.log(`🔒 CORS blocked origin: ${origin}`);
+      callback(new Error("Not allowed by CORS"));
     }
-
-    alert(message);
-  };
-
-  const handleDismiss = () => {
-    setShowPrompt(false);
-    localStorage.setItem("install_prompt_declined", Date.now());
-  };
-
-  if (isStandalone || !showPrompt || !isLandscape) return null;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        bottom: "20px",
-        right: "20px",
-        backgroundColor: "white",
-        borderRadius: "12px",
-        padding: "16px",
-        boxShadow: "0 10px 25px rgba(0,0,0,0.15)",
-        zIndex: 10000,
-        border: "1px solid #e5e7eb",
-        maxWidth: "400px",
-        width: "auto",
-      }}
-    >
-      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-        <div style={{ fontSize: "32px" }}>📱</div>
-        <div style={{ flex: 1 }}>
-          <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "600" }}>
-            Install Delish POS
-          </h3>
-          <p
-            style={{ margin: "4px 0 0 0", fontSize: "14px", color: "#6b7280" }}
-          >
-            Get faster access and work offline
-          </p>
-        </div>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            onClick={handleInstallClick}
-            style={{
-              padding: "8px 16px",
-              backgroundColor: "#2563eb",
-              color: "white",
-              border: "none",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontWeight: "600",
-              fontSize: "14px",
-            }}
-          >
-            Install
-          </button>
-          <button
-            onClick={handleDismiss}
-            style={{
-              padding: "8px 16px",
-              backgroundColor: "#f3f4f6",
-              color: "#374151",
-              border: "1px solid #d1d5db",
-              borderRadius: "8px",
-              cursor: "pointer",
-              fontSize: "14px",
-            }}
-          >
-            Later
-          </button>
-        </div>
-      </div>
-    </div>
-  );
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+  allowedHeaders: [
+    "Content-Type",
+    "Authorization",
+    "Cookie",
+    "X-Requested-With",
+    "x-access-token",
+    "Accept",
+    "x-frontend-source", // Added lowercase
+    "x-frontend-url", // Added lowercase
+    "X-Frontend-Source", // Added uppercase
+    "X-Frontend-URL", // Added uppercase
+    "Access-Control-Allow-Origin",
+    "Access-Control-Allow-Headers",
+    "Access-Control-Allow-Methods",
+  ],
+  exposedHeaders: ["set-cookie", "Authorization"],
+  preflightContinue: false,
+  optionsSuccessStatus: 204,
 };
 
-// Landscape Warning Component
-const LandscapeWarning = () => {
-  const isLandscape = useLandscape();
+// Apply CORS middleware
+app.use(cors(corsOptions));
 
-  if (isLandscape) return null;
+// Handle preflight requests
+app.options("*", cors(corsOptions));
 
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: "#1f2937",
-        color: "white",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 99999,
-        textAlign: "center",
-        padding: "20px",
-      }}
-    >
-      <div style={{ fontSize: "48px", marginBottom: "20px" }}>🔄</div>
-      <h1 style={{ fontSize: "24px", marginBottom: "10px" }}>
-        Rotate Your Device
-      </h1>
-      <p style={{ fontSize: "16px", marginBottom: "30px", maxWidth: "400px" }}>
-        Delish POS is optimized for landscape mode. Please rotate your device to
-        landscape orientation.
-      </p>
-      <p style={{ fontSize: "14px", color: "#9ca3af", marginTop: "20px" }}>
-        If rotation doesn't work automatically, try locking your screen
-        rotation.
-      </p>
-    </div>
-  );
-};
+// Body parsing middleware
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(cookieParser());
 
-function Layout() {
-  const dispatch = useDispatch();
-  const isLoading = useLoadData();
-  const location = useLocation();
-  const hideHeaderRoutes = ["/auth"];
-  const user = useSelector((state) => state.user);
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
-  const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [autoSaveInterval, setAutoSaveInterval] = useState(null);
-  const isLandscape = useLandscape();
+// Request logging middleware
+app.use((req, res, next) => {
+  console.log(`\n🌐 ${new Date().toISOString()} - ${req.method} ${req.url}`);
+  console.log("   Origin:", req.headers.origin);
+  console.log("   Headers:", req.headers);
+  console.log("   User-Agent:", req.headers["user-agent"]);
+  next();
+});
 
-  // ✅ Check both Redux state AND localStorage as fallback
-  const isAuthenticated = user.isAuth || localStorage.getItem("token");
-
-  // Setup data persistence when authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      // Load saved data
-      const savedState = loadAppData("app_state");
-      if (savedState?.user && !user.isAuth) {
-        dispatch(setUser(savedState.user));
-      }
-
-      // Setup auto-save every 30 seconds
-      const interval = setInterval(() => {
-        if (hasUnsavedChanges) {
-          saveCurrentState();
-          setHasUnsavedChanges(false);
-        }
-      }, 30000);
-
-      setAutoSaveInterval(interval);
-
-      // Setup emergency save
-      const handleBeforeUnload = () => {
-        saveCurrentState();
-      };
-
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === "hidden") {
-          saveCurrentState();
-        }
-      };
-
-      window.addEventListener("beforeunload", handleBeforeUnload);
-      document.addEventListener("visibilitychange", handleVisibilityChange);
-
-      // Register service worker for PWA
-      registerServiceWorker();
-
-      return () => {
-        clearInterval(interval);
-        window.removeEventListener("beforeunload", handleBeforeUnload);
-        document.removeEventListener(
-          "visibilitychange",
-          handleVisibilityChange
-        );
-      };
-    }
-  }, [isAuthenticated, hasUnsavedChanges, user.isAuth, dispatch]);
-
-  // Handle online/offline status
-  useEffect(() => {
-    const handleOnline = () => setIsOffline(false);
-    const handleOffline = () => setIsOffline(true);
-
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
-
-    return () => {
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
-    };
-  }, []);
-
-  // Listen for save events from index.html
-  useEffect(() => {
-    const handleSaveState = () => {
-      saveCurrentState();
-    };
-
-    const handleLoadState = (event) => {
-      loadStateFromStorage(event.detail);
-    };
-
-    window.addEventListener("saveAppState", handleSaveState);
-    window.addEventListener("loadAppState", handleLoadState);
-
-    return () => {
-      window.removeEventListener("saveAppState", handleSaveState);
-      window.removeEventListener("loadAppState", handleLoadState);
-    };
-  }, []);
-
-  const loadStateFromStorage = (savedData) => {
-    if (savedData && !user.isAuth) {
-      // Try to restore user session from localStorage
-      const token = localStorage.getItem("token");
-      const userData = localStorage.getItem("user");
-
-      if (token && userData) {
-        try {
-          const parsedUser = JSON.parse(userData);
-          dispatch(
-            setUser({
-              ...parsedUser,
-              token,
-              isAuth: true,
-            })
-          );
-          console.log("🔐 Restored user session from localStorage");
-        } catch (error) {
-          console.error("Error parsing saved user data:", error);
-        }
-      }
-    }
-  };
-
-  const getCurrentState = () => {
-    // Get all Redux state
-    const state = {
-      user: user,
-      timestamp: new Date().toISOString(),
-      // Add other state slices here as needed
-    };
-    return state;
-  };
-
-  const saveCurrentState = () => {
-    if (!isAuthenticated) return;
-
-    const currentState = getCurrentState();
-
-    saveAppData("app_state", currentState);
-    localStorage.setItem("delish_pos_state", JSON.stringify(currentState));
-
-    // Dispatch event to clear unsaved changes flag
-    window.dispatchEvent(new CustomEvent("dataSaved"));
-
-    console.log("💾 App state saved");
-  };
-
-  // Mark data as changed (call this whenever user modifies data)
-  const markDataChanged = () => {
-    setHasUnsavedChanges(true);
-    window.markDataChanged?.();
-
-    // Debounced save after 2 seconds of inactivity
-    setTimeout(() => {
-      if (hasUnsavedChanges) {
-        saveCurrentState();
-        setHasUnsavedChanges(false);
-      }
-    }, 2000);
-  };
-
-  if (isLoading) return <FullScreenLoader />;
-
-  return (
-    <>
-      <DebugAuth /> {/* Remove this line after debugging */}
-      {/* Landscape Warning */}
-      <LandscapeWarning />
-      {/* Only show app content in landscape mode */}
-      {isLandscape && (
-        <>
-          {/* Offline Indicator */}
-          {isOffline && (
-            <div
-              style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                right: 0,
-                backgroundColor: "#EF4444",
-                color: "white",
-                textAlign: "center",
-                padding: "8px",
-                fontSize: "14px",
-                zIndex: 9999,
-                fontWeight: "bold",
-              }}
-            >
-              ⚠️ You are offline. Some features may be limited.
-            </div>
-          )}
-
-          {/* Auto-save Indicator */}
-          {hasUnsavedChanges && (
-            <div
-              style={{
-                position: "fixed",
-                bottom: 10,
-                left: 10,
-                backgroundColor: "#F59E0B",
-                color: "white",
-                padding: "5px 10px",
-                borderRadius: "5px",
-                fontSize: "12px",
-                zIndex: 9998,
-              }}
-            >
-              ⚡ Auto-saving...
-            </div>
-          )}
-
-          {/* Install Prompt for Mobile */}
-          <InstallPrompt />
-
-          {/* Header - only show in landscape and when authenticated */}
-          {!hideHeaderRoutes.includes(location.pathname) && isAuthenticated && (
-            <Header />
-          )}
-
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <ProtectedRoutes>
-                  <Home markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route
-              path="/auth"
-              element={isAuthenticated ? <Navigate to="/" replace /> : <Auth />}
-            />
-            <Route
-              path="/orders"
-              element={
-                <ProtectedRoutes>
-                  <Orders markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route
-              path="/tables"
-              element={
-                <ProtectedRoutes>
-                  <Tables markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route
-              path="/menu"
-              element={
-                <ProtectedRoutes>
-                  <Menu markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoutes>
-                  <Dashboard markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route
-              path="/inventory"
-              element={
-                <ProtectedRoutes>
-                  <Inventory markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </>
-      )}
-    </>
-  );
-}
-
-function ProtectedRoutes({ children, markDataChanged }) {
-  const user = useSelector((state) => state.user);
-  const dispatch = useDispatch();
-  const isLandscape = useLandscape();
-
-  // ✅ Check both Redux state AND localStorage as fallback
-  const isAuthenticated = user.isAuth || localStorage.getItem("token");
-
-  // Attempt to restore session from localStorage if Redux doesn't have it
-  useEffect(() => {
-    if (!user.isAuth && localStorage.getItem("token")) {
-      const userData = localStorage.getItem("user");
-      if (userData) {
-        try {
-          const parsedUser = JSON.parse(userData);
-          dispatch(
-            setUser({
-              ...parsedUser,
-              token: localStorage.getItem("token"),
-              isAuth: true,
-            })
-          );
-          console.log("🔄 Restored user session from localStorage");
-        } catch (error) {
-          console.error("Error parsing user data from localStorage:", error);
-        }
-      }
-    }
-  }, [user.isAuth, dispatch]);
-
-  // Don't show anything if not in landscape
-  if (!isLandscape) {
-    return null;
+// Add CORS headers manually for all responses
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header("Access-Control-Allow-Origin", origin);
   }
+  res.header("Access-Control-Allow-Credentials", "true");
+  res.header(
+    "Access-Control-Allow-Methods",
+    "GET, POST, PUT, DELETE, PATCH, OPTIONS"
+  );
+  res.header(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, Cookie, X-Requested-With, x-access-token, Accept, x-frontend-source, x-frontend-url, X-Frontend-Source, X-Frontend-URL"
+  );
+  next();
+});
 
-  if (!isAuthenticated) {
-    return <Navigate to="/auth" replace />;
-  }
-
-  // Clone children and pass markDataChanged prop
-  const childrenWithProps = React.Children.map(children, (child) => {
-    if (React.isValidElement(child)) {
-      return React.cloneElement(child, { markDataChanged });
-    }
-    return child;
+// Health check endpoint
+app.get("/health", (req, res) => {
+  res.json({
+    status: "OK",
+    service: "Delish POS Backend",
+    timestamp: new Date().toISOString(),
+    environment: process.env.NODE_ENV || "development",
+    database: "Connected",
+    cors: "Configured",
+    allowedOrigins: allowedOrigins,
   });
+});
 
-  return childrenWithProps;
-}
+// Enhanced user management endpoints
+app.post("/api/force-create-user", async (req, res) => {
+  try {
+    const User = require("./models/userModel");
+    const bcrypt = require("bcrypt");
 
-ProtectedRoutes.propTypes = {
-  children: PropTypes.node.isRequired,
-  markDataChanged: PropTypes.func,
-};
+    const { name, email, phone, password, role } = req.body;
 
-function App() {
-  // Clear app data on logout
-  useEffect(() => {
-    const handleLogout = () => {
-      // Clear all delish app data
-      Object.keys(localStorage).forEach((key) => {
-        if (key.startsWith("delish_")) {
-          localStorage.removeItem(key);
-        }
-      });
-      localStorage.removeItem("delish_pos_state");
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
-    };
+    console.log("🚨 FORCE CREATING USER:", email);
+    console.log("📧 Request headers:", req.headers);
 
-    // Listen for logout events
-    window.addEventListener("userLogout", handleLogout);
+    // Delete existing user first
+    await User.deleteOne({ email });
 
-    return () => {
-      window.removeEventListener("userLogout", handleLogout);
-    };
-  }, []);
+    // Create new user
+    const hashedPassword = await bcrypt.hash(password, 10);
+    const newUser = new User({
+      name: name || "Admin User",
+      email: email,
+      phone: phone || "1234567890",
+      password: hashedPassword,
+      role: role || "admin",
+    });
 
-  return (
-    <Router>
-      <Layout />
-    </Router>
-  );
-}
+    await newUser.save();
+    console.log("✅ USER CREATED:", email);
 
-export default App;
+    // Verify creation
+    const verifyUser = await User.findOne({ email });
+
+    res.json({
+      success: true,
+      message: `User created successfully: ${email}`,
+      user: {
+        name: newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+      },
+      verified: !!verifyUser,
+    });
+  } catch (error) {
+    console.error("❌ Error creating user:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to create user",
+      error: error.message,
+    });
+  }
+});
+
+app.delete("/api/nuke-users", async (req, res) => {
+  try {
+    const User = require("./models/userModel");
+    const result = await User.deleteMany({});
+
+    res.json({
+      success: true,
+      message: `Deleted ${result.deletedCount} users`,
+      deletedCount: result.deletedCount,
+    });
+  } catch (error) {
+    console.error("❌ Error deleting users:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to delete users",
+      error: error.message,
+    });
+  }
+});
+
+app.get("/api/debug-users", async (req, res) => {
+  try {
+    const User = require("./models/userModel");
+    const users = await User.find({})
+      .select("name email role createdAt")
+      .lean();
+
+    res.json({
+      success: true,
+      users: users,
+      count: users.length,
+    });
+  } catch (error) {
+    console.error("❌ Error fetching users:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to get users",
+      error: error.message,
+    });
+  }
+});
+
+// Root endpoint with complete API documentation
+app.get("/", (req, res) => {
+  res.json({
+    message: "✅ Delish POS Server is running!",
+    server: {
+      port: PORT,
+      environment: process.env.NODE_ENV || "development",
+      baseURL: `https://${req.headers.host}`,
+    },
+    cors: {
+      configured: true,
+      allowedOrigins: allowedOrigins,
+      allowedHeaders: corsOptions.allowedHeaders,
+    },
+    endpoints: {
+      health: "GET /health",
+      auth: {
+        register: "POST /api/user/register",
+        login: "POST /api/user/login",
+        logout: "POST /api/user/logout",
+        profile: "GET /api/user/me",
+      },
+      sales: {
+        all: "GET /api/sales",
+        today: "GET /api/sales/today",
+        stats: "GET /api/sales/stats",
+        range: "GET /api/sales/range",
+        reports: "GET /api/sales/reports",
+      },
+      orders: {
+        create: "POST /api/order",
+        list: "GET /api/order",
+        single: "GET /api/order/:id",
+        update: "PUT /api/order/:id",
+        delete: "DELETE /api/order/:id",
+        stats: "GET /api/order/stats",
+      },
+      tables: {
+        create: "POST /api/table",
+        list: "GET /api/table",
+        update: "PUT /api/table/:id",
+      },
+      payments: {
+        create: "POST /api/payment/create-order",
+        verify: "POST /api/payment/verify-payment",
+        list: "GET /api/payment",
+        stats: "GET /api/payment/stats",
+      },
+      inventory: {
+        list: "GET /api/inventory",
+        create: "POST /api/inventory",
+        update: "PUT /api/inventory/:id",
+        delete: "DELETE /api/inventory/:id",
+        lowStock: "GET /api/inventory/low-stock",
+      },
+      admin: {
+        emergency: {
+          createUser: "POST /api/force-create-user",
+          deleteUsers: "DELETE /api/nuke-users",
+          listUsers: "GET /api/debug-users",
+        },
+      },
+    },
+    quickStart: [
+      "1. POST /api/force-create-user (create admin user)",
+      "2. POST /api/user/login (login with credentials)",
+      "3. Access protected endpoints with returned token",
+    ],
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// API Routes
+app.use("/api/user", userRoutes);
+app.use("/api/order", orderRoutes);
+app.use("/api/table", tableRoutes);
+app.use("/api/payment", paymentRoutes);
+app.use("/api/inventory", inventoryRoutes);
+app.use("/api/sales", salesRoutes);
+
+// Global Error Handler
+app.use(globalErrorHandler);
+
+// 404 Handler
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+    path: req.path,
+    method: req.method,
+    availableEndpoints: [
+      "GET /health",
+      "POST /api/user/register",
+      "POST /api/user/login",
+      "GET /api/sales",
+      "GET /api/sales/today",
+      "GET /api/sales/stats",
+      "POST /api/order",
+      "GET /api/order",
+      "GET /api/inventory",
+    ],
+  });
+});
+
+// Start Server
+const server = app.listen(PORT, () => {
+  console.log(`\n🎉 🚀 DELISH POS BACKEND SERVER STARTED!`);
+  console.log(`=========================================`);
+  console.log(`📍 Port: ${PORT}`);
+  console.log(`🌐 Environment: ${process.env.NODE_ENV || "development"}`);
+  console.log(`🕒 Started: ${new Date().toISOString()}`);
+  console.log(`🌍 Allowed Origins: ${allowedOrigins.join(", ")}`);
+  console.log(`🔧 CORS Headers: ${corsOptions.allowedHeaders.join(", ")}`);
+  console.log(`=========================================\n`);
+});
+
+// Graceful shutdown
+process.on("SIGINT", async () => {
+  console.log("\n🛑 Shutting down server gracefully...");
+  server.close(() => {
+    console.log("✅ Server closed");
+    process.exit(0);
+  });
+});
+
+process.on("SIGTERM", async () => {
+  console.log("\n🛑 SIGTERM received, shutting down gracefully...");
+  server.close(() => {
+    console.log("✅ Server closed");
+    process.exit(0);
+  });
+});
+
+// Export the app instance
+module.exports = app;
