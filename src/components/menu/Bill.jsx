@@ -26,7 +26,6 @@ const Bill = ({ orderId }) => {
 
   // ✅ FIXED: Get user data more reliably
   const userState = useSelector((state) => state.auth);
-  console.log("🔍 FULL AUTH STATE:", userState); // Debug log
 
   // ✅ IMPROVED: Extract user with multiple fallbacks
   const user = React.useMemo(() => {
@@ -43,7 +42,6 @@ const Bill = ({ orderId }) => {
     const foundUser = possiblePaths.find(Boolean);
 
     if (foundUser) {
-      console.log("✅ Found user via Redux:", foundUser);
       return foundUser;
     }
 
@@ -52,7 +50,6 @@ const Bill = ({ orderId }) => {
       const storedUser = localStorage.getItem("user");
       if (storedUser) {
         const parsedUser = JSON.parse(storedUser);
-        console.log("✅ Found user via localStorage:", parsedUser);
         return parsedUser;
       }
     } catch (error) {
@@ -64,7 +61,6 @@ const Bill = ({ orderId }) => {
       const token = localStorage.getItem("authToken");
       if (token) {
         const payload = JSON.parse(atob(token.split(".")[1]));
-        console.log("✅ Extracted user from token:", payload);
         return {
           _id: payload?._id || payload?.userId || payload?.id,
           name: payload?.name || "Cashier",
@@ -84,11 +80,6 @@ const Bill = ({ orderId }) => {
       role: "admin",
     };
   }, [userState]);
-
-  console.log("👤 FINAL USER OBJECT:", user);
-  console.log("👤 USER ID:", user?._id);
-  console.log("👤 USER ROLE:", user?.role);
-  console.log("👤 USER NAME:", user?.name);
 
   const currentOrder =
     orders.find((order) => order.id === orderId) ||
@@ -128,8 +119,7 @@ const Bill = ({ orderId }) => {
     onlineMethod: null,
   });
   const [showMixedPaymentModal, setShowMixedPaymentModal] = useState(false);
-  const [invoiceKey, setInvoiceKey] = useState(Date.now()); // Force re-render
-  const [isInvoiceVisible, setIsInvoiceVisible] = useState(false); // New state to track visibility
+  const [invoiceKey, setInvoiceKey] = useState(Date.now());
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -744,9 +734,6 @@ const Bill = ({ orderId }) => {
         variant: "success",
       }
     );
-
-    // Continue with order placement
-    handlePlaceOrder();
   };
 
   // Handle denomination button click
@@ -846,10 +833,6 @@ const Bill = ({ orderId }) => {
       }
     }
 
-    // Log what we're sending
-    console.log("📤 Sending order with user ID:", userId);
-    console.log("📤 User object:", user);
-
     return {
       customerDetails: {
         name: customerName,
@@ -877,7 +860,6 @@ const Bill = ({ orderId }) => {
         ? pwdSeniorDiscountItems
         : [],
       cashier: user?.name || "Admin",
-      // ✅ Use the extracted user ID
       user: userId || "000000000000000000000001",
       tableId: currentOrder?.tableId || null,
       orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
@@ -888,139 +870,56 @@ const Bill = ({ orderId }) => {
     };
   };
 
-  // ✅ FIXED: Order mutation with improved error handling and invoice display
-  const orderMutation = useMutation({
-    mutationFn: (reqData) => {
-      console.log("📤 Sending order to backend:", reqData);
-      return addOrder(reqData);
-    },
-    onSuccess: async (res) => {
-      console.log("✅ Order success response:", res);
+  // ✅ FIXED: Generate invoice data directly without backend response
+  const generateInvoiceData = () => {
+    const orderData = prepareOrderData();
 
-      if (!res || !res.data) {
-        throw new Error("Invalid response from server");
-      }
+    // Create invoice items from combined cart
+    const invoiceItems = combinedCart.map((item) => {
+      const isDiscounted = pwdSeniorDiscountItems.some(
+        (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
+      );
 
-      const { data } = res.data;
-
-      // ✅ FIXED: Ensure we have data for the invoice
-      if (!data) {
-        throw new Error("No order data returned from server");
-      }
-
-      // Get combined cart items for invoice display
-      const invoiceItems = combinedCart.map((item) => {
-        const isDiscounted = pwdSeniorDiscountItems.some(
-          (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
-        );
-
-        return {
-          name: item.name,
-          quantity: item.quantity,
-          price: calculateItemTotal(item),
-          originalPrice: safeNumber(item.pricePerQuantity),
-          pricePerQuantity: safeNumber(item.pricePerQuantity),
-          isFree: item.isRedeemed || false,
-          isPwdSeniorDiscounted: isDiscounted,
-        };
-      });
-
-      // Create complete order info for invoice
-      const invoiceOrderInfo = {
-        ...data,
-        _id: data._id || `temp_${Date.now()}`,
-        customerDetails: {
-          name:
-            customerType === "walk-in"
-              ? "Walk-in Customer"
-              : "Take-out Customer",
-          phone: "",
-          email: "",
-          address: "",
-        },
-        customerType: customerType,
-        customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
-        items: invoiceItems,
-        bills: {
-          total: totals.baseGrossTotal,
-          tax: totals.vatAmount,
-          discount: totals.totalDiscountAmount,
-          totalWithTax: totals.total,
-          pwdSeniorDiscount: totals.pwdSeniorDiscountAmount,
-          pwdSeniorDiscountedValue: totals.discountedItemsTotal,
-          employeeDiscount: totals.employeeDiscountAmount,
-          shareholderDiscount: totals.shareholderDiscountAmount,
-          redemptionDiscount: totals.redemptionAmount,
-          cashAmount: totals.cashAmount,
-          onlineAmount: totals.onlineAmount,
-          onlineMethod: mixedPayment.onlineMethod,
-          change: totals.change,
-          netSales: totals.netSales,
-        },
-        paymentMethod: paymentMethod,
-        paymentDetails: {
-          cashAmount: totals.cashAmount,
-          onlineAmount: totals.onlineAmount,
-          onlineMethod: mixedPayment.onlineMethod,
-          isMixedPayment: mixedPayment.isMixed,
-        },
-        orderStatus: "Completed",
-        orderDate: data.createdAt || new Date().toISOString(),
-        cashier: user?.name || "Admin",
-        pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
-        // ✅ Include user ID in invoice data
-        user: user?._id || "000000000000000000000001",
-        orderNumber: data.orderNumber || `ORD-${Date.now()}`,
-        createdAt: data.createdAt || new Date().toISOString(),
-        updatedAt: data.updatedAt || new Date().toISOString(),
+      return {
+        name: item.name,
+        quantity: item.quantity,
+        price: calculateItemTotal(item),
+        originalPrice: safeNumber(item.pricePerQuantity),
+        pricePerQuantity: safeNumber(item.pricePerQuantity),
+        isFree: item.isRedeemed || false,
+        isPwdSeniorDiscounted: isDiscounted,
       };
+    });
 
-      console.log("📄 Invoice order info prepared:", invoiceOrderInfo);
-      console.log("🟢 Setting showInvoice to TRUE");
+    // Create complete invoice order info
+    const invoiceOrderInfo = {
+      ...orderData,
+      _id: `invoice_${Date.now()}`,
+      customerDetails: {
+        name: orderData.customerDetails.name,
+        phone: "",
+        email: "",
+        address: "",
+      },
+      items: invoiceItems,
+      bills: {
+        ...orderData.bills,
+        netSales: totals.netSales,
+      },
+      orderStatus: "Completed",
+      orderDate: new Date().toISOString(),
+      cashier: user?.name || "Admin",
+      orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
 
-      // ✅ FIXED: Show invoice BEFORE dispatching completeOrder
-      setOrderInfo(invoiceOrderInfo);
-      setInvoiceKey(Date.now()); // Force re-render
-      setShowInvoice(true);
-      setIsInvoiceVisible(true); // Set visibility flag
+    return invoiceOrderInfo;
+  };
 
-      enqueueSnackbar("Order placed successfully! Invoice is ready.", {
-        variant: "success",
-      });
-
-      setIsProcessing(false);
-
-      // Mark order as completed in Redux
-      if (currentOrder) {
-        console.log("✅ Completing order in Redux:", currentOrder.id);
-        dispatch(completeOrder(currentOrder.id));
-      }
-    },
-    onError: (error) => {
-      console.error("❌ Order placement error:", error);
-      console.error("Error response:", error.response?.data);
-
-      const errorMessage =
-        error.response?.data?.message ||
-        error.message ||
-        "Failed to place order. Please try again.";
-
-      enqueueSnackbar(errorMessage, { variant: "error" });
-      setIsProcessing(false);
-
-      // Reset order status on error
-      if (currentOrder) {
-        dispatch(resetOrderStatus(currentOrder.id));
-      }
-    },
-  });
-
-  // Handle place order
+  // ✅ SIMPLIFIED: Handle place order directly with invoice generation
   const handlePlaceOrder = async () => {
     if (isProcessing) return;
-
-    console.log("Starting order placement...");
-    console.log("Current user:", user);
 
     // Validation
     if (!paymentMethod) {
@@ -1077,17 +976,71 @@ const Bill = ({ orderId }) => {
 
     setIsProcessing(true);
 
-    // MARK ORDER AS PROCESSING FIRST
-    if (currentOrder) {
-      console.log("Dispatching processOrder for:", currentOrder.id);
-      dispatch(processOrder(currentOrder.id));
+    try {
+      // First, mark order as processing
+      if (currentOrder) {
+        dispatch(processOrder(currentOrder.id));
+      }
+
+      // Generate invoice data immediately
+      const invoiceData = generateInvoiceData();
+      console.log("📄 Generated invoice data:", invoiceData);
+
+      // Set order info and show invoice
+      setOrderInfo(invoiceData);
+      setInvoiceKey(Date.now()); // Force re-render
+
+      // IMPORTANT: Show invoice BEFORE any async operations
+      setShowInvoice(true);
+
+      enqueueSnackbar("Order placed successfully! Invoice is ready.", {
+        variant: "success",
+      });
+
+      // Then send order to backend (async)
+      const orderData = prepareOrderData();
+      console.log("📤 Sending order to backend:", orderData);
+
+      const response = await addOrder(orderData);
+      console.log("✅ Backend response:", response);
+
+      // Update Redux state with the real order ID if available
+      if (response?.data?.data?._id && currentOrder) {
+        const updatedInvoiceData = {
+          ...invoiceData,
+          _id: response.data.data._id,
+          orderNumber:
+            response.data.data.orderNumber || invoiceData.orderNumber,
+        };
+        setOrderInfo(updatedInvoiceData);
+      }
+
+      // Mark order as completed in Redux
+      if (currentOrder) {
+        dispatch(completeOrder(currentOrder.id));
+      }
+    } catch (error) {
+      console.error("❌ Order placement error:", error);
+
+      // Still show invoice even if backend fails
+      if (!showInvoice) {
+        setShowInvoice(true);
+        enqueueSnackbar("Order processed locally. Invoice generated.", {
+          variant: "info",
+        });
+      } else {
+        enqueueSnackbar("Backend sync failed, but invoice is available", {
+          variant: "warning",
+        });
+      }
+
+      // Reset order status on error
+      if (currentOrder) {
+        dispatch(resetOrderStatus(currentOrder.id));
+      }
+    } finally {
+      setIsProcessing(false);
     }
-
-    const orderData = prepareOrderData();
-    console.log("📦 Sending order data:", JSON.stringify(orderData, null, 2));
-
-    // Submit order
-    orderMutation.mutate(orderData);
   };
 
   // Handle cash amount submission
@@ -1116,11 +1069,9 @@ const Bill = ({ orderId }) => {
 
   // ✅ FIXED: Handle close invoice properly
   const handleCloseInvoice = () => {
-    console.log("🟢 Closing invoice - showInvoice:", showInvoice);
-    console.log("🟢 orderInfo:", orderInfo);
+    console.log("Closing invoice...");
     setShowInvoice(false);
     setOrderInfo(null);
-    setIsInvoiceVisible(false);
 
     // Navigate after invoice is closed
     setTimeout(() => {
@@ -1140,75 +1091,6 @@ const Bill = ({ orderId }) => {
   // Cancel redeem selection
   const handleCancelRedeem = () => {
     setShowRedeemOptions(false);
-  };
-
-  // Test invoice display function
-  const handleTestInvoice = () => {
-    console.log("🟢 Manual invoice test");
-    console.log("showInvoice state:", showInvoice);
-    console.log("orderInfo:", orderInfo);
-
-    // Create test invoice data
-    const testInvoiceData = {
-      _id: "test_" + Date.now(),
-      customerDetails: {
-        name:
-          customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer",
-        phone: "123-456-7890",
-        email: "test@example.com",
-        address: "123 Test St",
-      },
-      customerType: customerType,
-      customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
-      items: combinedCart.map((item) => ({
-        name: item.name,
-        quantity: item.quantity,
-        price: calculateItemTotal(item),
-        originalPrice: safeNumber(item.pricePerQuantity),
-        pricePerQuantity: safeNumber(item.pricePerQuantity),
-        isFree: item.isRedeemed || false,
-        isPwdSeniorDiscounted: pwdSeniorDiscountItems.some(
-          (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
-        ),
-      })),
-      bills: {
-        total: totals.baseGrossTotal,
-        tax: totals.vatAmount,
-        discount: totals.totalDiscountAmount,
-        totalWithTax: totals.total,
-        pwdSeniorDiscount: totals.pwdSeniorDiscountAmount,
-        pwdSeniorDiscountedValue: totals.discountedItemsTotal,
-        employeeDiscount: totals.employeeDiscountAmount,
-        shareholderDiscount: totals.shareholderDiscountAmount,
-        redemptionDiscount: totals.redemptionAmount,
-        cashAmount: totals.cashAmount,
-        onlineAmount: totals.onlineAmount,
-        onlineMethod: mixedPayment.onlineMethod,
-        change: totals.change,
-        netSales: totals.netSales,
-      },
-      paymentMethod: paymentMethod || "Cash",
-      paymentDetails: {
-        cashAmount: totals.cashAmount,
-        onlineAmount: totals.onlineAmount,
-        onlineMethod: mixedPayment.onlineMethod,
-        isMixedPayment: mixedPayment.isMixed,
-      },
-      orderStatus: "Completed",
-      orderDate: new Date().toISOString(),
-      cashier: user?.name || "Admin",
-      pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
-      user: user?._id || "000000000000000000000001",
-      orderNumber: `TEST-${Date.now()}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    console.log("🟢 Setting test invoice data");
-    setOrderInfo(testInvoiceData);
-    setInvoiceKey(Date.now());
-    setShowInvoice(true);
-    setIsInvoiceVisible(true);
   };
 
   // If no current order, show empty state
@@ -1760,6 +1642,27 @@ const Bill = ({ orderId }) => {
           </div>
         )}
 
+        {/* ✅ INVOICE MODAL - MUST BE AT THE TOP LEVEL */}
+        {showInvoice && orderInfo && (
+          <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
+            <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+              <div className="relative">
+                <button
+                  onClick={handleCloseInvoice}
+                  className="absolute top-4 right-4 z-10 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+                >
+                  ✕
+                </button>
+                <Invoice
+                  key={invoiceKey}
+                  orderInfo={orderInfo}
+                  setShowInvoice={setShowInvoice}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="max-w-[600px] mx-auto space-y-4">
           {/* 🧾 CUSTOMER TYPE */}
           <div className="bg-white rounded-lg p-4 shadow-md">
@@ -2042,7 +1945,7 @@ const Bill = ({ orderId }) => {
               )}
           </div>
 
-          {/* 🎟 DISCOUNT & REDEMPTION BUTTONS - IN ONE ROW */}
+          {/* 🎟 DISCOUNT & REDEMPTION BUTTONS */}
           <div className="grid grid-cols-4 gap-2">
             <button
               onClick={handlePwdSeniorDiscount}
@@ -2147,243 +2050,8 @@ const Bill = ({ orderId }) => {
               )}
             </button>
           </div>
-
-          {/* 🧾 DEBUG BUTTON - TEMPORARY */}
-          <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
-            <h3 className="text-sm font-semibold text-yellow-800 mb-2">
-              Debug Invoice
-            </h3>
-            <button
-              onClick={handleTestInvoice}
-              className="px-4 py-2 bg-yellow-500 text-white rounded-lg font-semibold text-sm hover:bg-yellow-600"
-            >
-              Test Invoice (Manual)
-            </button>
-            <div className="mt-2 text-xs text-yellow-700">
-              <p>Current state: showInvoice = {showInvoice.toString()}</p>
-              <p>hasOrderInfo = {(orderInfo !== null).toString()}</p>
-              <p>isInvoiceVisible = {isInvoiceVisible.toString()}</p>
-              <p>Invoice Key: {invoiceKey}</p>
-            </div>
-          </div>
         </div>
       </div>
-
-      {/* ✅ FIXED: Invoice Modal - Ensure it's visible */}
-      {showInvoice && orderInfo && (
-        <div className="fixed inset-0 z-[9999] bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
-            <div className="p-4 border-b bg-gray-50 flex justify-between items-center">
-              <h2 className="text-lg font-bold text-gray-800">Invoice</h2>
-              <button
-                onClick={handleCloseInvoice}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                ✕ Close
-              </button>
-            </div>
-            <div className="overflow-auto max-h-[calc(90vh-60px)]">
-              <Invoice
-                key={invoiceKey} // Force re-render
-                orderInfo={orderInfo}
-                setShowInvoice={handleCloseInvoice}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ✅ FIXED: Simple Invoice Fallback */}
-      {showInvoice && orderInfo && (
-        <div className="fixed inset-0 z-[10000] bg-black bg-opacity-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-auto">
-            <div className="p-6">
-              <div className="flex justify-between items-center mb-6">
-                <h1 className="text-2xl font-bold text-gray-800">INVOICE</h1>
-                <button
-                  onClick={handleCloseInvoice}
-                  className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600"
-                >
-                  Close
-                </button>
-              </div>
-
-              {/* Invoice Header */}
-              <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <p className="text-sm text-gray-600">Invoice #</p>
-                    <p className="font-bold">{orderInfo.orderNumber}</p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Date</p>
-                    <p className="font-bold">
-                      {new Date(orderInfo.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Customer</p>
-                    <p className="font-bold">
-                      {orderInfo.customerDetails.name}
-                    </p>
-                  </div>
-                  <div>
-                    <p className="text-sm text-gray-600">Cashier</p>
-                    <p className="font-bold">{orderInfo.cashier}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Items Table */}
-              <div className="mb-6">
-                <h2 className="text-lg font-bold mb-4">Order Items</h2>
-                <div className="overflow-x-auto">
-                  <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Item
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Qty
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Price
-                        </th>
-                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Total
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                      {orderInfo.items.map((item, index) => (
-                        <tr key={index}>
-                          <td className="px-4 py-3">
-                            <div>
-                              <p className="font-medium">{item.name}</p>
-                              {item.isFree && (
-                                <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
-                                  FREE
-                                </span>
-                              )}
-                              {item.isPwdSeniorDiscounted && (
-                                <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
-                                  PWD/Senior -20%
-                                </span>
-                              )}
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">{item.quantity}</td>
-                          <td className="px-4 py-3">
-                            ₱
-                            {item.isFree
-                              ? "0.00"
-                              : item.pricePerQuantity.toFixed(2)}
-                          </td>
-                          <td className="px-4 py-3 font-bold">
-                            ₱{item.isFree ? "0.00" : item.price.toFixed(2)}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-              {/* Totals */}
-              <div className="mt-8 border-t pt-6">
-                <div className="max-w-md ml-auto space-y-3">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Subtotal:</span>
-                    <span className="font-bold">
-                      ₱{orderInfo.bills.total.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {orderInfo.bills.pwdSeniorDiscount > 0 && (
-                    <div className="flex justify-between text-green-600">
-                      <span>PWD/Senior Discount:</span>
-                      <span className="font-bold">
-                        -₱{orderInfo.bills.pwdSeniorDiscount.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  {orderInfo.bills.redemptionDiscount > 0 && (
-                    <div className="flex justify-between text-blue-600">
-                      <span>Redemption:</span>
-                      <span className="font-bold">
-                        -₱{orderInfo.bills.redemptionDiscount.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  {orderInfo.bills.employeeDiscount > 0 && (
-                    <div className="flex justify-between text-yellow-600">
-                      <span>Employee Discount:</span>
-                      <span className="font-bold">
-                        -₱{orderInfo.bills.employeeDiscount.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  {orderInfo.bills.shareholderDiscount > 0 && (
-                    <div className="flex justify-between text-purple-600">
-                      <span>Shareholder Discount:</span>
-                      <span className="font-bold">
-                        -₱{orderInfo.bills.shareholderDiscount.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between">
-                    <span>VAT (12%):</span>
-                    <span>₱{orderInfo.bills.tax.toFixed(2)}</span>
-                  </div>
-
-                  <div className="flex justify-between text-lg font-bold border-t pt-3">
-                    <span>TOTAL:</span>
-                    <span>₱{orderInfo.bills.totalWithTax.toFixed(2)}</span>
-                  </div>
-
-                  <div className="flex justify-between text-sm text-gray-600">
-                    <span>Payment Method:</span>
-                    <span>{orderInfo.paymentMethod}</span>
-                  </div>
-
-                  {orderInfo.bills.cashAmount > 0 && (
-                    <div className="flex justify-between text-sm text-gray-600">
-                      <span>Cash Received:</span>
-                      <span>₱{orderInfo.bills.cashAmount.toFixed(2)}</span>
-                    </div>
-                  )}
-
-                  {orderInfo.bills.onlineAmount > 0 && (
-                    <div className="flex justify-between text-sm text-gray-600">
-                      <span>
-                        Online Payment ({orderInfo.bills.onlineMethod}):
-                      </span>
-                      <span>₱{orderInfo.bills.onlineAmount.toFixed(2)}</span>
-                    </div>
-                  )}
-
-                  {orderInfo.bills.change > 0 && (
-                    <div className="flex justify-between text-green-600 font-bold">
-                      <span>Change:</span>
-                      <span>₱{orderInfo.bills.change.toFixed(2)}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div className="mt-8 pt-6 border-t text-center text-gray-500 text-sm">
-                <p>Thank you for your order!</p>
-                <p className="mt-2">Order ID: {orderInfo._id}</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 };
