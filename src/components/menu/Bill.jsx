@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   removeItemFromOrder,
@@ -24,22 +24,71 @@ const Bill = ({ orderId }) => {
   const orders = useSelector((state) => state.order.orders);
   const activeOrderId = useSelector((state) => state.order.activeOrderId);
 
-  // 🔴 CRITICAL FIX: Get user data CORRECTLY from auth state
+  // ✅ FIXED: Get user data more reliably
   const userState = useSelector((state) => state.auth);
-  console.log("🔍 AUTH STATE:", userState); // Debug log
+  console.log("🔍 FULL AUTH STATE:", userState); // Debug log
 
-  // ✅ FIXED: Extract user correctly from nested auth state
-  const user = userState?.user ||
-    userState?.data?.user ||
-    userState?.data?.data?.user || {
+  // ✅ IMPROVED: Extract user with multiple fallbacks
+  const user = React.useMemo(() => {
+    // Try different possible paths in the auth state
+    const possiblePaths = [
+      userState?.user,
+      userState?.data?.user,
+      userState?.data?.data?.user,
+      userState?.userData,
+      userState?.currentUser,
+    ];
+
+    // Find first truthy value
+    const foundUser = possiblePaths.find(Boolean);
+
+    if (foundUser) {
+      console.log("✅ Found user via Redux:", foundUser);
+      return foundUser;
+    }
+
+    // Fallback: Try localStorage
+    try {
+      const storedUser = localStorage.getItem("user");
+      if (storedUser) {
+        const parsedUser = JSON.parse(storedUser);
+        console.log("✅ Found user via localStorage:", parsedUser);
+        return parsedUser;
+      }
+    } catch (error) {
+      console.error("Error parsing localStorage user:", error);
+    }
+
+    // Last resort: extract from token
+    try {
+      const token = localStorage.getItem("authToken");
+      if (token) {
+        const payload = JSON.parse(atob(token.split(".")[1]));
+        console.log("✅ Extracted user from token:", payload);
+        return {
+          _id: payload?._id || payload?.userId || payload?.id,
+          name: payload?.name || "Cashier",
+          role: payload?.role || "cashier",
+          email: payload?.email || "",
+        };
+      }
+    } catch (error) {
+      console.error("Error extracting user from token:", error);
+    }
+
+    // Default fallback (shouldn't happen if user is logged in)
+    console.warn("⚠️ Using fallback user object");
+    return {
       _id: "000000000000000000000001",
       name: "Admin",
       role: "admin",
     };
+  }, [userState]);
 
-  console.log("👤 USER OBJECT:", user); // Debug log
-  console.log("👤 USER ID:", user?._id); // Debug log
-  console.log("👤 USER ROLE:", user?.role); // Debug log
+  console.log("👤 FINAL USER OBJECT:", user);
+  console.log("👤 USER ID:", user?._id);
+  console.log("👤 USER ROLE:", user?.role);
+  console.log("👤 USER NAME:", user?.name);
 
   const currentOrder =
     orders.find((order) => order.id === orderId) ||
@@ -79,6 +128,7 @@ const Bill = ({ orderId }) => {
     onlineMethod: null,
   });
   const [showMixedPaymentModal, setShowMixedPaymentModal] = useState(false);
+  const [invoiceKey, setInvoiceKey] = useState(Date.now()); // Force re-render
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -717,7 +767,7 @@ const Bill = ({ orderId }) => {
     }));
   };
 
-  // ✅ CRITICAL FIX: Prepare order data with CORRECT user ID
+  // ✅ FIXED: Prepare order data with better user ID handling
   const prepareOrderData = () => {
     // Determine payment method details
     let paymentMethodDetails = paymentMethod;
@@ -778,38 +828,26 @@ const Bill = ({ orderId }) => {
     const customerName =
       customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer";
 
-    // 🔴 CRITICAL FIX: Get user ID from localStorage as backup
-    const token = localStorage.getItem("authToken");
+    // ✅ CRITICAL FIX: Ensure we have a valid user ID
     let userId = user?._id;
 
-    // Try to extract user ID from token if not found
-    if (!userId && token) {
+    // Double-check if user ID is valid
+    if (!userId || userId === "000000000000000000000001") {
+      // Try to get from localStorage again
       try {
-        const payload = JSON.parse(atob(token.split(".")[1]));
-        userId = payload?._id || payload?.userId;
-        console.log("🔑 User ID extracted from token:", userId);
-      } catch (error) {
-        console.error("Failed to extract user ID from token:", error);
-      }
-    }
-
-    // Last resort: try to get from localStorage
-    if (!userId) {
-      const storedUser = localStorage.getItem("user");
-      if (storedUser) {
-        try {
-          const parsedUser = JSON.parse(storedUser);
-          userId = parsedUser?._id;
-          console.log("🔑 User ID from localStorage:", userId);
-        } catch (error) {
-          console.error("Failed to parse user from localStorage:", error);
+        const token = localStorage.getItem("authToken");
+        if (token) {
+          const payload = JSON.parse(atob(token.split(".")[1]));
+          userId = payload?._id || payload?.userId || payload?.id;
         }
+      } catch (error) {
+        console.error("Error extracting user ID from token:", error);
       }
     }
 
-    // ✅ CRITICAL: Log what user ID is being sent
+    // Log what we're sending
     console.log("📤 Sending order with user ID:", userId);
-    console.log("📤 User role:", user?.role);
+    console.log("📤 User object:", user);
 
     return {
       customerDetails: {
@@ -838,8 +876,8 @@ const Bill = ({ orderId }) => {
         ? pwdSeniorDiscountItems
         : [],
       cashier: user?.name || "Admin",
-      // ✅ CRITICAL FIX: Use the actual user ID (NOT hardcoded)
-      user: userId || user?._id || "000000000000000000000001",
+      // ✅ Use the extracted user ID
+      user: userId || "000000000000000000000001",
       tableId: currentOrder?.tableId || null,
       orderNumber: currentOrder?.number || `ORD-${Date.now()}`,
       totalAmount: Number(totals.total.toFixed(2)),
@@ -849,7 +887,7 @@ const Bill = ({ orderId }) => {
     };
   };
 
-  // ✅ FIXED: Order mutation with better error handling
+  // ✅ FIXED: Order mutation with improved error handling and invoice display
   const orderMutation = useMutation({
     mutationFn: (reqData) => {
       console.log("📤 Sending order to backend:", reqData);
@@ -863,6 +901,11 @@ const Bill = ({ orderId }) => {
       }
 
       const { data } = res.data;
+
+      // ✅ FIXED: Ensure we have data for the invoice
+      if (!data) {
+        throw new Error("No order data returned from server");
+      }
 
       // Get combined cart items for invoice display
       const invoiceItems = combinedCart.map((item) => {
@@ -884,7 +927,7 @@ const Bill = ({ orderId }) => {
       // Create complete order info for invoice
       const invoiceOrderInfo = {
         ...data,
-        _id: data._id,
+        _id: data._id || `temp_${Date.now()}`,
         customerDetails: {
           name:
             customerType === "walk-in"
@@ -924,15 +967,18 @@ const Bill = ({ orderId }) => {
         orderDate: data.createdAt || new Date().toISOString(),
         cashier: user?.name || "Admin",
         pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
-        // ✅ CRITICAL: Include user ID in invoice data
-        user: user?._id || userId || "000000000000000000000001",
+        // ✅ Include user ID in invoice data
+        user: user?._id || "000000000000000000000001",
         orderNumber: data.orderNumber || `ORD-${Date.now()}`,
+        createdAt: data.createdAt || new Date().toISOString(),
+        updatedAt: data.updatedAt || new Date().toISOString(),
       };
 
-      console.log("📄 Invoice order info:", invoiceOrderInfo);
+      console.log("📄 Invoice order info prepared:", invoiceOrderInfo);
 
-      // Show invoice FIRST
+      // ✅ FIXED: Show invoice BEFORE dispatching completeOrder
       setOrderInfo(invoiceOrderInfo);
+      setInvoiceKey(Date.now()); // Force re-render
       setShowInvoice(true);
 
       enqueueSnackbar("Order placed successfully! Invoice is ready.", {
@@ -940,6 +986,12 @@ const Bill = ({ orderId }) => {
       });
 
       setIsProcessing(false);
+
+      // Mark order as completed in Redux
+      if (currentOrder) {
+        console.log("✅ Completing order in Redux:", currentOrder.id);
+        dispatch(completeOrder(currentOrder.id));
+      }
     },
     onError: (error) => {
       console.error("❌ Order placement error:", error);
@@ -1059,20 +1111,16 @@ const Bill = ({ orderId }) => {
     }
   };
 
-  // Handle close invoice
+  // ✅ FIXED: Handle close invoice properly
   const handleCloseInvoice = () => {
-    // ✅ CRITICAL: Complete order when invoice is closed
-    if (currentOrder) {
-      console.log("✅ Completing order:", currentOrder.id);
-      dispatch(completeOrder(currentOrder.id));
-    }
-
+    console.log("Closing invoice...");
     setShowInvoice(false);
     setOrderInfo(null);
-    // Navigate after a short delay to ensure state is cleared
+
+    // Navigate after invoice is closed
     setTimeout(() => {
       navigate("/menu");
-    }, 100);
+    }, 300);
   };
 
   // Handle redeem button click
@@ -2028,9 +2076,17 @@ const Bill = ({ orderId }) => {
         </div>
       </div>
 
-      {/* ✅ FIXED: Invoice Modal - OUTSIDE the main container */}
+      {/* ✅ FIXED: Invoice Modal - Ensure it's visible */}
       {showInvoice && orderInfo && (
-        <Invoice orderInfo={orderInfo} setShowInvoice={handleCloseInvoice} />
+        <div className="fixed inset-0 z-[100] bg-black bg-opacity-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full max-h-[90vh] overflow-hidden">
+            <Invoice
+              key={invoiceKey} // Force re-render
+              orderInfo={orderInfo}
+              setShowInvoice={handleCloseInvoice}
+            />
+          </div>
+        </div>
       )}
     </>
   );
