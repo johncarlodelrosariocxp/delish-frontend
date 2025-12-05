@@ -82,16 +82,6 @@ const IconUnlink = (props) => (
     <path d="M485.3 43.1L399.7 128.7 448 176c26.5 0 48-21.5 48-48V48c0-26.5-21.5-48-48-48H368c-26.5 0-48 21.5-48 48v48l-94.8 94.8c-12.5 12.5-12.5 32.8 0 45.3s32.8 12.5 45.3 0L399.7 192 485.3 277.7c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L430.6 142.1l63.5-63.5c12.5-12.5 12.5-32.8 0-45.3s-32.8-12.5-45.3 0L448 48c-8.8 0-16 7.2-16 16v48l-80 80L160 384l-80-80V240c0-8.8-7.2-16-16-16H48c-26.5 0-48 21.5-48 48v80c0 26.5 21.5 48 48 48h80c26.5 0 48-21.5 48-48v-48l160-160L469.3 468.9c12.5 12.5 32.8 12.5 45.3 0s12.5-32.8 0-45.3L485.3 43.1z" />
   </svg>
 );
-const IconUser = (props) => (
-  <svg
-    {...props}
-    xmlns="http://www.w3.org/2000/svg"
-    viewBox="0 0 448 512"
-    fill="currentColor"
-  >
-    <path d="M224 256A128 128 0 1 0 224 0a128 128 0 1 0 0 256zm-45.7 48C79.8 304 0 383.8 0 482.3C0 498.7 13.3 512 29.7 512H418.3c16.4 0 29.7-13.3 29.7-29.7C448 383.8 368.2 304 269.7 304H178.3z" />
-  </svg>
-);
 const IconIdCard = (props) => (
   <svg
     {...props}
@@ -138,6 +128,89 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     TEXT_DOUBLE_SIZE: "\x1B\x21\x30", // Double height & width
     DRAWER_KICK: "\x1B\x70\x00\x19\xFA", // Kick drawer (pin 2)
   };
+
+  // Initialize Bluetooth connection on component mount
+  useEffect(() => {
+    const initializeBluetooth = async () => {
+      try {
+        const savedDeviceId = localStorage.getItem("bluetoothPrinterId");
+        if (savedDeviceId && navigator.bluetooth) {
+          setIsConnecting(true);
+          console.log("Attempting to reconnect to saved printer...");
+
+          // Try to reconnect to previously connected device
+          const device = await navigator.bluetooth.requestDevice({
+            deviceId: savedDeviceId,
+            acceptAllDevices: true,
+            optionalServices: [
+              "000018f0-0000-1000-8000-00805f9b34fb",
+              "00001101-0000-1000-8000-00805f9b34fb",
+            ],
+          });
+
+          const server = await device.gatt.connect();
+          let writeCharacteristic = null;
+
+          // Search for writable characteristic
+          const services = [
+            "000018f0-0000-1000-8000-00805f9b34fb",
+            "00001101-0000-1000-8000-00805f9b34fb",
+          ];
+          for (const serviceUuid of services) {
+            try {
+              const service = await server.getPrimaryService(serviceUuid);
+              const characteristics = await service.getCharacteristics();
+              writeCharacteristic = characteristics.find(
+                (char) =>
+                  char.properties.write || char.properties.writeWithoutResponse
+              );
+              if (writeCharacteristic) break;
+            } catch (err) {
+              continue;
+            }
+          }
+
+          if (writeCharacteristic) {
+            setBluetoothDevice({ device, server, writeCharacteristic });
+            setIsConnected(true);
+            console.log("Reconnected to printer:", device.name);
+
+            device.addEventListener("gattserverdisconnected", () => {
+              setIsConnected(false);
+              setBluetoothDevice(null);
+              console.log("Bluetooth printer disconnected");
+            });
+          }
+        }
+      } catch (error) {
+        console.log("Could not reconnect to saved printer:", error);
+      } finally {
+        setIsConnecting(false);
+      }
+    };
+
+    initializeBluetooth();
+  }, []);
+
+  // Auto-print when component mounts (when order is completed)
+  useEffect(() => {
+    if (orderInfo && !isPrinting && navigator.bluetooth) {
+      const autoPrint = async () => {
+        try {
+          setIsPrinting(true);
+          await printViaBluetooth();
+        } catch (error) {
+          console.log("Auto-print failed:", error);
+        } finally {
+          setIsPrinting(false);
+        }
+      };
+
+      // Small delay to ensure component is mounted
+      const timer = setTimeout(autoPrint, 500);
+      return () => clearTimeout(timer);
+    }
+  }, [orderInfo]);
 
   useEffect(() => {
     if (errorMessage) {
@@ -216,7 +289,6 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
       setBluetoothDevice({ device, server, writeCharacteristic });
       setIsConnected(true);
-      setIsConnecting(false);
 
       // Save device ID for future connections
       localStorage.setItem("bluetoothPrinterId", device.id);
@@ -236,7 +308,6 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
       return { device, server, writeCharacteristic };
     } catch (error) {
-      setIsConnecting(false);
       console.error("Bluetooth connection failed:", error);
 
       if (error.name === "NotFoundError") {
@@ -257,6 +328,8 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         alertUser(`Connection failed: ${error.message}`, "error");
       }
       return null;
+    } finally {
+      setIsConnecting(false);
     }
   };
 
@@ -555,6 +628,11 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
   // Print via Bluetooth
   const printViaBluetooth = async () => {
     try {
+      if (!navigator.bluetooth) {
+        alertUser("Bluetooth is not supported in this browser.", "error");
+        return;
+      }
+
       if (!isConnected) {
         alertUser("Please connect to Bluetooth printer first.", "warning");
         return;
@@ -565,313 +643,6 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     } catch (error) {
       console.error("Bluetooth printing failed:", error);
       alertUser(`Printing error: ${error.message}. Please try again.`, "error");
-    }
-  };
-
-  // Print via Web Print API (HTML)
-  const handlePrint = () => {
-    if (!invoiceRef.current) return;
-
-    const printContent = `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>Order Receipt - DELISH RESTAURANT</title>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <style>
-            /* Thermal printer friendly styles */
-            @media print {
-              body { 
-                margin: 0 !important; 
-                padding: 0 !important;
-                font-family: 'Courier New', monospace !important;
-                font-size: 10px !important;
-                width: 80mm !important;
-                background: white !important;
-                color: black !important;
-                -webkit-print-color-adjust: exact !important;
-              }
-              * {
-                box-shadow: none !important;
-                background: transparent !important;
-              }
-              .no-print { display: none !important; }
-              .text-center { text-align: center !important; }
-              .text-right { text-align: right !important; }
-              .text-bold { font-weight: bold !important; }
-              .border-line { 
-                border-top: 1px solid #000 !important; 
-                margin: 2px 0 !important;
-              }
-              .success-icon { 
-                text-align: center !important; 
-                margin: 4px 0 !important;
-                font-size: 16px !important;
-                color: green !important;
-              }
-            }
-            /* Common styles */
-            .receipt-container { 
-              width: 100%;
-              padding: 4px;
-              background: white;
-            }
-            .header {
-              text-align: center;
-              margin-bottom: 4px;
-            }
-            .company-name {
-              font-size: 14px;
-              font-weight: bold;
-              margin-bottom: 2px;
-            }
-            .receipt-title {
-              font-size: 12px;
-              margin-bottom: 4px;
-            }
-            .items-table {
-              width: 100%;
-              border-collapse: collapse;
-              margin: 4px 0;
-            }
-            .items-table td {
-              padding: 0;
-              font-size: 9px;
-              line-height: 1.1;
-            }
-            .discount-item {
-              color: #059669;
-              font-size: 8px;
-            }
-            .free-item {
-              color: #dc2626;
-              font-weight: bold;
-              font-size: 8px;
-            }
-            .thank-you {
-              text-align: center;
-              margin-top: 8px;
-              font-style: italic;
-              font-size: 9px;
-            }
-          </style>
-        </head>
-        <body>
-          <div class="receipt-container">
-            <div class="header">
-              <div class="company-name">DELISH RESTAURANT</div>
-              <div class="receipt-title">ORDER RECEIPT</div>
-              <div class="border-line"></div>
-            </div>
-            
-            <table width="100%" style="font-size: 9px; line-height: 1.1;">
-              <tr><td><strong>Order ID:</strong></td><td>${
-                orderInfo._id?.slice(-8) ||
-                (orderInfo.orderDate
-                  ? Math.floor(new Date(orderInfo.orderDate).getTime())
-                      .toString()
-                      .slice(-6)
-                  : "N/A")
-              }</td></tr>
-              <tr><td><strong>Date:</strong></td><td>${new Date(
-                orderInfo.orderDate || Date.now()
-              ).toLocaleDateString("en-PH")}</td></tr>
-              <tr><td><strong>Time:</strong></td><td>${new Date(
-                orderInfo.orderDate || Date.now()
-              ).toLocaleTimeString("en-PH", {
-                hour: "2-digit",
-                minute: "2-digit",
-                hour12: false,
-              })}</td></tr>
-              <tr><td><strong>Cashier:</strong></td><td>${
-                orderInfo.cashier || "Admin"
-              }</td></tr>
-              <tr><td><strong>Customer:</strong></td><td>${
-                orderInfo.customerType === "walk-in" ? "Dine-in" : "Take-out"
-              }</td></tr>
-            </table>
-            
-            <div class="border-line"></div>
-            
-            <table class="items-table">
-              <tr>
-                <td><strong>QTY</strong></td>
-                <td><strong>ITEM</strong></td>
-                <td class="text-right"><strong>AMOUNT</strong></td>
-              </tr>
-              <div class="border-line"></div>
-              ${(orderInfo.items || [])
-                .map(
-                  (item) => `
-                  <tr>
-                    <td>${item.quantity || 1}</td>
-                    <td>
-                      ${item.name || "Unknown Item"}
-                      ${
-                        item.isRedeemed || item.isFree
-                          ? '<span class="free-item"> (FREE)</span>'
-                          : ""
-                      }
-                      ${
-                        item.isPwdSeniorDiscounted
-                          ? '<span class="discount-item"> (PWD/SENIOR -20%)</span>'
-                          : ""
-                      }
-                    </td>
-                    <td class="text-right">${
-                      item.isRedeemed || item.isFree
-                        ? "FREE"
-                        : `₱${safeNumber(item.price || 0).toFixed(2)}`
-                    }</td>
-                  </tr>
-                `
-                )
-                .join("")}
-            </table>
-            
-            <div class="border-line"></div>
-            
-            <table width="100%" style="font-size: 9px; line-height: 1.1;">
-              <tr><td>Subtotal:</td><td class="text-right">₱${safeNumber(
-                orderInfo.bills?.total || 0
-              ).toFixed(2)}</td></tr>
-              ${
-                safeNumber(orderInfo.bills?.pwdSeniorDiscount || 0) > 0
-                  ? `<tr><td class="discount-item">PWD/SENIOR:</td><td class="text-right discount-item">-₱${safeNumber(
-                      orderInfo.bills?.pwdSeniorDiscount || 0
-                    ).toFixed(2)}</td></tr>`
-                  : ""
-              }
-              ${
-                safeNumber(orderInfo.bills?.redemptionDiscount || 0) > 0
-                  ? `<tr><td class="discount-item">REDEMPTION:</td><td class="text-right discount-item">-₱${safeNumber(
-                      orderInfo.bills?.redemptionDiscount || 0
-                    ).toFixed(2)}</td></tr>`
-                  : ""
-              }
-              ${
-                safeNumber(orderInfo.bills?.employeeDiscount || 0) > 0
-                  ? `<tr><td class="discount-item">EMP DISC:</td><td class="text-right discount-item">-₱${safeNumber(
-                      orderInfo.bills?.employeeDiscount || 0
-                    ).toFixed(2)}</td></tr>`
-                  : ""
-              }
-              ${
-                safeNumber(orderInfo.bills?.shareholderDiscount || 0) > 0
-                  ? `<tr><td class="discount-item">SHAREHOLDER:</td><td class="text-right discount-item">-₱${safeNumber(
-                      orderInfo.bills?.shareholderDiscount || 0
-                    ).toFixed(2)}</td></tr>`
-                  : ""
-              }
-              <tr><td>VAT (12%):</td><td class="text-right">₱${safeNumber(
-                orderInfo.bills?.tax || 0
-              ).toFixed(2)}</td></tr>
-              <div class="border-line"></div>
-              <tr class="text-bold"><td>TOTAL:</td><td class="text-right">₱${safeNumber(
-                orderInfo.bills?.totalWithTax || 0
-              ).toFixed(2)}</td></tr>
-              ${
-                orderInfo.paymentMethod === "Cash" &&
-                safeNumber(orderInfo.bills?.cashAmount || 0) > 0
-                  ? `
-                  <tr><td>Cash:</td><td class="text-right">₱${safeNumber(
-                    orderInfo.bills?.cashAmount || 0
-                  ).toFixed(2)}</td></tr>
-                  <tr><td>Change:</td><td class="text-right">₱${safeNumber(
-                    orderInfo.bills?.change || 0
-                  ).toFixed(2)}</td></tr>
-                  `
-                  : ""
-              }
-            </table>
-            
-            <div class="border-line"></div>
-            
-            <table width="100%" style="font-size: 9px; line-height: 1.1;">
-              <tr><td><strong>Payment:</strong></td><td>${
-                orderInfo.paymentMethod || "Cash"
-              }</td></tr>
-              ${
-                orderInfo.pwdSeniorDetails
-                  ? `
-                  <tr><td colspan="2"><strong>PWD/SENIOR DETAILS:</strong></td></tr>
-                  <tr><td>Name:</td><td>${
-                    orderInfo.pwdSeniorDetails.name
-                  }</td></tr>
-                  <tr><td>ID #:</td><td>${
-                    orderInfo.pwdSeniorDetails.idNumber || ""
-                  }</td></tr>
-                  <tr><td>Type:</td><td>${
-                    orderInfo.pwdSeniorDetails.type || "PWD"
-                  }</td></tr>
-                  `
-                  : ""
-              }
-            </table>
-            
-            <div class="thank-you">
-              <div>Thank you for dining with us!</div>
-              <div>Please visit again!</div>
-              <div>This receipt is your official proof of purchase.</div>
-            </div>
-          </div>
-        </body>
-      </html>
-    `;
-
-    const printWindow = window.open("", "_blank", "width=300,height=600");
-    if (!printWindow) {
-      alertUser("Please allow popups for printing", "warning");
-      return;
-    }
-
-    printWindow.document.write(printContent);
-    printWindow.document.close();
-
-    printWindow.onload = () => {
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.onafterprint = () => {
-          setTimeout(() => printWindow.close(), 100);
-        };
-      }, 250);
-    };
-  };
-
-  const handleThermalPrint = () => {
-    const receiptText = generateThermalText();
-
-    // Remove ESC/POS commands for text display
-    const cleanText = receiptText
-      .replace(/[\x00-\x1F\x7F-\x9F]/g, (char) => {
-        return char === "\x0A" ? "\n" : "";
-      })
-      .trim();
-
-    const textBlob = new Blob([cleanText], { type: "text/plain" });
-    const textUrl = URL.createObjectURL(textBlob);
-
-    const textWindow = window.open(textUrl, "_blank");
-    if (textWindow) {
-      textWindow.document.write(
-        `<pre style="font-family: 'Courier New', monospace; font-size: 10px; line-height: 1.1; white-space: pre-wrap; word-wrap: break-word; max-width: 80mm; margin: 0 auto;">${cleanText}</pre>`
-      );
-      textWindow.document.close();
-
-      textWindow.onload = () => {
-        setTimeout(() => {
-          textWindow.print();
-          setTimeout(() => {
-            textWindow.close();
-            URL.revokeObjectURL(textUrl);
-          }, 100);
-        }, 500);
-      };
-    } else {
-      alertUser(
-        "Please allow popups to open the text print preview.",
-        "warning"
-      );
     }
   };
 
@@ -923,24 +694,24 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         animate={{ opacity: 1, scale: 1 }}
         exit={{ opacity: 0, scale: 0.9 }}
         transition={{ duration: 0.15 }}
-        className="bg-white rounded-lg shadow-xl w-full max-w-[320px] max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-lg shadow-xl w-full max-w-[320px] max-h-[70vh] overflow-hidden flex flex-col"
       >
-        {/* Header */}
-        <div className="text-center p-4 border-b">
+        {/* Header - Compact */}
+        <div className="text-center p-3 border-b">
           <motion.div
             initial={{ scale: 0, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
             transition={{ duration: 0.2 }}
-            className="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-2"
+            className="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center mx-auto mb-1"
           >
-            <IconCheck className="text-white text-base" />
+            <IconCheck className="text-white text-sm" />
           </motion.div>
-          <h2 className="text-xl font-bold text-gray-800">Order Confirmed!</h2>
-          <p className="text-gray-600 text-xs mt-1">Thank you for your order</p>
+          <h2 className="text-lg font-bold text-gray-800">Order Confirmed!</h2>
+          <p className="text-gray-600 text-[10px] mt-0.5">Receipt ready</p>
 
           {/* Connection Status */}
           <div
-            className={`mt-2 px-3 py-1 rounded-full text-xs font-semibold ${
+            className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
               isConnected
                 ? "bg-green-100 text-green-800"
                 : isConnecting
@@ -955,26 +726,33 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               : "Bluetooth Disconnected"}
           </div>
 
+          {/* Auto-print status */}
+          {isPrinting && (
+            <div className="mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-[10px] font-semibold">
+              Auto-printing receipt...
+            </div>
+          )}
+
           {/* Error Message Display */}
           {errorMessage && (
             <motion.div
-              initial={{ opacity: 0, y: -10 }}
+              initial={{ opacity: 0, y: -5 }}
               animate={{ opacity: 1, y: 0 }}
-              className="mt-2 p-2 bg-red-50 text-red-700 text-[10px] rounded-lg border border-red-300 font-medium"
+              className="mt-1 p-1.5 bg-red-50 text-red-700 text-[9px] rounded border border-red-300 font-medium"
             >
               {errorMessage}
             </motion.div>
           )}
         </div>
 
-        {/* Scrollable Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-3" ref={invoiceRef}>
-          {/* Order Details */}
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <h3 className="font-semibold text-gray-700 text-sm mb-2">
+        {/* Scrollable Content - Compact */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-2" ref={invoiceRef}>
+          {/* Order Details - Compact */}
+          <div className="bg-gray-50 p-2 rounded-lg">
+            <h3 className="font-semibold text-gray-700 text-xs mb-1">
               Order Details
             </h3>
-            <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="grid grid-cols-2 gap-1 text-[10px]">
               <div>
                 <span className="text-gray-600">ID:</span>
                 <p className="font-medium truncate">
@@ -1023,14 +801,14 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             </div>
           </div>
 
-          {/* PWD/Senior Details */}
+          {/* PWD/Senior Details - Compact */}
           {orderInfo.pwdSeniorDetails && (
-            <div className="bg-green-50 p-3 rounded-lg border border-green-200">
-              <h3 className="font-semibold text-green-700 text-sm mb-2 flex items-center gap-2">
-                <IconIdCard className="w-4 h-4" />
+            <div className="bg-green-50 p-2 rounded-lg border border-green-200">
+              <h3 className="font-semibold text-green-700 text-xs mb-1 flex items-center gap-1">
+                <IconIdCard className="w-3 h-3" />
                 PWD/SENIOR Details
               </h3>
-              <div className="space-y-1 text-xs">
+              <div className="space-y-0.5 text-[10px]">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Type:</span>
                   <span className="font-medium text-green-700">
@@ -1044,7 +822,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                   </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="text-gray-600">ID Number:</span>
+                  <span className="text-gray-600">ID #:</span>
                   <span className="font-medium">
                     {orderInfo.pwdSeniorDetails.idNumber || "N/A"}
                   </span>
@@ -1053,16 +831,16 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             </div>
           )}
 
-          {/* Items Ordered */}
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <h3 className="font-semibold text-gray-700 text-sm mb-2">
-              Items Ordered ({(orderInfo.items || []).length})
+          {/* Items Ordered - Compact */}
+          <div className="bg-gray-50 p-2 rounded-lg">
+            <h3 className="font-semibold text-gray-700 text-xs mb-1">
+              Items ({(orderInfo.items || []).length})
             </h3>
-            <div className="space-y-2 max-h-32 overflow-y-auto">
+            <div className="space-y-1 max-h-24 overflow-y-auto">
               {(orderInfo.items || []).map((item, index) => (
                 <div
                   key={index}
-                  className={`flex justify-between items-start p-2 rounded text-xs ${
+                  className={`flex justify-between items-start p-1.5 rounded text-[10px] ${
                     item.isRedeemed || item.isFree
                       ? "bg-red-50 border border-red-200"
                       : item.isPwdSeniorDiscounted
@@ -1070,20 +848,20 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                       : "bg-white border border-gray-200"
                   }`}
                 >
-                  <div className="flex-1 pr-2">
+                  <div className="flex-1 pr-1">
                     <p className="font-medium truncate">
                       {item.name}
                       {item.isRedeemed || item.isFree ? (
-                        <span className="ml-1 text-red-600 font-semibold text-[10px]">
+                        <span className="ml-1 text-red-600 font-semibold text-[9px]">
                           (FREE)
                         </span>
                       ) : item.isPwdSeniorDiscounted ? (
-                        <span className="ml-1 text-green-600 font-semibold text-[10px]">
-                          (PWD/SENIOR -20%)
+                        <span className="ml-1 text-green-600 font-semibold text-[9px]">
+                          (PWD/SENIOR)
                         </span>
                       ) : null}
                     </p>
-                    <p className="text-gray-600 text-[10px]">
+                    <p className="text-gray-600 text-[9px]">
                       {item.quantity || 1} × ₱
                       {(
                         item.pricePerQuantity ||
@@ -1092,7 +870,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                       ).toFixed(2)}
                     </p>
                   </div>
-                  <div className="text-right min-w-16">
+                  <div className="text-right min-w-12">
                     <p
                       className={`font-semibold ${
                         item.isRedeemed || item.isFree
@@ -1112,12 +890,12 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             </div>
           </div>
 
-          {/* Bill Summary */}
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <h3 className="font-semibold text-gray-700 text-sm mb-2">
+          {/* Bill Summary - Compact */}
+          <div className="bg-gray-50 p-2 rounded-lg">
+            <h3 className="font-semibold text-gray-700 text-xs mb-1">
               Bill Summary
             </h3>
-            <div className="space-y-1 text-xs">
+            <div className="space-y-0.5 text-[10px]">
               <div className="flex justify-between">
                 <span>Subtotal:</span>
                 <span>
@@ -1173,12 +951,12 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 </div>
               )}
 
-              <div className="flex justify-between border-t pt-1">
+              <div className="flex justify-between border-t pt-0.5">
                 <span>VAT (12%):</span>
                 <span>₱{safeNumber(orderInfo.bills?.tax || 0).toFixed(2)}</span>
               </div>
 
-              <div className="border-t pt-2 mt-2 flex justify-between font-bold text-sm">
+              <div className="border-t pt-1 mt-0.5 flex justify-between font-bold text-xs">
                 <span>TOTAL:</span>
                 <span className="text-green-600">
                   ₱{safeNumber(orderInfo.bills?.totalWithTax || 0).toFixed(2)}
@@ -1188,7 +966,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               {orderInfo.paymentMethod === "Cash" &&
                 safeNumber(orderInfo.bills?.cashAmount || 0) > 0 && (
                   <>
-                    <div className="border-t pt-2 flex justify-between">
+                    <div className="border-t pt-0.5 flex justify-between">
                       <span className="text-gray-600">Cash:</span>
                       <span className="text-gray-800">
                         ₱
@@ -1207,39 +985,16 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 )}
             </div>
           </div>
-
-          {/* Payment Information */}
-          <div className="bg-gray-50 p-3 rounded-lg">
-            <h3 className="font-semibold text-gray-700 text-sm mb-2">
-              Payment Information
-            </h3>
-            <div className="space-y-1 text-xs">
-              <div className="flex justify-between">
-                <span>Method:</span>
-                <span className="font-medium">
-                  {orderInfo.paymentMethod || "Cash"}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Status:</span>
-                <span className="font-medium text-green-600">
-                  {orderInfo.customerType === "walk-in"
-                    ? "Dine-in"
-                    : "Take-out"}
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Action Buttons - Mobile Optimized */}
-        <div className="p-4 border-t bg-gray-50">
-          {/* Connection Buttons */}
-          <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="p-3 border-t bg-gray-50">
+          {/* Connection & Drawer Buttons */}
+          <div className="grid grid-cols-2 gap-2 mb-2">
             <button
               onClick={isConnected ? disconnectBluetooth : connectBluetooth}
               disabled={isConnecting}
-              className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg transition-colors text-xs font-semibold ${
+              className={`flex items-center justify-center gap-1 px-2 py-2 rounded-lg transition-colors text-[10px] font-semibold ${
                 isConnected
                   ? "bg-red-600 text-white hover:bg-red-700"
                   : isConnecting
@@ -1248,47 +1003,39 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               }`}
             >
               {isConnecting ? (
-                <IconBluetooth className="text-xs w-4 h-4 animate-pulse" />
+                <div className="w-3 h-3 border border-white border-t-transparent rounded-full animate-spin"></div>
               ) : isConnected ? (
-                <IconUnlink className="text-xs w-4 h-4" />
+                <IconUnlink className="w-3 h-3" />
               ) : (
-                <IconLink className="text-xs w-4 h-4" />
+                <IconLink className="w-3 h-3" />
               )}
               {isConnecting
-                ? "Connecting..."
+                ? "Connecting"
                 : isConnected
-                ? "Disconnect"
+                ? "Disconnect BT"
                 : "Connect BT"}
             </button>
 
             <button
               onClick={openCashDrawer}
               disabled={!isConnected}
-              className={`flex items-center justify-center gap-2 px-3 py-3 rounded-lg transition-colors text-xs font-semibold ${
+              className={`flex items-center justify-center gap-1 px-2 py-2 rounded-lg transition-colors text-[10px] font-semibold ${
                 isConnected
                   ? "bg-orange-600 text-white hover:bg-orange-700"
                   : "bg-gray-400 text-white cursor-not-allowed"
               }`}
             >
-              <IconCashRegister className="text-xs w-4 h-4" />
+              <IconCashRegister className="w-3 h-3" />
               Open Drawer
             </button>
           </div>
 
-          {/* Print Buttons */}
-          <div className="grid grid-cols-3 gap-2">
-            <button
-              onClick={handlePrint}
-              className="flex items-center justify-center gap-2 bg-blue-600 text-white px-2 py-3 rounded-lg hover:bg-blue-700 transition-colors text-xs font-semibold"
-            >
-              <IconPrint className="text-xs w-4 h-4" />
-              Browser
-            </button>
-
+          {/* Print & Close Buttons */}
+          <div className="grid grid-cols-2 gap-2">
             <button
               onClick={printViaBluetooth}
               disabled={!isConnected || isPrinting}
-              className={`flex items-center justify-center gap-2 px-2 py-3 rounded-lg transition-colors text-xs font-semibold ${
+              className={`flex items-center justify-center gap-1 px-2 py-2 rounded-lg transition-colors text-[10px] font-semibold ${
                 isConnected && !isPrinting
                   ? "bg-purple-600 text-white hover:bg-purple-700"
                   : "bg-gray-400 text-white cursor-not-allowed"
@@ -1296,31 +1043,23 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             >
               {isPrinting ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                   Printing
                 </>
               ) : (
                 <>
-                  <IconBluetooth className="text-xs w-4 h-4" />
-                  BT Print
+                  <IconPrint className="w-3 h-3" />
+                  Print Receipt
                 </>
               )}
             </button>
 
             <button
-              onClick={handleThermalPrint}
-              className="flex items-center justify-center gap-2 bg-green-600 text-white px-2 py-3 rounded-lg hover:bg-green-700 transition-colors text-xs font-semibold"
-            >
-              <IconReceipt className="text-xs w-4 h-4" />
-              Text Print
-            </button>
-
-            <button
               onClick={() => setShowInvoice(false)}
-              className="col-span-3 flex items-center justify-center gap-2 bg-gray-600 text-white px-3 py-3 rounded-lg hover:bg-gray-700 transition-colors text-xs font-semibold mt-2"
+              className="flex items-center justify-center gap-1 bg-gray-600 text-white px-2 py-2 rounded-lg hover:bg-gray-700 transition-colors text-[10px] font-semibold"
             >
-              <IconTimes className="text-xs w-4 h-4" />
-              Close Invoice
+              <IconTimes className="w-3 h-3" />
+              Close
             </button>
           </div>
         </div>
