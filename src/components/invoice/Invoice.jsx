@@ -130,6 +130,13 @@ const safeNumber = (value) => {
   return isNaN(num) ? 0 : num;
 };
 
+// Helper function to extract first name
+const getFirstName = (fullName) => {
+  if (!fullName) return "";
+  const firstName = fullName.split(" ")[0];
+  return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
+};
+
 const Invoice = ({ orderInfo, setShowInvoice }) => {
   const invoiceRef = useRef(null);
   const [bluetoothDevice, setBluetoothDevice] = useState(null);
@@ -137,6 +144,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
   const [isConnecting, setIsConnecting] = useState(false);
   const [isPrinting, setIsPrinting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
 
   // Thermal printer ESC/POS commands
   const thermalCommands = {
@@ -159,76 +167,90 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     DRAWER_KICK: "\x1B\x70\x00\x19\xFA", // Kick drawer (pin 2)
   };
 
-  // Initialize Bluetooth connection on component mount
+  // Initialize Bluetooth connection on component mount and keep it always connected
   useEffect(() => {
     const initializeBluetooth = async () => {
+      if (!navigator.bluetooth || autoConnectAttempted) return;
+
       try {
         const savedDeviceId = localStorage.getItem("bluetoothPrinterId");
-        if (savedDeviceId && navigator.bluetooth) {
+        if (savedDeviceId) {
           setIsConnecting(true);
-          console.log("Attempting to reconnect to saved printer...");
+          setAutoConnectAttempted(true);
+          console.log("Auto-connecting to saved printer...");
 
           // Try to reconnect to previously connected device
-          const device = await navigator.bluetooth.requestDevice({
-            deviceId: savedDeviceId,
-            acceptAllDevices: true,
-            optionalServices: [
-              "000018f0-0000-1000-8000-00805f9b34fb",
-              "00001101-0000-1000-8000-00805f9b34fb",
-            ],
-          });
+          const devices = await navigator.bluetooth.getDevices();
+          let device = devices.find((d) => d.id === savedDeviceId);
 
-          const server = await device.gatt.connect();
-          let writeCharacteristic = null;
-
-          // Search for writable characteristic
-          const services = [
-            "000018f0-0000-1000-8000-00805f9b34fb",
-            "00001101-0000-1000-8000-00805f9b34fb",
-          ];
-          for (const serviceUuid of services) {
-            try {
-              const service = await server.getPrimaryService(serviceUuid);
-              const characteristics = await service.getCharacteristics();
-              writeCharacteristic = characteristics.find(
-                (char) =>
-                  char.properties.write || char.properties.writeWithoutResponse
-              );
-              if (writeCharacteristic) break;
-            } catch (err) {
-              continue;
-            }
+          if (!device) {
+            console.log(
+              "Saved device not found in device list, requesting new connection"
+            );
+            return; // Let user manually connect if device not found
           }
 
-          if (writeCharacteristic) {
-            setBluetoothDevice({ device, server, writeCharacteristic });
-            setIsConnected(true);
-            console.log("Reconnected to printer:", device.name);
+          // Check if device is already connected
+          if (!device.gatt?.connected) {
+            const server = await device.gatt.connect();
+            let writeCharacteristic = null;
 
-            device.addEventListener("gattserverdisconnected", () => {
-              setIsConnected(false);
-              setBluetoothDevice(null);
-              console.log("Bluetooth printer disconnected");
-            });
+            // Search for writable characteristic
+            const services = [
+              "000018f0-0000-1000-8000-00805f9b34fb",
+              "00001101-0000-1000-8000-00805f9b34fb",
+            ];
+
+            for (const serviceUuid of services) {
+              try {
+                const service = await server.getPrimaryService(serviceUuid);
+                const characteristics = await service.getCharacteristics();
+                writeCharacteristic = characteristics.find(
+                  (char) =>
+                    char.properties.write ||
+                    char.properties.writeWithoutResponse
+                );
+                if (writeCharacteristic) break;
+              } catch (err) {
+                continue;
+              }
+            }
+
+            if (writeCharacteristic) {
+              setBluetoothDevice({ device, server, writeCharacteristic });
+              setIsConnected(true);
+              console.log("Auto-connected to printer:", device.name);
+
+              device.addEventListener("gattserverdisconnected", () => {
+                setIsConnected(false);
+                setBluetoothDevice(null);
+                console.log("Bluetooth printer disconnected");
+                alertUser("Printer disconnected. Please reconnect.", "warning");
+              });
+            }
+          } else {
+            // Device is already connected
+            setIsConnected(true);
+            console.log("Printer already connected");
           }
         }
       } catch (error) {
-        console.log("Could not reconnect to saved printer:", error);
+        console.log("Auto-connect failed:", error);
       } finally {
         setIsConnecting(false);
       }
     };
 
     initializeBluetooth();
-  }, []);
+  }, [autoConnectAttempted]);
 
   // Auto-print when component mounts (when order is completed)
   useEffect(() => {
-    if (orderInfo && !isPrinting && navigator.bluetooth) {
+    if (orderInfo && !isPrinting && isConnected) {
       const autoPrint = async () => {
         try {
           setIsPrinting(true);
-          await printViaBluetooth();
+          await printReceipt();
         } catch (error) {
           console.log("Auto-print failed:", error);
         } finally {
@@ -236,11 +258,10 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         }
       };
 
-      // Small delay to ensure component is mounted
-      const timer = setTimeout(autoPrint, 500);
+      const timer = setTimeout(autoPrint, 1000);
       return () => clearTimeout(timer);
     }
-  }, [orderInfo]);
+  }, [orderInfo, isConnected]);
 
   useEffect(() => {
     if (errorMessage) {
@@ -254,7 +275,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     console.log(`${variant.toUpperCase()}: ${message}`);
   };
 
-  // Connect to Bluetooth printer
+  // Connect to Bluetooth printer (manually)
   const connectBluetooth = async () => {
     if (!navigator.bluetooth) {
       alertUser(
@@ -271,15 +292,10 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       // Common UUIDs for thermal printers
       const serviceUUID_PRINTER = "000018f0-0000-1000-8000-00805f9b34fb";
       const serviceUUID_SPP = "00001101-0000-1000-8000-00805f9b34fb";
-      const serviceUUID_GENERIC_ACCESS = "00001800-0000-1000-8000-00805f9b34fb";
 
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
-        optionalServices: [
-          serviceUUID_PRINTER,
-          serviceUUID_SPP,
-          serviceUUID_GENERIC_ACCESS,
-        ],
+        optionalServices: [serviceUUID_PRINTER, serviceUUID_SPP],
       });
 
       console.log("Connecting to GATT server...");
@@ -319,8 +335,9 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
       setBluetoothDevice({ device, server, writeCharacteristic });
       setIsConnected(true);
+      setAutoConnectAttempted(true);
 
-      // Save device ID for future connections
+      // Save device ID for future auto-connections
       localStorage.setItem("bluetoothPrinterId", device.id);
 
       alertUser(
@@ -371,6 +388,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         setIsConnected(false);
         setBluetoothDevice(null);
         localStorage.removeItem("bluetoothPrinterId");
+        setAutoConnectAttempted(false);
         alertUser("Disconnected from printer", "info");
       } catch (error) {
         console.error("Error disconnecting:", error);
@@ -413,10 +431,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     try {
       // Ensure we're connected
       if (!isConnected) {
-        const connected = await connectBluetooth();
-        if (!connected) {
-          throw new Error("Failed to connect to printer");
-        }
+        throw new Error("Please connect to Bluetooth printer first.");
       }
 
       // Generate receipt text
@@ -480,7 +495,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             .slice(-6)
         : "N/A");
 
-    const cashier = orderInfo.cashier || "Admin";
+    const cashier = getFirstName(orderInfo.cashier || "Admin");
     const customerType = orderInfo.customerType || "walk-in";
     const paymentMethod = orderInfo.paymentMethod || "Cash";
 
@@ -567,11 +582,10 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         nameStr = nameStr.padEnd(20, " ");
       }
 
-      // Format amount (8 chars)
-      const amountStr = (isRedeemed ? "FREE" : `₱${total.toFixed(2)}`).padStart(
-        8,
-        " "
-      );
+      // Format amount (8 chars) - Using PHP instead of ₱
+      const amountStr = (
+        isRedeemed ? "FREE" : `PHP${total.toFixed(2)}`
+      ).padStart(8, " ");
 
       receiptText += `${qtyStr}   ${nameStr}${amountStr}\n`;
 
@@ -581,43 +595,43 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       } else if (isPwdSeniorDiscounted) {
         const originalTotal = price * quantity;
         const discountAmount = originalTotal * 0.2; // 20% discount
-        receiptText += `     *PWD/SENIOR -₱${discountAmount.toFixed(2)}\n`;
+        receiptText += `     *PWD/SENIOR -PHP${discountAmount.toFixed(2)}\n`;
       }
     });
 
     receiptText += "--------------------------------\n";
 
-    // Totals - right aligned
+    // Totals - right aligned - Using PHP instead of ₱
     receiptText += thermalCommands.ALIGN_RIGHT;
-    receiptText += `SUBTOTAL:   ₱${totals.baseGrossTotal.toFixed(2)}\n`;
+    receiptText += `SUBTOTAL:   PHP${totals.baseGrossTotal.toFixed(2)}\n`;
 
     if (totals.pwdSeniorDiscountAmount > 0) {
-      receiptText += `PWD/SENIOR: -₱${totals.pwdSeniorDiscountAmount.toFixed(
+      receiptText += `PWD/SENIOR: -PHP${totals.pwdSeniorDiscountAmount.toFixed(
         2
       )}\n`;
     }
 
     if (totals.redemptionAmount > 0) {
-      receiptText += `REDEMPTION: -₱${totals.redemptionAmount.toFixed(2)}\n`;
+      receiptText += `REDEMPTION: -PHP${totals.redemptionAmount.toFixed(2)}\n`;
     }
 
     if (totals.employeeDiscountAmount > 0) {
-      receiptText += `EMP DISC:   -₱${totals.employeeDiscountAmount.toFixed(
+      receiptText += `EMP DISC:   -PHP${totals.employeeDiscountAmount.toFixed(
         2
       )}\n`;
     }
 
     if (totals.shareholderDiscountAmount > 0) {
-      receiptText += `SHAREHOLDER:-₱${totals.shareholderDiscountAmount.toFixed(
+      receiptText += `SHAREHOLDER:-PHP${totals.shareholderDiscountAmount.toFixed(
         2
       )}\n`;
     }
 
-    receiptText += `VAT (12%):  ₱${totals.vatAmount.toFixed(2)}\n`;
+    receiptText += `VAT (12%):  PHP${totals.vatAmount.toFixed(2)}\n`;
     receiptText += "--------------------------------\n";
 
     receiptText += thermalCommands.BOLD_ON;
-    receiptText += `TOTAL:      ₱${totals.total.toFixed(2)}\n`;
+    receiptText += `TOTAL:      PHP${totals.total.toFixed(2)}\n`;
     receiptText += thermalCommands.BOLD_OFF;
     receiptText += "--------------------------------\n";
 
@@ -626,35 +640,33 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     receiptText += `Payment: ${paymentMethod}\n`;
 
     if (paymentMethod === "Cash" && totals.cashAmount > 0) {
-      receiptText += `Cash:    ₱${totals.cashAmount.toFixed(2)}\n`;
-      receiptText += `Change:  ₱${totals.change.toFixed(2)}\n`;
+      receiptText += `Cash:    PHP${totals.cashAmount.toFixed(2)}\n`;
+      receiptText += `Change:  PHP${totals.change.toFixed(2)}\n`;
     }
 
     // PWD/Senior details if applied
     if (pwdSeniorDiscountApplied && pwdSeniorDetails?.name) {
       receiptText += "--------------------------------\n";
       receiptText += "PWD/SENIOR DETAILS:\n";
-      receiptText += `Name: ${pwdSeniorDetails.name}\n`;
+      receiptText += `Name: ${getFirstName(pwdSeniorDetails.name)}\n`;
       receiptText += `ID #: ${pwdSeniorDetails.idNumber || ""}\n`;
       receiptText += `Type: ${pwdSeniorDetails.type || "PWD"}\n`;
     }
 
     receiptText += "--------------------------------\n";
 
-    // Footer with social media and branding
+    // Footer with social media and branding - Better visual representation
     receiptText += thermalCommands.ALIGN_CENTER;
     receiptText += thermalCommands.BOLD_ON;
     receiptText += "Follow us on:\n";
     receiptText += thermalCommands.BOLD_OFF;
 
-    // Social media icons (using text characters as thermal printers can't render SVG)
-    receiptText += " F  I  T \n"; // Facebook, Instagram, TikTok
-    receiptText += "◼ ◼ ◼\n"; // Simple block characters for logos
-
+    // Social media representation with better spacing
+    receiptText += "[Facebook]  [I]  [T]\n"; // Facebook, Instagram, TikTok
     receiptText += thermalCommands.BOLD_ON;
     receiptText += "delish cheesecake\n";
     receiptText += thermalCommands.BOLD_OFF;
-
+    receiptText += "----------------\n";
     receiptText += "Thank you for dining with us!\n";
     receiptText += "Please visit again!\n\n";
 
@@ -762,7 +774,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             {isConnected
               ? "✓ Bluetooth Connected"
               : isConnecting
-              ? "Connecting..."
+              ? "Auto-connecting..."
               : "Bluetooth Disconnected"}
           </div>
 
@@ -827,7 +839,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               <div>
                 <span className="text-gray-600">Cashier:</span>
                 <p className="font-medium truncate text-green-600">
-                  {orderInfo.cashier || "Admin"}
+                  {getFirstName(orderInfo.cashier || "Admin")}
                 </p>
               </div>
               <div className="col-span-2">
@@ -858,7 +870,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <div className="flex justify-between">
                   <span className="text-gray-600">Name:</span>
                   <span className="font-medium truncate">
-                    {orderInfo.pwdSeniorDetails.name}
+                    {getFirstName(orderInfo.pwdSeniorDetails.name)}
                   </span>
                 </div>
                 <div className="flex justify-between">
@@ -902,7 +914,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                       ) : null}
                     </p>
                     <p className="text-gray-600 text-[9px]">
-                      {item.quantity || 1} × ₱
+                      {item.quantity || 1} × PHP
                       {(
                         item.pricePerQuantity ||
                         item.originalPrice ||
@@ -922,7 +934,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                     >
                       {item.isRedeemed || item.isFree
                         ? "FREE"
-                        : `₱${safeNumber(item.price || 0).toFixed(2)}`}
+                        : `PHP${safeNumber(item.price || 0).toFixed(2)}`}
                     </p>
                   </div>
                 </div>
@@ -939,7 +951,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               <div className="flex justify-between">
                 <span>Subtotal:</span>
                 <span>
-                  ₱{safeNumber(orderInfo.bills?.total || 0).toFixed(2)}
+                  PHP{safeNumber(orderInfo.bills?.total || 0).toFixed(2)}
                 </span>
               </div>
 
@@ -947,7 +959,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <div className="flex justify-between text-green-600">
                   <span>PWD/SENIOR:</span>
                   <span>
-                    -₱
+                    -PHP
                     {safeNumber(
                       orderInfo.bills?.pwdSeniorDiscount || 0
                     ).toFixed(2)}
@@ -959,7 +971,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <div className="flex justify-between text-blue-600">
                   <span>REDEMPTION:</span>
                   <span>
-                    -₱
+                    -PHP
                     {safeNumber(
                       orderInfo.bills?.redemptionDiscount || 0
                     ).toFixed(2)}
@@ -971,7 +983,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <div className="flex justify-between text-yellow-600">
                   <span>EMP DISC:</span>
                   <span>
-                    -₱
+                    -PHP
                     {safeNumber(orderInfo.bills?.employeeDiscount || 0).toFixed(
                       2
                     )}
@@ -983,7 +995,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <div className="flex justify-between text-purple-600">
                   <span>SHAREHOLDER:</span>
                   <span>
-                    -₱
+                    -PHP
                     {safeNumber(
                       orderInfo.bills?.shareholderDiscount || 0
                     ).toFixed(2)}
@@ -993,13 +1005,15 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
               <div className="flex justify-between border-t pt-0.5">
                 <span>VAT (12%):</span>
-                <span>₱{safeNumber(orderInfo.bills?.tax || 0).toFixed(2)}</span>
+                <span>
+                  PHP{safeNumber(orderInfo.bills?.tax || 0).toFixed(2)}
+                </span>
               </div>
 
               <div className="border-t pt-1 mt-0.5 flex justify-between font-bold text-xs">
                 <span>TOTAL:</span>
                 <span className="text-green-600">
-                  ₱{safeNumber(orderInfo.bills?.totalWithTax || 0).toFixed(2)}
+                  PHP{safeNumber(orderInfo.bills?.totalWithTax || 0).toFixed(2)}
                 </span>
               </div>
 
@@ -1009,7 +1023,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                     <div className="border-t pt-0.5 flex justify-between">
                       <span className="text-gray-600">Cash:</span>
                       <span className="text-gray-800">
-                        ₱
+                        PHP
                         {safeNumber(orderInfo.bills?.cashAmount || 0).toFixed(
                           2
                         )}
@@ -1018,7 +1032,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                     <div className="flex justify-between">
                       <span className="text-gray-600">Change:</span>
                       <span className="text-green-600 font-semibold">
-                        ₱{safeNumber(orderInfo.bills?.change || 0).toFixed(2)}
+                        PHP{safeNumber(orderInfo.bills?.change || 0).toFixed(2)}
                       </span>
                     </div>
                   </>
@@ -1026,7 +1040,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             </div>
           </div>
 
-          {/* Social Media Footer in Preview */}
+          {/* Social Media Footer */}
           <div className="bg-gradient-to-r from-pink-50 to-purple-50 p-2 rounded-lg border border-pink-200">
             <h3 className="font-semibold text-gray-700 text-xs mb-1 text-center">
               Follow us on Social Media
@@ -1055,11 +1069,11 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 <span className="text-[8px] text-gray-600 mt-0.5">TikTok</span>
               </div>
             </div>
-            <div className="text-center mt-1">
-              <p className="text-[10px] font-bold text-purple-700">
+            <div className="text-center mt-2">
+              <p className="text-[11px] font-bold text-purple-700">
                 delish cheesecake
               </p>
-              <p className="text-[9px] text-gray-600">
+              <p className="text-[9px] text-gray-600 mt-0.5">
                 Best cheesecake in town!
               </p>
             </div>
@@ -1077,7 +1091,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 isConnected
                   ? "bg-red-600 text-white hover:bg-red-700"
                   : isConnecting
-                  ? "bg-gray-400 text-white cursor-not-allowed"
+                  ? "bg-yellow-400 text-white cursor-not-allowed"
                   : "bg-blue-600 text-white hover:bg-blue-700"
               }`}
             >

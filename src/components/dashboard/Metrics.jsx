@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo, useEffect } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useSelector } from "react-redux";
 import { getOrders, getAdminOrders } from "../../https/index";
@@ -20,10 +20,12 @@ import PropTypes from "prop-types";
 
 // ============= CONSTANTS AND CONFIGURATION =============
 const PERIOD_OPTIONS = [
-  { value: "Day", label: "Last 1 Day" },
-  { value: "Week", label: "Last 1 Week" },
-  { value: "Month", label: "Last 1 Month" },
-  { value: "Year", label: "Last 1 Year" },
+  { value: "today", label: "Today" },
+  { value: "yesterday", label: "Yesterday" },
+  { value: "this_month", label: "This Month" },
+  { value: "last_month", label: "Last Month" },
+  { value: "this_year", label: "This Year" },
+  { value: "all_time", label: "All Time" },
 ];
 
 const COLORS = {
@@ -76,25 +78,144 @@ const formatPercentage = (value) => {
 // ============= DATE UTILITIES =============
 const getDateRange = (period) => {
   const now = new Date();
-  const start = new Date();
 
   switch (period) {
-    case "Day":
+    case "today": {
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(now);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    case "yesterday": {
+      const start = new Date(now);
       start.setDate(now.getDate() - 1);
-      break;
-    case "Week":
-      start.setDate(now.getDate() - 7);
-      break;
-    case "Month":
-      start.setMonth(now.getMonth() - 1);
-      break;
-    case "Year":
-      start.setFullYear(now.getFullYear() - 1);
-      break;
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(start);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    case "this_month": {
+      const start = new Date(now.getFullYear(), now.getMonth(), 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    case "last_month": {
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), now.getMonth(), 0);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    case "this_year": {
+      const start = new Date(now.getFullYear(), 0, 1);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(now.getFullYear(), 11, 31);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
+    }
+
+    case "all_time":
+      return { start: null, end: null };
+
     default:
-      start.setDate(now.getDate() - 7);
+      const start = new Date(now);
+      start.setHours(0, 0, 0, 0);
+      const end = new Date(now);
+      end.setHours(23, 59, 59, 999);
+      return { start, end };
   }
-  return { start, end: now };
+};
+
+const getPreviousPeriodData = (orders, currentPeriod) => {
+  const safeOrders = Array.isArray(orders) ? orders : [];
+  if (safeOrders.length === 0) {
+    return { orders: [], metrics: null };
+  }
+
+  const now = new Date();
+  let prevStart = null;
+  let prevEnd = null;
+
+  switch (currentPeriod) {
+    case "today": {
+      prevStart = new Date(now);
+      prevStart.setDate(now.getDate() - 1);
+      prevStart.setHours(0, 0, 0, 0);
+      prevEnd = new Date(prevStart);
+      prevEnd.setHours(23, 59, 59, 999);
+      break;
+    }
+
+    case "yesterday": {
+      prevStart = new Date(now);
+      prevStart.setDate(now.getDate() - 2);
+      prevStart.setHours(0, 0, 0, 0);
+      prevEnd = new Date(now);
+      prevEnd.setDate(now.getDate() - 2);
+      prevEnd.setHours(23, 59, 59, 999);
+      break;
+    }
+
+    case "this_month": {
+      prevStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      prevStart.setHours(0, 0, 0, 0);
+      prevEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+      prevEnd.setHours(23, 59, 59, 999);
+      break;
+    }
+
+    case "last_month": {
+      prevStart = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+      prevStart.setHours(0, 0, 0, 0);
+      prevEnd = new Date(now.getFullYear(), now.getMonth() - 1, 0);
+      prevEnd.setHours(23, 59, 59, 999);
+      break;
+    }
+
+    case "this_year": {
+      prevStart = new Date(now.getFullYear() - 1, 0, 1);
+      prevStart.setHours(0, 0, 0, 0);
+      prevEnd = new Date(now.getFullYear() - 1, 11, 31);
+      prevEnd.setHours(23, 59, 59, 999);
+      break;
+    }
+
+    case "all_time":
+      // For all_time, compare with same period last year
+      prevStart = new Date(now.getFullYear() - 1, 0, 1);
+      prevStart.setHours(0, 0, 0, 0);
+      prevEnd = new Date(now.getFullYear() - 1, 11, 31);
+      prevEnd.setHours(23, 59, 59, 999);
+      break;
+
+    default:
+      return { orders: [], metrics: null };
+  }
+
+  const previousOrders = safeOrders.filter((order) => {
+    try {
+      const orderDate = new Date(
+        order.orderDate || order.createdAt || Date.now()
+      );
+      return orderDate >= prevStart && orderDate <= prevEnd;
+    } catch {
+      return false;
+    }
+  });
+
+  const previousMetrics = calculateMetrics(previousOrders, currentPeriod);
+
+  return {
+    orders: previousOrders,
+    metrics: previousMetrics,
+  };
 };
 
 const formatDate = (dateString, options = {}) => {
@@ -120,6 +241,9 @@ const filterOrdersByPeriod = (orders, period) => {
   const safeOrders = Array.isArray(orders) ? orders : [];
   if (safeOrders.length === 0) return [];
 
+  // For all_time, return all orders
+  if (period === "all_time") return safeOrders;
+
   const { start, end } = getDateRange(period);
 
   return safeOrders.filter((order) => {
@@ -133,57 +257,6 @@ const filterOrdersByPeriod = (orders, period) => {
       return false;
     }
   });
-};
-
-const getPreviousPeriodData = (orders, currentPeriod) => {
-  const safeOrders = Array.isArray(orders) ? orders : [];
-  if (safeOrders.length === 0) {
-    return { orders: [], metrics: null };
-  }
-
-  const now = new Date();
-  const prevStart = new Date();
-  const prevEnd = new Date();
-
-  switch (currentPeriod) {
-    case "Day":
-      prevStart.setDate(now.getDate() - 2);
-      prevEnd.setDate(now.getDate() - 1);
-      break;
-    case "Week":
-      prevStart.setDate(now.getDate() - 14);
-      prevEnd.setDate(now.getDate() - 7);
-      break;
-    case "Month":
-      prevStart.setMonth(now.getMonth() - 2);
-      prevEnd.setMonth(now.getMonth() - 1);
-      break;
-    case "Year":
-      prevStart.setFullYear(now.getFullYear() - 2);
-      prevEnd.setFullYear(now.getFullYear() - 1);
-      break;
-    default:
-      prevStart.setDate(now.getDate() - 14);
-      prevEnd.setDate(now.getDate() - 7);
-  }
-
-  const previousOrders = safeOrders.filter((order) => {
-    try {
-      const orderDate = new Date(
-        order.orderDate || order.createdAt || Date.now()
-      );
-      return orderDate >= prevStart && orderDate <= prevEnd;
-    } catch {
-      return false;
-    }
-  });
-
-  const previousMetrics = calculateMetrics(previousOrders, currentPeriod);
-
-  return {
-    orders: previousOrders,
-    metrics: previousMetrics,
-  };
 };
 
 // ============= CALCULATION UTILITIES =============
@@ -354,7 +427,7 @@ const EmptyState = ({ title, message }) => (
   </div>
 );
 
-// Simple Order Item Component (without react-window)
+// Simple Order Item Component
 const OrderItem = ({ order, index }) => {
   if (!order) return null;
 
@@ -394,7 +467,7 @@ const OrderItem = ({ order, index }) => {
   );
 };
 
-// Simple Virtual List (custom implementation without react-window)
+// Simple Virtual List
 const SimpleVirtualList = ({
   items,
   itemHeight = 80,
@@ -443,7 +516,7 @@ const SimpleVirtualList = ({
   );
 };
 
-// Recent Orders Component (without react-window dependency)
+// Recent Orders Component
 const RecentOrders = ({ orders: rawOrders, maxItems = 5 }) => {
   const safeOrders = useMemo(() => {
     if (!rawOrders) return [];
@@ -506,7 +579,7 @@ const Metrics = ({
   onPeriodChange,
   className = "",
 }) => {
-  const [period, setPeriod] = useState("Week");
+  const [period, setPeriod] = useState("today");
   const user = useSelector((state) => state.user);
 
   // Data fetching
@@ -556,6 +629,12 @@ const Metrics = ({
     }
   }, [resData, rawMetricsData]);
 
+  // Get display label for period
+  const getPeriodDisplayLabel = (periodValue) => {
+    const option = PERIOD_OPTIONS.find((opt) => opt.value === periodValue);
+    return option ? option.label : "Today";
+  };
+
   // Memoized metrics calculation
   const { metricsData, itemsData, filteredOrders } = useMemo(() => {
     try {
@@ -600,12 +679,15 @@ const Metrics = ({
         previousData.metrics?.readyOrders || 0
       );
 
+      // Format period for display
+      const periodDisplay = getPeriodDisplayLabel(period).toLowerCase();
+
       // Main metrics cards
       const premiumMetrics = [
         {
           title: "Total Orders",
           value: (currentMetrics.totalOrders || 0).toLocaleString(),
-          subtitle: `Completed transactions (${period.toLowerCase()})`,
+          subtitle: `Completed transactions (${periodDisplay})`,
           percentage: orderTrend.percentage,
           isIncrease: orderTrend.isIncrease,
           color: COLORS.primary.blue,
@@ -614,7 +696,7 @@ const Metrics = ({
         {
           title: "Total Revenue",
           value: formatCurrency(currentMetrics.totalSales || 0),
-          subtitle: `Gross sales (${period.toLowerCase()})`,
+          subtitle: `Gross sales (${periodDisplay})`,
           percentage: revenueTrend.percentage,
           isIncrease: revenueTrend.isIncrease,
           color: COLORS.primary.green,
@@ -754,7 +836,8 @@ const Metrics = ({
             <p className="text-gray-600 mt-1">{displaySubtitle}</p>
             <div className="flex items-center gap-2 mt-2 text-sm text-gray-500">
               <span className="bg-green-100 text-green-800 px-2 py-1 rounded-full text-xs">
-                {filteredOrders.length} orders in {period.toLowerCase()}
+                {filteredOrders.length} orders in{" "}
+                {getPeriodDisplayLabel(period).toLowerCase()}
               </span>
               <span
                 className={`px-2 py-1 rounded-full text-xs ${
@@ -926,8 +1009,8 @@ const Metrics = ({
         {/* Footer */}
         <div className="text-center text-gray-500 text-sm border-t border-gray-200 pt-6">
           <p>
-            Data filtered for {period.toLowerCase()} • {filteredOrders.length}{" "}
-            orders displayed •{" "}
+            Data filtered for {getPeriodDisplayLabel(period).toLowerCase()} •{" "}
+            {filteredOrders.length} orders displayed •{" "}
             {user?.role === "admin" ? "All Sales Data" : "Your orders only"}
           </p>
         </div>

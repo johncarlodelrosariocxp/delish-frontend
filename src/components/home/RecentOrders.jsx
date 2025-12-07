@@ -13,6 +13,8 @@ import {
   FaEyeSlash,
   FaList,
   FaTable,
+  FaCalendarAlt,
+  FaFilter,
 } from "react-icons/fa";
 import {
   keepPreviousData,
@@ -25,8 +27,12 @@ import { getOrders, updateOrderStatus } from "../../https/index";
 const RecentOrders = ({ orders = [], onStatusChange }) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [updatingOrders, setUpdatingOrders] = useState(new Set());
-  const [showAllOrders, setShowAllOrders] = useState(false);
   const [viewMode, setViewMode] = useState("recent"); // 'recent' or 'all'
+  const [dateFilter, setDateFilter] = useState({
+    startDate: "",
+    endDate: "",
+  });
+  const [showDateFilter, setShowDateFilter] = useState(false);
   const queryClient = useQueryClient();
 
   // Use provided orders prop or fetch if not provided
@@ -61,17 +67,52 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     });
   }, [orders, resData?.data?.data]);
 
-  // Filter orders based on search query
+  // Get order date for filtering
+  const getOrderDate = (order) => {
+    return new Date(order.createdAt || order.orderDate || order.date);
+  };
+
+  // Filter orders based on search query and date filter
   const filteredOrders = React.useMemo(() => {
-    return allOrders.filter(
-      (order) =>
-        order.customerDetails?.name
-          ?.toLowerCase()
-          .includes(searchQuery.toLowerCase()) ||
-        order._id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        order.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [allOrders, searchQuery]);
+    let filtered = allOrders;
+
+    // Apply text search
+    if (searchQuery) {
+      filtered = filtered.filter(
+        (order) =>
+          order.customerDetails?.name
+            ?.toLowerCase()
+            .includes(searchQuery.toLowerCase()) ||
+          order._id?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+          order.orderStatus?.toLowerCase().includes(searchQuery.toLowerCase())
+      );
+    }
+
+    // Apply date filter if dates are provided
+    if (dateFilter.startDate || dateFilter.endDate) {
+      filtered = filtered.filter((order) => {
+        const orderDate = getOrderDate(order);
+
+        if (dateFilter.startDate && dateFilter.endDate) {
+          const start = new Date(dateFilter.startDate);
+          const end = new Date(dateFilter.endDate);
+          end.setHours(23, 59, 59, 999); // Include entire end day
+          return orderDate >= start && orderDate <= end;
+        } else if (dateFilter.startDate) {
+          const start = new Date(dateFilter.startDate);
+          return orderDate >= start;
+        } else if (dateFilter.endDate) {
+          const end = new Date(dateFilter.endDate);
+          end.setHours(23, 59, 59, 999); // Include entire end day
+          return orderDate <= end;
+        }
+
+        return true;
+      });
+    }
+
+    return filtered;
+  }, [allOrders, searchQuery, dateFilter]);
 
   // Show orders based on view mode
   const displayOrders = React.useMemo(() => {
@@ -81,6 +122,14 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     // Show only recent orders (last 5) when in recent mode
     return filteredOrders.slice(0, 5);
   }, [filteredOrders, viewMode]);
+
+  // Clear date filter
+  const clearDateFilter = () => {
+    setDateFilter({
+      startDate: "",
+      endDate: "",
+    });
+  };
 
   // Status configuration - Matching the Home component style
   const getStatusConfig = (status) => {
@@ -198,7 +247,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     }
   };
 
-  // Format date
+  // Format date for display
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     try {
@@ -211,6 +260,17 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
       });
     } catch (error) {
       return "Invalid Date";
+    }
+  };
+
+  // Format date for input field (YYYY-MM-DD)
+  const formatDateForInput = (dateString) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      return date.toISOString().split("T")[0];
+    } catch (error) {
+      return "";
     }
   };
 
@@ -335,6 +395,25 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
     setViewMode(viewMode === "recent" ? "all" : "recent");
   };
 
+  // Get today's date in YYYY-MM-DD format
+  const getTodayDate = () => {
+    return new Date().toISOString().split("T")[0];
+  };
+
+  // Get earliest order date for min date
+  const getEarliestOrderDate = () => {
+    if (allOrders.length === 0) return getTodayDate();
+
+    const dates = allOrders.map(
+      (order) => new Date(order.createdAt || order.orderDate || order.date)
+    );
+    const earliest = new Date(Math.min(...dates));
+    return earliest.toISOString().split("T")[0];
+  };
+
+  // Check if date filter is active
+  const isDateFilterActive = dateFilter.startDate || dateFilter.endDate;
+
   return (
     <div className="bg-white/80 backdrop-blur-xl rounded-2xl border border-gray-200 p-4 shadow-lg hover:shadow-xl transition-all duration-300">
       {/* Header */}
@@ -343,6 +422,22 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
           {viewMode === "all" ? "All Orders" : "Recent Orders"}
         </h1>
         <div className="flex gap-2">
+          <button
+            onClick={() => setShowDateFilter(!showDateFilter)}
+            className={`flex items-center gap-1 px-3 py-1 rounded-lg border text-sm font-medium transition-colors ${
+              isDateFilterActive
+                ? "bg-blue-100 border-blue-300 text-blue-700"
+                : "bg-gray-100 border-gray-300 text-gray-700 hover:bg-gray-200"
+            }`}
+          >
+            <FaFilter className="text-xs" />
+            Filter by Date
+            {isDateFilterActive && (
+              <span className="ml-1 bg-blue-500 text-white text-xs px-1.5 py-0.5 rounded-full">
+                ✓
+              </span>
+            )}
+          </button>
           <button
             onClick={toggleViewMode}
             className="text-blue-600 text-sm font-medium hover:underline flex items-center gap-1 px-3 py-1 rounded-lg border border-blue-200 bg-blue-50 hover:bg-blue-100 transition-colors"
@@ -362,6 +457,75 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
         </div>
       </div>
 
+      {/* Date Filter Panel */}
+      {showDateFilter && (
+        <div className="mb-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+          <div className="flex justify-between items-center mb-2">
+            <div className="flex items-center gap-2">
+              <FaCalendarAlt className="text-gray-600 text-sm" />
+              <span className="text-sm font-medium text-gray-900">
+                Filter by Order Date
+              </span>
+            </div>
+            {isDateFilterActive && (
+              <button
+                onClick={clearDateFilter}
+                className="text-xs text-red-600 hover:text-red-800 hover:underline"
+              >
+                Clear Filter
+              </button>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                From Date
+              </label>
+              <input
+                type="date"
+                value={dateFilter.startDate}
+                onChange={(e) =>
+                  setDateFilter((prev) => ({
+                    ...prev,
+                    startDate: e.target.value,
+                  }))
+                }
+                max={dateFilter.endDate || getTodayDate()}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                To Date
+              </label>
+              <input
+                type="date"
+                value={dateFilter.endDate}
+                onChange={(e) =>
+                  setDateFilter((prev) => ({
+                    ...prev,
+                    endDate: e.target.value,
+                  }))
+                }
+                min={dateFilter.startDate || getEarliestOrderDate()}
+                max={getTodayDate()}
+                className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+          </div>
+          {isDateFilterActive && (
+            <div className="mt-2 text-xs text-gray-600">
+              Showing orders from{" "}
+              <span className="font-medium">
+                {dateFilter.startDate || "the beginning"}
+              </span>{" "}
+              to{" "}
+              <span className="font-medium">{dateFilter.endDate || "now"}</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Search Bar */}
       <div className="flex items-center gap-2 bg-gray-50 rounded-lg px-3 py-2 mb-4">
         <FaSearch className="text-gray-500 text-sm" />
@@ -372,6 +536,17 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
           onChange={(e) => setSearchQuery(e.target.value)}
           className="bg-transparent outline-none text-gray-900 w-full text-sm placeholder-gray-500"
         />
+        {(searchQuery || isDateFilterActive) && (
+          <button
+            onClick={() => {
+              setSearchQuery("");
+              clearDateFilter();
+            }}
+            className="text-xs text-gray-500 hover:text-gray-700 px-2 py-1 hover:bg-gray-200 rounded transition-colors"
+          >
+            Clear All
+          </button>
+        )}
       </div>
 
       {/* Orders Count Info */}
@@ -381,6 +556,7 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
           {viewMode === "recent" &&
             filteredOrders.length > 5 &&
             " (most recent 5)"}
+          {isDateFilterActive && ` • Date filter applied`}
         </p>
         {viewMode === "all" && (
           <div className="flex items-center gap-2 text-xs text-gray-500">
@@ -447,18 +623,21 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
                   <span className="text-xs font-medium text-gray-800">
                     {order.customerDetails?.name || "Unknown Customer"}
                   </span>
+                  <span className="text-xs text-gray-500 ml-auto">
+                    {formatDate(order.createdAt || order.orderDate)}
+                  </span>
                 </div>
 
                 {/* Order Details */}
                 <div className="grid grid-cols-2 gap-3 text-xs mb-3">
                   <div className="space-y-1">
-                    <div className="text-gray-600">Date</div>
+                    <div className="text-gray-600">Items</div>
                     <div className="font-medium text-gray-800">
-                      {formatDate(order.createdAt || order.orderDate)}
+                      {itemsCount} {itemsCount === 1 ? "item" : "items"}
                     </div>
                   </div>
                   <div className="space-y-1 text-right">
-                    <div className="text-gray-600">Amount</div>
+                    <div className="text-gray-600">Total Amount</div>
                     <div className="font-semibold text-gray-800">
                       {formatCurrency(totalAmount)}
                     </div>
@@ -518,16 +697,19 @@ const RecentOrders = ({ orders = [], onStatusChange }) => {
             <div className="text-center">
               <FaReceipt className="mx-auto text-gray-400 text-2xl mb-2" />
               <p className="text-gray-500 text-sm">
-                {searchQuery
-                  ? "No orders found matching your search"
+                {searchQuery || isDateFilterActive
+                  ? "No orders found matching your filters"
                   : "No orders available"}
               </p>
-              {searchQuery && (
+              {(searchQuery || isDateFilterActive) && (
                 <button
-                  onClick={() => setSearchQuery("")}
+                  onClick={() => {
+                    setSearchQuery("");
+                    clearDateFilter();
+                  }}
                   className="text-blue-600 text-xs mt-1 hover:underline"
                 >
-                  Clear search
+                  Clear all filters
                 </button>
               )}
             </div>

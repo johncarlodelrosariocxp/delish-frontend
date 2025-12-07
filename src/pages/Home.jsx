@@ -1,6 +1,9 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
+import { useSelector } from "react-redux";
 import BottomNav from "../components/shared/BottomNav";
 import Greetings from "../components/home/Greetings";
+import RecentOrders from "../components/home/RecentOrders";
+import Metrics from "../components/dashboard/Metrics";
 import {
   FaChartLine,
   FaShoppingCart,
@@ -15,160 +18,8 @@ import {
 } from "react-icons/fa";
 import { MdDoneAll, MdTrendingUp, MdInventory } from "react-icons/md";
 import { TbReportAnalytics } from "react-icons/tb";
-import RecentOrders from "../components/home/RecentOrders";
 import { getOrders, updateOrderStatus, getAdminStats } from "../https";
-import { useSelector } from "react-redux";
-import Metrics from "../components/dashboard/Metrics";
-
-// Simple MiniCard component since it doesn't exist in the shared folder
-const MiniCard = ({
-  title,
-  icon,
-  number,
-  footerNum,
-  footerText,
-  currency,
-  loading = false,
-  variant = "default",
-  period,
-}) => {
-  // Format number
-  const formatNumber = (num) => {
-    if (loading) return currency ? "₱---" : "---";
-
-    if (num === null || num === undefined || num === "") {
-      return currency ? "₱0.00" : "0";
-    }
-
-    // Check if the input is a string that shouldn't be formatted as a number
-    if (typeof num === "string" && isNaN(Number(num))) {
-      return num; // Return string as-is (like "N/A")
-    }
-
-    const numericValue = Number(num);
-
-    if (!isFinite(numericValue)) {
-      return currency ? "₱0.00" : "0";
-    }
-
-    if (currency) {
-      return `₱${numericValue.toLocaleString("en-PH", {
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2,
-      })}`;
-    }
-
-    return Number.isInteger(numericValue)
-      ? numericValue.toLocaleString("en-PH")
-      : numericValue.toLocaleString("en-PH", {
-          minimumFractionDigits: 2,
-          maximumFractionDigits: 2,
-        });
-  };
-
-  // Get icon component
-  const getIconComponent = () => {
-    if (typeof icon === "string") {
-      const iconMap = {
-        sales: FaDollarSign,
-        revenue: FaDollarSign,
-        earnings: FaDollarSign,
-        orders: FaShoppingCart,
-        customers: FaUsers,
-        completed: FaCheckCircle,
-        progress: FaSpinner,
-        products: FaBox,
-        inventory: FaBox,
-        average: FaChartLine,
-        default: FaChartLine,
-      };
-
-      const IconComponent = iconMap[icon.toLowerCase()] || iconMap.default;
-      return <IconComponent className="text-lg" />;
-    }
-
-    return icon || <FaChartLine className="text-lg" />;
-  };
-
-  // Get color scheme based on variant
-  const getColorScheme = () => {
-    const schemes = {
-      primary: { iconBg: "bg-blue-500", text: "text-blue-600" },
-      success: { iconBg: "bg-green-500", text: "text-green-600" },
-      warning: { iconBg: "bg-yellow-500", text: "text-yellow-600" },
-      info: { iconBg: "bg-cyan-500", text: "text-cyan-600" },
-      danger: { iconBg: "bg-red-500", text: "text-red-600" },
-      default: { iconBg: "bg-gray-500", text: "text-gray-600" },
-    };
-
-    return schemes[variant] || schemes.default;
-  };
-
-  const colorScheme = getColorScheme();
-  const IconComponent = getIconComponent();
-  const formattedNumber = formatNumber(number);
-
-  // Format footer percentage
-  const formatFooter = () => {
-    if (loading || footerNum === undefined || footerNum === null) {
-      return { text: "---", color: "text-gray-400" };
-    }
-
-    const num = Number(footerNum);
-    if (!isFinite(num)) return { text: "0%", color: "text-gray-400" };
-
-    const absNum = Math.abs(num);
-    const formatted = absNum.toFixed(1);
-
-    if (num > 0) return { text: `+${formatted}%`, color: "text-green-600" };
-    if (num < 0) return { text: `-${formatted}%`, color: "text-red-500" };
-    return { text: "0%", color: "text-gray-400" };
-  };
-
-  const footerDisplay = formatFooter();
-
-  return (
-    <div className="bg-white/80 backdrop-blur-sm text-gray-900 py-4 px-5 rounded-xl w-full shadow-sm hover:shadow-md transition-all duration-200 border border-gray-200/50 hover:scale-[1.02]">
-      <div className="flex items-start justify-between">
-        <div className="flex-1 min-w-0">
-          <h1 className="text-sm font-semibold tracking-wide text-gray-700 line-clamp-1">
-            {title}
-          </h1>
-          {period && (
-            <p className="text-xs text-gray-500 mt-1 capitalize">{period}</p>
-          )}
-        </div>
-        <div
-          className={`${colorScheme.iconBg} text-white p-3 rounded-lg transition-all duration-200 flex items-center justify-center min-w-[2.5rem] shadow-sm ml-2 flex-shrink-0`}
-        >
-          {IconComponent}
-        </div>
-      </div>
-
-      <div className="mt-4">
-        <h1
-          className={`text-2xl font-bold text-gray-900 break-words ${
-            loading ? "animate-pulse bg-gray-200 rounded h-8 w-24" : ""
-          }`}
-        >
-          {formattedNumber}
-        </h1>
-        <div className="text-sm mt-2 flex items-center gap-1 flex-wrap">
-          <span
-            className={`font-medium ${footerDisplay.color} whitespace-nowrap ${
-              loading ? "animate-pulse bg-gray-200 rounded h-4 w-12" : ""
-            }`}
-          >
-            {footerDisplay.text}
-          </span>
-          <span className="text-gray-500 text-xs whitespace-nowrap">
-            {footerText || "vs previous period"}
-          </span>
-        </div>
-      </div>
-    </div>
-  );
-};
+import MiniCard from "../components/home/MiniCard";
 
 const Home = () => {
   const [orders, setOrders] = useState([]);
@@ -190,7 +41,7 @@ const Home = () => {
     completed: 0,
   });
 
-  const [filterRange, setFilterRange] = useState("all");
+  const [filterRange, setFilterRange] = useState("today");
   const [activeTab, setActiveTab] = useState("overview");
 
   const user = useSelector((state) => state.user);
@@ -229,7 +80,52 @@ const Home = () => {
           ordersData = ordersRes.orders;
         }
 
+        // Ensure each order has a valid createdAt date and parse it
+        ordersData = ordersData
+          .map((order) => {
+            // Try to find a valid date field
+            const dateString =
+              order.createdAt ||
+              order.orderDate ||
+              order.date ||
+              order.created_at ||
+              order.order_date ||
+              order.createdDate ||
+              order.timestamp;
+
+            // Parse the date
+            let parsedDate = new Date();
+            if (dateString) {
+              parsedDate = new Date(dateString);
+              // If date is invalid, use current date
+              if (isNaN(parsedDate.getTime())) {
+                console.warn(
+                  "Invalid date found, using current date:",
+                  dateString
+                );
+                parsedDate = new Date();
+              }
+            }
+
+            return {
+              ...order,
+              createdAt: parsedDate.toISOString(),
+              parsedDate: parsedDate, // Store parsed date for easier filtering
+            };
+          })
+          .filter((order) => order && order.parsedDate); // Filter out invalid orders
+
         console.log("📦 Processed orders data:", ordersData);
+        if (ordersData.length > 0) {
+          const dates = ordersData.map((o) => o.parsedDate);
+          const earliest = new Date(Math.min(...dates.map((d) => d.getTime())));
+          const latest = new Date(Math.max(...dates.map((d) => d.getTime())));
+          console.log("📅 Date range in orders:", {
+            earliest: earliest.toLocaleDateString(),
+            latest: latest.toLocaleDateString(),
+            count: ordersData.length,
+          });
+        }
       } catch (orderError) {
         console.error("❌ Failed to fetch orders:", orderError);
         ordersData = [];
@@ -260,144 +156,152 @@ const Home = () => {
     }
   };
 
+  const getStartAndEndDates = (range, referenceDate = new Date()) => {
+    const ref = new Date(referenceDate);
+    ref.setHours(0, 0, 0, 0);
+
+    let startDate, endDate;
+
+    switch (range) {
+      case "today":
+        startDate = new Date(ref);
+        endDate = new Date(ref);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      case "yesterday":
+        startDate = new Date(ref);
+        startDate.setDate(ref.getDate() - 1);
+        endDate = new Date(startDate);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      case "week":
+        startDate = new Date(ref);
+        startDate.setDate(ref.getDate() - ref.getDay()); // Start of week (Sunday)
+        endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      case "lastWeek":
+        startDate = new Date(ref);
+        startDate.setDate(ref.getDate() - ref.getDay() - 7);
+        endDate = new Date(startDate);
+        endDate.setDate(startDate.getDate() + 6);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      case "month":
+        startDate = new Date(ref.getFullYear(), ref.getMonth(), 1);
+        endDate = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      case "lastMonth":
+        startDate = new Date(ref.getFullYear(), ref.getMonth() - 1, 1);
+        endDate = new Date(ref.getFullYear(), ref.getMonth(), 0);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      case "year":
+        startDate = new Date(ref.getFullYear(), 0, 1);
+        endDate = new Date(ref.getFullYear(), 11, 31);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      case "lastYear":
+        startDate = new Date(ref.getFullYear() - 1, 0, 1);
+        endDate = new Date(ref.getFullYear() - 1, 11, 31);
+        endDate.setHours(23, 59, 59, 999);
+        break;
+
+      case "all":
+        startDate = null;
+        endDate = null;
+        break;
+
+      default:
+        startDate = new Date(ref);
+        endDate = new Date(ref);
+        endDate.setHours(23, 59, 59, 999);
+    }
+
+    console.log(`📅 ${range}:`, {
+      startDate: startDate ? startDate.toLocaleDateString() : "All",
+      endDate: endDate ? endDate.toLocaleDateString() : "All",
+    });
+    return { startDate, endDate };
+  };
+
   const filterByRange = (data, range, referenceDate = new Date()) => {
     if (!Array.isArray(data) || data.length === 0) {
       return [];
     }
 
-    const ref = new Date(referenceDate);
-    ref.setHours(0, 0, 0, 0);
-
-    // If "all" is selected, return all data
     if (range === "all") {
       return data;
     }
 
+    const { startDate, endDate } = getStartAndEndDates(range, referenceDate);
+
     return data.filter((order) => {
-      if (!order) return false;
+      if (!order || !order.parsedDate) {
+        console.log("Order missing parsedDate:", order);
+        return false;
+      }
 
-      const orderDate = new Date(
-        order.createdAt || order.orderDate || order.date || Date.now()
-      );
-      if (isNaN(orderDate.getTime())) return false;
+      try {
+        const orderDate = order.parsedDate;
+        const isInRange = orderDate >= startDate && orderDate <= endDate;
 
-      const normalizedOrderDate = new Date(orderDate);
-      normalizedOrderDate.setHours(0, 0, 0, 0);
-
-      switch (range) {
-        case "today":
-          return normalizedOrderDate.getTime() === ref.getTime();
-
-        case "yesterday": {
-          const yesterday = new Date(ref);
-          yesterday.setDate(ref.getDate() - 1);
-          return normalizedOrderDate.getTime() === yesterday.getTime();
+        // Debug logging for specific ranges
+        if (range === "today" && isInRange) {
+          console.log("Today order found:", {
+            orderDate: orderDate.toLocaleDateString(),
+            startDate: startDate.toLocaleDateString(),
+            endDate: endDate.toLocaleDateString(),
+            orderId: order._id || order.id,
+          });
         }
 
-        case "week": {
-          const startOfWeek = new Date(ref);
-          startOfWeek.setDate(ref.getDate() - ref.getDay());
-          const endOfWeek = new Date(startOfWeek);
-          endOfWeek.setDate(startOfWeek.getDate() + 6);
-          endOfWeek.setHours(23, 59, 59, 999);
-          return orderDate >= startOfWeek && orderDate <= endOfWeek;
-        }
-
-        case "lastWeek": {
-          const startOfLastWeek = new Date(ref);
-          startOfLastWeek.setDate(ref.getDate() - ref.getDay() - 7);
-          const endOfLastWeek = new Date(startOfLastWeek);
-          endOfLastWeek.setDate(startOfLastWeek.getDate() + 6);
-          endOfLastWeek.setHours(23, 59, 59, 999);
-          return orderDate >= startOfLastWeek && orderDate <= endOfLastWeek;
-        }
-
-        case "month": {
-          const startOfMonth = new Date(ref.getFullYear(), ref.getMonth(), 1);
-          const endOfMonth = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
-          endOfMonth.setHours(23, 59, 59, 999);
-          return orderDate >= startOfMonth && orderDate <= endOfMonth;
-        }
-
-        case "lastMonth": {
-          const startOfLastMonth = new Date(
-            ref.getFullYear(),
-            ref.getMonth() - 1,
-            1
-          );
-          const endOfLastMonth = new Date(ref.getFullYear(), ref.getMonth(), 0);
-          endOfLastMonth.setHours(23, 59, 59, 999);
-          return orderDate >= startOfLastMonth && orderDate <= endOfLastMonth;
-        }
-
-        case "year": {
-          const startOfYear = new Date(ref.getFullYear(), 0, 1);
-          const endOfYear = new Date(ref.getFullYear(), 11, 31);
-          endOfYear.setHours(23, 59, 59, 999);
-          return orderDate >= startOfYear && orderDate <= endOfYear;
-        }
-
-        case "lastYear": {
-          const startOfLastYear = new Date(ref.getFullYear() - 1, 0, 1);
-          const endOfLastYear = new Date(ref.getFullYear() - 1, 11, 31);
-          endOfLastYear.setHours(23, 59, 59, 999);
-          return orderDate >= startOfLastYear && orderDate <= endOfLastYear;
-        }
-
-        default:
-          return true;
+        return isInRange;
+      } catch (e) {
+        console.error("Error filtering order date:", e, order);
+        return false;
       }
     });
   };
 
-  const getPreviousPeriodRange = (range) => {
-    switch (range) {
-      case "all":
-        return "all";
-      case "today":
-        return "yesterday";
-      case "yesterday":
-        return "today";
-      case "week":
-        return "lastWeek";
-      case "lastWeek":
-        return "week";
-      case "month":
-        return "lastMonth";
-      case "lastMonth":
-        return "month";
-      case "year":
-        return "lastYear";
-      case "lastYear":
-        return "year";
-      default:
-        return range;
-    }
+  const getComparisonLabel = (range) => {
+    const comparisonMap = {
+      today: "vs yesterday",
+      yesterday: "vs day before",
+      week: "vs last week",
+      lastWeek: "vs two weeks ago",
+      month: "vs last month",
+      lastMonth: "vs two months ago",
+      year: "vs last year",
+      lastYear: "vs two years ago",
+      all: "vs previous period",
+    };
+
+    return comparisonMap[range] || "vs previous period";
   };
 
-  const getComparisonLabel = (range) => {
-    switch (range) {
-      case "all":
-        return "previous period";
-      case "today":
-        return "yesterday";
-      case "yesterday":
-        return "day before";
-      case "week":
-        return "last week";
-      case "lastWeek":
-        return "two weeks ago";
-      case "month":
-        return "last month";
-      case "lastMonth":
-        return "two months ago";
-      case "year":
-        return "last year";
-      case "lastYear":
-        return "two years ago";
-      default:
-        return "previous period";
+  const getPreviousPeriodDates = (range, referenceDate = new Date()) => {
+    const { startDate: currentStart, endDate: currentEnd } =
+      getStartAndEndDates(range, referenceDate);
+
+    if (!currentStart || !currentEnd || range === "all") {
+      return { startDate: null, endDate: null };
     }
+
+    const duration = currentEnd - currentStart;
+    const prevEnd = new Date(currentStart.getTime() - 1);
+    const prevStart = new Date(prevEnd.getTime() - duration);
+
+    return { startDate: prevStart, endDate: prevEnd };
   };
 
   const applyFilter = (data, range) => {
@@ -411,11 +315,40 @@ const Home = () => {
 
     const now = new Date();
     const filtered = filterByRange(data, range, now);
-    const previousRange = getPreviousPeriodRange(range);
-    const previous = filterByRange(data, previousRange, now);
+
+    // Get previous period data
+    let previous = [];
+    if (range !== "all") {
+      const { startDate: prevStart, endDate: prevEnd } = getPreviousPeriodDates(
+        range,
+        now
+      );
+
+      if (prevStart && prevEnd) {
+        previous = data.filter((order) => {
+          if (!order || !order.parsedDate) return false;
+          try {
+            return order.parsedDate >= prevStart && order.parsedDate <= prevEnd;
+          } catch (e) {
+            return false;
+          }
+        });
+      }
+    }
 
     console.log(`📊 Current ${range} orders:`, filtered.length);
-    console.log(`📊 Previous ${previousRange} orders:`, previous.length);
+    console.log(`📊 Previous period orders:`, previous.length);
+    if (filtered.length > 0) {
+      console.log(
+        "📊 Sample filtered orders:",
+        filtered.slice(0, 3).map((o) => ({
+          id: o._id || o.id,
+          date: o.parsedDate.toLocaleDateString(),
+          status: o.orderStatus,
+          total: o?.bills?.totalWithTax || o?.totalAmount,
+        }))
+      );
+    }
 
     setFilteredOrders(filtered || []);
     setPreviousFilteredOrders(previous || []);
@@ -462,19 +395,19 @@ const Home = () => {
 
     const inProgress = current.filter((o) => {
       if (!o) return false;
-      const status = o.orderStatus?.toLowerCase();
+      const status = String(o.orderStatus || "").toLowerCase();
       return status === "in progress" || status === "processing";
     }).length;
 
     const prevInProgress = previous.filter((o) => {
       if (!o) return false;
-      const status = o.orderStatus?.toLowerCase();
+      const status = String(o.orderStatus || "").toLowerCase();
       return status === "in progress" || status === "processing";
     }).length;
 
     const completed = current.filter((o) => {
       if (!o) return false;
-      const status = o.orderStatus?.toLowerCase();
+      const status = String(o.orderStatus || "").toLowerCase();
       return (
         status === "completed" ||
         status === "delivered" ||
@@ -484,7 +417,7 @@ const Home = () => {
 
     const prevCompleted = previous.filter((o) => {
       if (!o) return false;
-      const status = o.orderStatus?.toLowerCase();
+      const status = String(o.orderStatus || "").toLowerCase();
       return (
         status === "completed" ||
         status === "delivered" ||
@@ -501,6 +434,7 @@ const Home = () => {
       prevEarnings,
       prevInProgress,
       prevCompleted,
+      range,
     });
 
     setTotalOrders(total);
@@ -543,7 +477,7 @@ const Home = () => {
     })}`;
   };
 
-  const calculateDynamicAdminStats = () => {
+  const calculateDynamicAdminStats = useMemo(() => {
     if (!isAdmin || !orders.length) return {};
 
     // Ensure orders is an array
@@ -569,7 +503,7 @@ const Home = () => {
     const averageOrderValue =
       allOrders.length > 0 ? totalRevenue / allOrders.length : 0;
 
-    // Top Selling Item - SAFE VERSION
+    // Top Selling Item
     const itemCounts = {};
     allOrders.forEach((order) => {
       if (order && order.items && Array.isArray(order.items)) {
@@ -585,36 +519,30 @@ const Home = () => {
       }
     });
 
-    // SAFE reduce for topSellingItem
     let topSellingItem = "N/A";
-    const itemKeys = Object.keys(itemCounts);
-    if (itemKeys.length > 0) {
-      try {
-        topSellingItem = itemKeys.reduce((a, b) => {
-          const countA = itemCounts[a] || 0;
-          const countB = itemCounts[b] || 0;
-          return countA > countB ? a : b;
-        });
-      } catch (error) {
-        console.error("Error finding top selling item:", error);
-        topSellingItem = "N/A";
+    let topSellingCount = 0;
+    Object.entries(itemCounts).forEach(([itemName, count]) => {
+      if (count > topSellingCount) {
+        topSellingCount = count;
+        topSellingItem = itemName;
       }
-    }
+    });
 
-    // Monthly Revenue
+    // Monthly Revenue (current month)
     const currentMonth = new Date().getMonth();
     const currentYear = new Date().getFullYear();
     const monthlyRevenue = allOrders.reduce((sum, o) => {
       if (!o) return sum;
 
       try {
-        const orderDate = new Date(o.createdAt || o.orderDate || Date.now());
-        if (
-          orderDate.getMonth() === currentMonth &&
-          orderDate.getFullYear() === currentYear
-        ) {
-          const amount = o?.bills?.totalWithTax || o?.totalAmount || 0;
-          return sum + (Number(amount) || 0);
+        if (o.parsedDate) {
+          if (
+            o.parsedDate.getMonth() === currentMonth &&
+            o.parsedDate.getFullYear() === currentYear
+          ) {
+            const amount = o?.bills?.totalWithTax || o?.totalAmount || 0;
+            return sum + (Number(amount) || 0);
+          }
         }
       } catch (e) {
         // Skip invalid dates
@@ -651,16 +579,14 @@ const Home = () => {
       }
     });
 
-    // Daily Average
+    // Daily Average (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const recentOrders = allOrders.filter((o) => {
-      if (!o) return false;
-
+      if (!o || !o.parsedDate) return false;
       try {
-        const orderDate = new Date(o.createdAt || o.orderDate || Date.now());
-        return orderDate >= thirtyDaysAgo;
+        return o.parsedDate >= thirtyDaysAgo;
       } catch (e) {
         return false;
       }
@@ -694,12 +620,10 @@ const Home = () => {
       totalTransactions: allOrders.length,
       highestOrder,
       satisfactionRate: completionRate > 80 ? "94.5%" : "85.2%",
-      weeklyGrowth: Math.round(Math.random() * 20 + 5) + "%",
-      customerGrowth: Math.round(Math.random() * 15 + 3) + "%",
+      weeklyGrowth: Math.round(Math.random() * 20 + 5),
+      customerGrowth: Math.round(Math.random() * 15 + 3),
     };
-  };
-
-  const dynamicAdminStats = calculateDynamicAdminStats();
+  }, [orders, isAdmin]);
 
   // Admin Stats Overview using MiniCard
   const AdminStatsOverview = () => {
@@ -709,38 +633,33 @@ const Home = () => {
       <div className="mt-6 grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MiniCard
           title="Total Revenue"
-          icon="sales"
-          number={dynamicAdminStats.totalRevenue || 0}
+          icon={<FaDollarSign />}
+          number={calculateDynamicAdminStats.totalRevenue || 0}
           currency
           footerNum={footerMetrics.earnings}
-          footerText="vs previous period"
+          footerText={getComparisonLabel(filterRange)}
           period={filterRange}
         />
         <MiniCard
           title="Total Customers"
-          icon="customers"
-          number={dynamicAdminStats.totalCustomers || 0}
-          footerNum={
-            dynamicAdminStats.customerGrowth
-              ? parseInt(dynamicAdminStats.customerGrowth)
-              : 0
-          }
+          icon={<FaUsers />}
+          number={calculateDynamicAdminStats.totalCustomers || 0}
+          footerNum={calculateDynamicAdminStats.customerGrowth || 0}
           footerText="customer growth"
           period={filterRange}
         />
         <MiniCard
           title="Avg Order Value"
-          icon="average"
-          number={dynamicAdminStats.averageOrderValue || 0}
+          icon={<FaChartLine />}
+          number={calculateDynamicAdminStats.averageOrderValue || 0}
           currency
           footerText="per transaction"
           period={filterRange}
         />
         <MiniCard
           title="Top Product"
-          icon="products"
-          number={dynamicAdminStats.topSellingItem || "N/A"}
-          variant="warning"
+          icon={<FaBox />}
+          number={calculateDynamicAdminStats.topSellingItem || "N/A"}
           footerText="most popular"
           period={filterRange}
         />
@@ -759,37 +678,33 @@ const Home = () => {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
           <MiniCard
             title="Monthly Revenue"
-            icon="sales"
-            number={dynamicAdminStats.monthlyRevenue || 0}
+            icon={<FaDollarSign />}
+            number={calculateDynamicAdminStats.monthlyRevenue || 0}
             currency
             footerText="this month"
             period={filterRange}
-            variant="success"
           />
           <MiniCard
             title="Order Completion"
-            icon="completed"
-            number={`${dynamicAdminStats.completionRate || 0}%`}
+            icon={<FaCheckCircle />}
+            number={`${calculateDynamicAdminStats.completionRate || 0}%`}
             footerText="success rate"
             period={filterRange}
-            variant="primary"
           />
           <MiniCard
             title="Inventory Items"
-            icon="inventory"
-            number={dynamicAdminStats.totalProducts || 0}
+            icon={<FaBox />}
+            number={calculateDynamicAdminStats.totalProducts || 0}
             footerText="active products"
             period={filterRange}
-            variant="info"
           />
           <MiniCard
             title="Daily Average"
-            icon="average"
-            number={dynamicAdminStats.dailyAverage || 0}
+            icon={<FaChartLine />}
+            number={calculateDynamicAdminStats.dailyAverage || 0}
             currency
             footerText="per day revenue"
             period={filterRange}
-            variant="warning"
           />
         </div>
 
@@ -805,13 +720,15 @@ const Home = () => {
                   Total Transactions
                 </span>
                 <span className="font-semibold">
-                  {(dynamicAdminStats.totalTransactions || 0).toLocaleString()}
+                  {(
+                    calculateDynamicAdminStats.totalTransactions || 0
+                  ).toLocaleString()}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Highest Order</span>
                 <span className="font-semibold">
-                  {formatCurrency(dynamicAdminStats.highestOrder || 0)}
+                  {formatCurrency(calculateDynamicAdminStats.highestOrder || 0)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
@@ -819,7 +736,7 @@ const Home = () => {
                   Customer Satisfaction
                 </span>
                 <span className="font-semibold text-green-600">
-                  {dynamicAdminStats.satisfactionRate}
+                  {calculateDynamicAdminStats.satisfactionRate}
                 </span>
               </div>
             </div>
@@ -834,20 +751,22 @@ const Home = () => {
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Weekly Growth</span>
                 <span className="font-semibold text-green-600">
-                  {dynamicAdminStats.weeklyGrowth}
+                  {calculateDynamicAdminStats.weeklyGrowth}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Customer Growth</span>
                 <span className="font-semibold text-green-600">
-                  {dynamicAdminStats.customerGrowth}
+                  {calculateDynamicAdminStats.customerGrowth}%
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Monthly Target</span>
                 <span className="font-semibold">
                   {Math.round(
-                    (dynamicAdminStats.monthlyRevenue / 100000) * 100
+                    ((calculateDynamicAdminStats.monthlyRevenue || 0) /
+                      100000) *
+                      100
                   )}
                   % achieved
                 </span>
@@ -865,27 +784,31 @@ const Home = () => {
     const records = [
       {
         label: "Highest Single Order",
-        value: formatCurrency(dynamicAdminStats.highestOrder || 0),
+        value: formatCurrency(calculateDynamicAdminStats.highestOrder || 0),
       },
       {
         label: "Total Customers",
-        value: (dynamicAdminStats.totalCustomers || 0).toLocaleString(),
+        value: (
+          calculateDynamicAdminStats.totalCustomers || 0
+        ).toLocaleString(),
       },
       {
         label: "Total Transactions",
-        value: (dynamicAdminStats.totalTransactions || 0).toLocaleString(),
+        value: (
+          calculateDynamicAdminStats.totalTransactions || 0
+        ).toLocaleString(),
       },
       {
         label: "Completion Rate",
-        value: `${dynamicAdminStats.completionRate || 0}%`,
+        value: `${calculateDynamicAdminStats.completionRate || 0}%`,
       },
       {
         label: "Unique Products",
-        value: (dynamicAdminStats.totalProducts || 0).toLocaleString(),
+        value: (calculateDynamicAdminStats.totalProducts || 0).toLocaleString(),
       },
       {
         label: "Customer Satisfaction",
-        value: dynamicAdminStats.satisfactionRate,
+        value: calculateDynamicAdminStats.satisfactionRate,
       },
     ];
 
@@ -1037,38 +960,40 @@ const Home = () => {
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
             <MiniCard
               title="Total Orders"
-              icon="orders"
+              icon={<FaShoppingCart />}
               number={totalOrders}
               footerNum={footerMetrics.orders}
-              footerText={`${getComparisonLabel(filterRange)}`}
+              footerText={getComparisonLabel(filterRange)}
               period={filterRange}
+              loading={loading}
             />
             <MiniCard
               title="Total Earnings"
-              icon="earnings"
+              icon={<FaDollarSign />}
               number={totalEarnings}
               currency
               footerNum={footerMetrics.earnings}
-              footerText={`${getComparisonLabel(filterRange)}`}
+              footerText={getComparisonLabel(filterRange)}
               period={filterRange}
+              loading={loading}
             />
             <MiniCard
               title="In Progress"
-              icon="progress"
+              icon={<FaSpinner />}
               number={inProgressCount}
-              variant="warning"
               footerNum={footerMetrics.inProgress}
-              footerText={`${getComparisonLabel(filterRange)}`}
+              footerText={getComparisonLabel(filterRange)}
               period={filterRange}
+              loading={loading}
             />
             <MiniCard
               title="Completed"
-              icon="completed"
+              icon={<FaCheckCircle />}
               number={completedCount}
-              variant="success"
               footerNum={footerMetrics.completed}
-              footerText={`${getComparisonLabel(filterRange)}`}
+              footerText={getComparisonLabel(filterRange)}
               period={filterRange}
+              loading={loading}
             />
           </div>
         )}

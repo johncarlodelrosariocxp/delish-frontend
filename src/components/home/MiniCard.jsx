@@ -143,7 +143,7 @@ const MiniCard = ({
     if (!period) return "";
 
     const periodMap = {
-      day: "Today",
+      today: "Today",
       yesterday: "Yesterday",
       week: "This Week",
       lastWeek: "Last Week",
@@ -151,7 +151,7 @@ const MiniCard = ({
       lastMonth: "Last Month",
       year: "This Year",
       lastYear: "Last Year",
-      all: "All Time", // Added "all" option
+      all: "All Time",
     };
 
     return periodMap[period] || period;
@@ -162,7 +162,7 @@ const MiniCard = ({
     if (!comparisonPeriod) return "vs previous period";
 
     const comparisonMap = {
-      day: "vs yesterday",
+      today: "vs yesterday",
       yesterday: "vs day before",
       week: "vs last week",
       lastWeek: "vs two weeks ago",
@@ -170,13 +170,13 @@ const MiniCard = ({
       lastMonth: "vs two months ago",
       year: "vs last year",
       lastYear: "vs two years ago",
-      all: "vs previous period", // Added "all" option
+      all: "vs previous period",
     };
 
     return comparisonMap[comparisonPeriod] || "vs previous period";
   };
 
-  // FIXED: Safe icon rendering - handle promises and invalid values
+  // Safe icon rendering
   const renderIcon = () => {
     try {
       // If icon is a Promise, return loading state
@@ -205,7 +205,7 @@ const MiniCard = ({
 
   // Validate props and provide defaults
   const safeTitle = title || "Metric";
-  const safeIcon = renderIcon(); // Use the safe icon renderer
+  const safeIcon = renderIcon();
   const safeNumber = number ?? 0;
   const safeFooterText = footerText || getComparisonText();
   const safePeriod = formatPeriod(period);

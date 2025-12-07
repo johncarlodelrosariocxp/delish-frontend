@@ -29,6 +29,13 @@ const orderSlice = createSlice({
   name: "order",
   initialState,
   reducers: {
+    // ✅ ADDED: clearCurrentOrder action
+    clearCurrentOrder: (state) => {
+      // Simply clear the active order ID
+      state.activeOrderId = null;
+      console.log("Current order cleared");
+    },
+
     createNewOrder: (state) => {
       const newOrderNumber =
         state.orders.length + state.completedOrders.length + 1;
@@ -198,9 +205,6 @@ const orderSlice = createSlice({
       }
     },
 
-    // ... (keep all other reducers the same, just add the new ones above)
-
-    // The rest of your reducers remain the same...
     addMultipleItemsToOrder: (state, action) => {
       const { orderId, items } = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
@@ -379,11 +383,12 @@ const orderSlice = createSlice({
 });
 
 export const {
+  clearCurrentOrder, // ✅ ADDED to exports
   createNewOrder,
   switchOrder,
   closeOrder,
   processOrder,
-  completeOrder, // Now accepts orderData
+  completeOrder,
   showInvoice,
   hideInvoice,
   clearRecentCompletedOrder,

@@ -37,43 +37,80 @@ const RecentOrders = () => {
     placeholderData: keepPreviousData,
   });
 
+  // Helper function to get date ranges with UTC handling
+  const getDateRange = (filter) => {
+    const now = new Date();
+
+    // Create dates with proper UTC handling to avoid timezone issues
+    const getUTCDate = (date) => {
+      return new Date(
+        Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
+      );
+    };
+
+    switch (filter) {
+      case "today": {
+        const start = new Date(now);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(now);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
+      }
+
+      case "week": {
+        const start = new Date(now);
+        start.setDate(now.getDate() - now.getDay()); // Start of week (Sunday)
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(start);
+        end.setDate(start.getDate() + 6); // End of week (Saturday)
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
+      }
+
+      case "month": {
+        const start = new Date(now.getFullYear(), now.getMonth(), 1);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
+      }
+
+      case "year": {
+        const start = new Date(now.getFullYear(), 0, 1);
+        start.setHours(0, 0, 0, 0);
+        const end = new Date(now.getFullYear(), 11, 31);
+        end.setHours(23, 59, 59, 999);
+        return { start, end };
+      }
+
+      default:
+        return null; // "all" - no date range
+    }
+  };
+
   // Filter orders based on time filter
   const filterOrdersByTime = (orders) => {
     if (!orders) return [];
 
-    const now = new Date();
-    const filteredOrders = orders.filter((order) => {
+    if (timeFilter === "all") {
+      return orders;
+    }
+
+    const dateRange = getDateRange(timeFilter);
+    if (!dateRange) return orders;
+
+    return orders.filter((order) => {
+      // Parse the order date
       const orderDate = new Date(order.orderDate);
 
-      switch (timeFilter) {
-        case "today": {
-          const today = new Date();
-          return orderDate.toDateString() === today.toDateString();
-        }
-
-        case "week": {
-          const startOfWeek = new Date(now);
-          startOfWeek.setDate(now.getDate() - now.getDay());
-          startOfWeek.setHours(0, 0, 0, 0);
-          return orderDate >= startOfWeek;
-        }
-
-        case "month": {
-          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-          return orderDate >= startOfMonth;
-        }
-
-        case "year": {
-          const startOfYear = new Date(now.getFullYear(), 0, 1);
-          return orderDate >= startOfYear;
-        }
-
-        default:
-          return true; // "all" - return all orders
+      // Make sure we're comparing dates correctly by checking if orderDate is valid
+      if (isNaN(orderDate.getTime())) {
+        return false; // Invalid date, exclude from results
       }
-    });
 
-    return filteredOrders;
+      // Compare dates (including time)
+      return orderDate >= dateRange.start && orderDate <= dateRange.end;
+    });
   };
 
   const getStatusStyles = (status) => {
@@ -88,6 +125,36 @@ const RecentOrders = () => {
         return "bg-gray-100 text-gray-800 border-gray-200";
     }
   };
+
+  // Debug function to check filtering
+  const logFilteredData = () => {
+    if (resData?.data?.data) {
+      const dateRange = getDateRange(timeFilter);
+      console.log("Time Filter:", timeFilter);
+      console.log("Date Range:", dateRange);
+      console.log("Total Orders:", resData.data.data.length);
+
+      const filtered = filterOrdersByTime(resData.data.data);
+      console.log("Filtered Orders:", filtered.length);
+
+      // Log some sample dates
+      if (filtered.length > 0) {
+        console.log(
+          "Sample order dates:",
+          filtered.slice(0, 3).map((order) => ({
+            orderId: order.orderId,
+            date: new Date(order.orderDate).toISOString(),
+            localDate: new Date(order.orderDate).toString(),
+          }))
+        );
+      }
+    }
+  };
+
+  // Call this in useEffect if you want to debug
+  // useEffect(() => {
+  //   logFilteredData();
+  // }, [timeFilter, resData]);
 
   if (isLoading) {
     return (
@@ -110,6 +177,24 @@ const RecentOrders = () => {
   const filteredOrders = filterOrdersByTime(allOrders);
   const totalOrders = filteredOrders.length;
 
+  // Get status counts for better filtering visibility
+  const statusCounts = filteredOrders.reduce(
+    (acc, order) => {
+      acc[order.orderStatus] = (acc[order.orderStatus] || 0) + 1;
+      return acc;
+    },
+    { "In Progress": 0, Ready: 0, Completed: 0 }
+  );
+
+  // Display current filter info for debugging (remove in production)
+  const getFilterDisplayText = () => {
+    const dateRange = getDateRange(timeFilter);
+    if (dateRange) {
+      return `Showing orders from ${dateRange.start.toLocaleDateString()} to ${dateRange.end.toLocaleDateString()}`;
+    }
+    return "Showing all orders";
+  };
+
   return (
     <div className="container mx-auto bg-gradient-to-br from-gray-100 to-gray-200 p-6 rounded-2xl shadow-2xl border border-gray-300">
       {/* Header */}
@@ -117,7 +202,7 @@ const RecentOrders = () => {
         <div>
           <h2 className="text-2xl font-bold text-gray-800">Recent Orders</h2>
           <p className="text-sm text-gray-600 mt-1">
-            Manage and track all customer orders
+            {getFilterDisplayText()} • {totalOrders} orders found
           </p>
         </div>
 
@@ -139,6 +224,35 @@ const RecentOrders = () => {
             <option value="month">This Month</option>
             <option value="year">This Year</option>
           </select>
+        </div>
+      </div>
+
+      {/* Rest of your component remains the same */}
+      {/* Status Summary */}
+      <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-3">
+        <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-yellow-700">In Progress</span>
+            <span className="font-bold text-yellow-800">
+              {statusCounts["In Progress"] || 0}
+            </span>
+          </div>
+        </div>
+        <div className="bg-blue-50 border border-blue-200 p-3 rounded-lg">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-blue-700">Ready</span>
+            <span className="font-bold text-blue-800">
+              {statusCounts["Ready"] || 0}
+            </span>
+          </div>
+        </div>
+        <div className="bg-green-50 border border-green-200 p-3 rounded-lg">
+          <div className="flex justify-between items-center">
+            <span className="text-sm text-green-700">Completed</span>
+            <span className="font-bold text-green-800">
+              {statusCounts["Completed"] || 0}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -197,7 +311,7 @@ const RecentOrders = () => {
                       No orders found
                     </p>
                     <p className="text-sm text-gray-500">
-                      No orders match the selected time period
+                      No orders match the selected time period: {timeFilter}
                     </p>
                   </div>
                 </td>
@@ -211,9 +325,10 @@ const RecentOrders = () => {
                   <td className="p-4">
                     <div className="font-mono text-sm font-semibold text-gray-700">
                       #
-                      {Math.floor(new Date(order.orderDate).getTime())
-                        .toString()
-                        .slice(-6)}
+                      {order.orderId?.slice(-6) ||
+                        Math.floor(new Date(order.orderDate).getTime())
+                          .toString()
+                          .slice(-6)}
                     </div>
                   </td>
                   <td className="p-4">
@@ -233,6 +348,7 @@ const RecentOrders = () => {
                           orderStatus: e.target.value,
                         })
                       }
+                      disabled={orderStatusUpdateMutation.isPending}
                     >
                       <option value="In Progress">In Progress</option>
                       <option value="Ready">Ready</option>
@@ -253,7 +369,13 @@ const RecentOrders = () => {
                     </div>
                   </td>
                   <td className="p-4">
-                    <div className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm font-medium inline-block">
+                    <div
+                      className={`px-3 py-1 rounded-full text-sm font-medium inline-block ${
+                        order.table?.tableNo
+                          ? "bg-blue-100 text-blue-700"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                    >
                       {order.table?.tableNo || "Takeaway"}
                     </div>
                   </td>
@@ -263,7 +385,13 @@ const RecentOrders = () => {
                     </div>
                   </td>
                   <td className="p-4 text-center">
-                    <div className="bg-gray-100 text-gray-700 px-3 py-1 rounded-full text-sm font-medium inline-block">
+                    <div
+                      className={`px-3 py-1 rounded-full text-sm font-medium inline-block ${
+                        order.paymentMethod === "Cash"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-purple-100 text-purple-700"
+                      }`}
+                    >
                       {order.paymentMethod || "Cash"}
                     </div>
                   </td>
