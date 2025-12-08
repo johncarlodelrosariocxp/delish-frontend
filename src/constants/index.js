@@ -1,16 +1,16 @@
 // 🍰 Cheesecake flavor options (shared across categories)
 export const cheesecakeFlavorOptions = [
-  { label: "Mangoes & Cream", price: 220 },
-  { label: "Ube Macapuno", price: 220 },
-  { label: "Strawberry", price: 220 },
-  { label: "Blueberry", price: 220 },
-  { label: "Queso de Bola", price: 220 },
-  { label: "New York", price: 220 },
-  { label: "Baileys", price: 220 },
-  { label: "Coffee Caramel", price: 220 },
-  { label: "Dark Chocolate", price: 220 },
-  { label: "Oreo", price: 220 },
-  { label: "Matcha Zebra", price: 220 },
+  { label: "Mangoes & Cream", price: 230 },
+  { label: "Ube Macapuno", price: 230 },
+  { label: "Strawberry", price: 230 },
+  { label: "Blueberry", price: 230 },
+  { label: "Queso de Bola", price: 230 },
+  { label: "New York", price: 230 },
+  { label: "Baileys", price: 230 },
+  { label: "Coffee Caramel", price: 230 },
+  { label: "Dark Chocolate", price: 230 },
+  { label: "Oreo", price: 230 },
+  { label: "Matcha Zebra", price: 230 },
 ];
 
 // Additional Keto Mini flavors (from image: Lemon, Queso de Bola, Dark Chocolate, New York, Coffee)
@@ -29,7 +29,7 @@ export const breakfastItems = [
     name: "Omelette",
     category: "Breakfast",
     variants: [
-      { label: "Regular", price: 119 },
+      { label: "Regular", price: 129 },
       { label: "With Brewed Coffee", price: 149 },
     ],
   },
@@ -319,13 +319,13 @@ export const pastryItems = [
     id: 1,
     name: "Egg Tart",
     category: "Pastries",
-    variants: [{ label: "Regular", price: 20 }],
+    variants: [{ label: "Regular", price: 70 }],
   },
   {
     id: 2,
     name: "Banana Bread",
     category: "Pastries",
-    variants: [{ label: "Regular", price: 20 }],
+    variants: [{ label: "Regular", price: 50 }],
   },
   {
     id: 3,

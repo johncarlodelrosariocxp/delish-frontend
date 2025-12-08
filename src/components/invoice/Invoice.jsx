@@ -1,4 +1,5 @@
-import React, { useRef, useState, useEffect } from "react";
+// src/components/invoice/Invoice.jsx
+import React, { useRef, useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 
 // --- Custom Icon Components ---
@@ -145,6 +146,29 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
   const [isPrinting, setIsPrinting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [autoConnectAttempted, setAutoConnectAttempted] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState("disconnected");
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [printerName, setPrinterName] = useState(null);
+  const [lastPrintAttempt, setLastPrintAttempt] = useState(null);
+  const [printQueue, setPrintQueue] = useState([]);
+  const [isProcessingQueue, setIsProcessingQueue] = useState(false);
+
+  // POS58D printer configuration
+  const PRINTER_CONFIG = {
+    TARGET_NAME: "POS58D",
+    ALTERNATIVE_NAMES: ["POS-58D", "POS58", "BlueTooth Printer", "58mm"],
+    SERVICE_UUIDS: [
+      "000018f0-0000-1000-8000-00805f9b34fb",
+      "e7810a71-73ae-499d-8c15-faa9aef0c3f2",
+      "0000ff00-0000-1000-8000-00805f9b34fb",
+      "00001101-0000-1000-8000-00805f9b34fb",
+    ],
+    WRITE_CHARACTERISTIC_UUIDS: [
+      "00002af1-0000-1000-8000-00805f9b34fb",
+      "bef8d6c9-9c21-4c9e-b632-bd58c1009f9f",
+      "0000ff02-0000-1000-8000-00805f9b34fb",
+    ],
+  };
 
   // Thermal printer ESC/POS commands
   const thermalCommands = {
@@ -165,117 +189,220 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     TEXT_DOUBLE_WIDTH: "\x1B\x21\x20", // Double width
     TEXT_DOUBLE_SIZE: "\x1B\x21\x30", // Double height & width
     DRAWER_KICK: "\x1B\x70\x00\x19\xFA", // Kick drawer (pin 2)
+    KEEP_ALIVE: "\x1B\x3F", // Keep-alive command
   };
 
-  // Initialize Bluetooth connection on component mount and keep it always connected
+  // Load saved printer connection
   useEffect(() => {
-    const initializeBluetooth = async () => {
-      if (!navigator.bluetooth || autoConnectAttempted) return;
+    const loadSavedPrinter = () => {
+      const savedPrinter = localStorage.getItem("pos58d_connection");
+      if (savedPrinter) {
+        try {
+          const { id, name, timestamp } = JSON.parse(savedPrinter);
+          setPrinterName(name);
+          console.log("📋 Loaded saved printer:", name);
 
-      try {
-        const savedDeviceId = localStorage.getItem("bluetoothPrinterId");
-        if (savedDeviceId) {
-          setIsConnecting(true);
-          setAutoConnectAttempted(true);
-          console.log("Auto-connecting to saved printer...");
+          // Check if saved within last 24 hours
+          const savedTime = new Date(timestamp);
+          const now = new Date();
+          const hoursDiff = (now - savedTime) / (1000 * 60 * 60);
 
-          // Try to reconnect to previously connected device
-          const devices = await navigator.bluetooth.getDevices();
-          let device = devices.find((d) => d.id === savedDeviceId);
-
-          if (!device) {
-            console.log(
-              "Saved device not found in device list, requesting new connection"
-            );
-            return; // Let user manually connect if device not found
+          if (hoursDiff < 24) {
+            // Attempt auto-connection
+            setTimeout(() => {
+              console.log("🔄 Attempting auto-connection to saved printer...");
+              autoConnectToPrinter();
+            }, 1000);
           }
-
-          // Check if device is already connected
-          if (!device.gatt?.connected) {
-            const server = await device.gatt.connect();
-            let writeCharacteristic = null;
-
-            // Search for writable characteristic
-            const services = [
-              "000018f0-0000-1000-8000-00805f9b34fb",
-              "00001101-0000-1000-8000-00805f9b34fb",
-            ];
-
-            for (const serviceUuid of services) {
-              try {
-                const service = await server.getPrimaryService(serviceUuid);
-                const characteristics = await service.getCharacteristics();
-                writeCharacteristic = characteristics.find(
-                  (char) =>
-                    char.properties.write ||
-                    char.properties.writeWithoutResponse
-                );
-                if (writeCharacteristic) break;
-              } catch (err) {
-                continue;
-              }
-            }
-
-            if (writeCharacteristic) {
-              setBluetoothDevice({ device, server, writeCharacteristic });
-              setIsConnected(true);
-              console.log("Auto-connected to printer:", device.name);
-
-              device.addEventListener("gattserverdisconnected", () => {
-                setIsConnected(false);
-                setBluetoothDevice(null);
-                console.log("Bluetooth printer disconnected");
-                alertUser("Printer disconnected. Please reconnect.", "warning");
-              });
-            }
-          } else {
-            // Device is already connected
-            setIsConnected(true);
-            console.log("Printer already connected");
-          }
+        } catch (error) {
+          console.error("Error loading saved printer:", error);
         }
-      } catch (error) {
-        console.log("Auto-connect failed:", error);
-      } finally {
-        setIsConnecting(false);
       }
     };
 
-    initializeBluetooth();
-  }, [autoConnectAttempted]);
+    loadSavedPrinter();
+  }, []);
 
-  // Auto-print when component mounts (when order is completed)
+  // Process print queue
   useEffect(() => {
-    if (orderInfo && !isPrinting && isConnected) {
-      const autoPrint = async () => {
+    const processPrintQueue = async () => {
+      if (printQueue.length > 0 && !isProcessingQueue && isConnected) {
+        setIsProcessingQueue(true);
+        const nextPrint = printQueue[0];
+
         try {
-          setIsPrinting(true);
+          console.log("🖨️ Processing print from queue:", nextPrint.type);
           await printReceipt();
+
+          // Remove from queue after successful print
+          setPrintQueue((prev) => prev.slice(1));
         } catch (error) {
-          console.log("Auto-print failed:", error);
+          console.error("Print from queue failed:", error);
+          // Retry logic - move to end of queue
+          if (nextPrint.retryCount < 3) {
+            setPrintQueue((prev) => [
+              ...prev.slice(1),
+              { ...nextPrint, retryCount: nextPrint.retryCount + 1 },
+            ]);
+          }
         } finally {
-          setIsPrinting(false);
+          setIsProcessingQueue(false);
         }
+      }
+    };
+
+    processPrintQueue();
+  }, [printQueue, isProcessingQueue, isConnected]);
+
+  // Add order to print queue when component mounts
+  useEffect(() => {
+    if (orderInfo && orderInfo._id) {
+      const printJob = {
+        orderId: orderInfo._id,
+        timestamp: new Date().toISOString(),
+        type: "receipt",
+        retryCount: 0,
+        data: orderInfo,
       };
 
-      const timer = setTimeout(autoPrint, 1000);
-      return () => clearTimeout(timer);
+      setPrintQueue((prev) => [...prev, printJob]);
+      console.log("📝 Added order to print queue:", orderInfo._id);
+
+      // Auto-print if connected
+      if (isConnected && !isPrinting) {
+        const timer = setTimeout(() => {
+          handleAutoPrint();
+        }, 1500);
+
+        return () => clearTimeout(timer);
+      }
     }
   }, [orderInfo, isConnected]);
 
-  useEffect(() => {
-    if (errorMessage) {
-      const timer = setTimeout(() => setErrorMessage(""), 5000);
-      return () => clearTimeout(timer);
+  // Auto-connect to POS58D printer
+  const autoConnectToPrinter = async () => {
+    if (!navigator.bluetooth) {
+      console.warn("⚠️ Web Bluetooth not supported");
+      return null;
     }
-  }, [errorMessage]);
 
-  const alertUser = (message, variant = "error") => {
-    setErrorMessage(message);
-    console.log(`${variant.toUpperCase()}: ${message}`);
+    if (isConnected || isConnecting) {
+      console.log("Already connected or connecting");
+      return null;
+    }
+
+    setIsConnecting(true);
+    setConnectionStatus("connecting");
+    setReconnectAttempts((prev) => prev + 1);
+
+    try {
+      console.log("🔍 Searching for POS58D printer...");
+
+      const device = await navigator.bluetooth.requestDevice({
+        filters: [
+          { name: PRINTER_CONFIG.TARGET_NAME },
+          { namePrefix: "POS" },
+          { services: PRINTER_CONFIG.SERVICE_UUIDS },
+        ],
+        optionalServices: PRINTER_CONFIG.SERVICE_UUIDS,
+        acceptAllDevices: false,
+      });
+
+      // Check if it's a compatible printer
+      const isTargetDevice =
+        PRINTER_CONFIG.ALTERNATIVE_NAMES.some((name) =>
+          device.name?.toUpperCase().includes(name.toUpperCase())
+        ) || device.name === PRINTER_CONFIG.TARGET_NAME;
+
+      if (!isTargetDevice) {
+        throw new Error("Not a POS58D compatible printer");
+      }
+
+      console.log("✅ Found printer:", device.name);
+      setPrinterName(device.name);
+
+      // Connect to GATT server
+      const server = await device.gatt.connect();
+
+      // Try different services and characteristics
+      let characteristic = null;
+      for (const serviceUUID of PRINTER_CONFIG.SERVICE_UUIDS) {
+        try {
+          const service = await server.getPrimaryService(serviceUUID);
+
+          for (const charUUID of PRINTER_CONFIG.WRITE_CHARACTERISTIC_UUIDS) {
+            try {
+              characteristic = await service.getCharacteristic(charUUID);
+              if (characteristic) break;
+            } catch (e) {
+              continue;
+            }
+          }
+
+          if (characteristic) break;
+        } catch (e) {
+          continue;
+        }
+      }
+
+      if (!characteristic) {
+        throw new Error("No compatible service/characteristic found");
+      }
+
+      // Setup device
+      const bluetoothDevice = { device, server, characteristic };
+      setBluetoothDevice(bluetoothDevice);
+      setIsConnected(true);
+      setConnectionStatus("connected");
+      setReconnectAttempts(0);
+
+      // Save connection
+      localStorage.setItem(
+        "pos58d_connection",
+        JSON.stringify({
+          id: device.id,
+          name: device.name,
+          timestamp: new Date().toISOString(),
+        })
+      );
+
+      // Setup disconnect handler
+      device.addEventListener("gattserverdisconnected", () => {
+        console.log("❌ Printer disconnected");
+        setIsConnected(false);
+        setBluetoothDevice(null);
+        setConnectionStatus("disconnected");
+
+        // Attempt reconnection
+        setTimeout(() => {
+          if (reconnectAttempts < 10) {
+            autoConnectToPrinter();
+          }
+        }, 2000);
+      });
+
+      // Initialize printer
+      await sendToPrinter(thermalCommands.INIT);
+
+      console.log("✅ Bluetooth printer connected and ready");
+      return bluetoothDevice;
+    } catch (error) {
+      console.error("Auto-connect failed:", error);
+      setConnectionStatus("error");
+
+      if (error.name === "NotFoundError") {
+        console.log("No printer found");
+      } else if (error.message.includes("POS58D")) {
+        console.log("Not a POS58D printer");
+      }
+
+      return null;
+    } finally {
+      setIsConnecting(false);
+    }
   };
 
-  // Connect to Bluetooth printer (manually)
+  // Manual connection
   const connectBluetooth = async () => {
     if (!navigator.bluetooth) {
       alertUser(
@@ -287,107 +414,98 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
     try {
       setIsConnecting(true);
-      console.log("Searching for Bluetooth printer...");
-
-      // Common UUIDs for thermal printers
-      const serviceUUID_PRINTER = "000018f0-0000-1000-8000-00805f9b34fb";
-      const serviceUUID_SPP = "00001101-0000-1000-8000-00805f9b34fb";
+      console.log("Manually searching for Bluetooth printer...");
 
       const device = await navigator.bluetooth.requestDevice({
         acceptAllDevices: true,
-        optionalServices: [serviceUUID_PRINTER, serviceUUID_SPP],
+        optionalServices: PRINTER_CONFIG.SERVICE_UUIDS,
       });
 
       console.log("Connecting to GATT server...");
       const server = await device.gatt.connect();
 
-      let writeCharacteristic = null;
-      const servicesToTry = [serviceUUID_PRINTER, serviceUUID_SPP];
+      let characteristic = null;
 
-      // Search for the writable characteristic across common services
-      for (const serviceUuid of servicesToTry) {
+      // Search for writable characteristic
+      for (const serviceUuid of PRINTER_CONFIG.SERVICE_UUIDS) {
         try {
-          console.log(`Trying service: ${serviceUuid}`);
           const service = await server.getPrimaryService(serviceUuid);
           const characteristics = await service.getCharacteristics();
 
-          writeCharacteristic = characteristics.find(
+          characteristic = characteristics.find(
             (char) =>
               char.properties.write || char.properties.writeWithoutResponse
           );
 
-          if (writeCharacteristic) {
-            console.log(
-              `Found writable characteristic in service ${serviceUuid}`
-            );
-            break;
-          }
+          if (characteristic) break;
         } catch (error) {
-          console.log(`Service ${serviceUuid} not found or accessible.`);
+          console.log(`Service ${serviceUuid} not accessible.`);
         }
       }
 
-      if (!writeCharacteristic) {
-        throw new Error(
-          "No writable characteristic found. Printer uses a non-standard protocol."
-        );
+      if (!characteristic) {
+        throw new Error("No writable characteristic found.");
       }
 
-      setBluetoothDevice({ device, server, writeCharacteristic });
+      const bluetoothDevice = { device, server, characteristic };
+      setBluetoothDevice(bluetoothDevice);
       setIsConnected(true);
+      setPrinterName(device.name);
+      setConnectionStatus("connected");
       setAutoConnectAttempted(true);
 
-      // Save device ID for future auto-connections
-      localStorage.setItem("bluetoothPrinterId", device.id);
+      // Save connection
+      localStorage.setItem(
+        "pos58d_connection",
+        JSON.stringify({
+          id: device.id,
+          name: device.name,
+          timestamp: new Date().toISOString(),
+        })
+      );
 
       alertUser(
         `Connected to printer: ${device.name || "Bluetooth Printer"}`,
         "success"
       );
 
-      // Handle device disconnection
+      // Handle disconnection
       device.addEventListener("gattserverdisconnected", () => {
         setIsConnected(false);
         setBluetoothDevice(null);
+        setConnectionStatus("disconnected");
         alertUser("Bluetooth printer disconnected", "warning");
-        console.log("Bluetooth device disconnected");
       });
 
-      return { device, server, writeCharacteristic };
+      return bluetoothDevice;
     } catch (error) {
-      console.error("Bluetooth connection failed:", error);
+      console.error("Manual connection failed:", error);
 
       if (error.name === "NotFoundError") {
         alertUser(
           "No printer selected. Ensure printer is ON and in pairing mode.",
           "warning"
         );
-      } else if (error.name === "NetworkError") {
-        alertUser(
-          "Connection failed. Check printer range and ensure no other app is connected.",
-          "error"
-        );
-      } else if (error.name === "SecurityError") {
-        alertUser("Security error. Please ensure HTTPS is used.", {
-          variant: "error",
-        });
       } else {
         alertUser(`Connection failed: ${error.message}`, "error");
       }
+
       return null;
     } finally {
       setIsConnecting(false);
     }
   };
 
-  // Disconnect from Bluetooth printer
+  // Disconnect from printer
   const disconnectBluetooth = () => {
     if (bluetoothDevice) {
       try {
         bluetoothDevice.device.gatt.disconnect();
         setIsConnected(false);
         setBluetoothDevice(null);
-        localStorage.removeItem("bluetoothPrinterId");
+        setPrinterName(null);
+        setConnectionStatus("disconnected");
+        localStorage.removeItem("pos58d_connection");
         setAutoConnectAttempted(false);
         alertUser("Disconnected from printer", "info");
       } catch (error) {
@@ -406,72 +524,28 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       const encoder = new TextEncoder();
       const dataArray = encoder.encode(data);
 
-      // Split large data into chunks to avoid buffer overflow
-      const CHUNK_SIZE = 20; // Small chunks for reliability
+      // Split large data into chunks
+      const CHUNK_SIZE = 20;
       for (let i = 0; i < dataArray.length; i += CHUNK_SIZE) {
         const chunk = dataArray.slice(i, i + CHUNK_SIZE);
-        await bluetoothDevice.writeCharacteristic.writeValue(chunk);
-        // Small delay between chunks
+        await bluetoothDevice.characteristic.writeValue(chunk);
         await new Promise((resolve) => setTimeout(resolve, 10));
       }
 
-      console.log("Data sent to printer successfully");
+      console.log("✅ Data sent to printer successfully");
       return true;
     } catch (error) {
-      console.error("Error sending data to printer:", error);
+      console.error("❌ Error sending data to printer:", error);
+      setIsConnected(false);
+      setConnectionStatus("error");
       throw error;
     }
   };
 
-  // Print receipt to Bluetooth printer
-  const printReceipt = async () => {
-    setIsPrinting(true);
-    console.log("Starting print process...");
-
-    try {
-      // Ensure we're connected
-      if (!isConnected) {
-        throw new Error("Please connect to Bluetooth printer first.");
-      }
-
-      // Generate receipt text
-      const receiptText = generateThermalText();
-      console.log("Receipt generated, sending to printer...");
-
-      // Send to printer
-      await sendToPrinter(receiptText);
-
-      console.log("Receipt printed successfully!");
-
-      // Open cash drawer if payment is cash
-      if (orderInfo.paymentMethod === "Cash") {
-        try {
-          await sendToPrinter(thermalCommands.DRAWER_KICK);
-          console.log("Cash drawer command sent");
-          await new Promise((resolve) => setTimeout(resolve, 500)); // Wait for drawer to open
-        } catch (drawerError) {
-          console.warn("Could not open cash drawer:", drawerError);
-          alertUser(
-            "Cash drawer command failed. Please open manually.",
-            "warning"
-          );
-        }
-      }
-
-      return true;
-    } catch (error) {
-      console.error("Print receipt error:", error);
-      throw error;
-    } finally {
-      setIsPrinting(false);
-    }
-  };
-
-  // Generate thermal printer text
+  // Generate receipt text for thermal printer
   const generateThermalText = () => {
-    const LINE_WIDTH = 32; // Standard 58mm thermal printer width
+    const LINE_WIDTH = 32;
 
-    // Helper function to center text
     const centerText = (text, width = LINE_WIDTH) => {
       if (text.length >= width) return text;
       const padding = Math.floor((width - text.length) / 2);
@@ -480,13 +554,6 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       );
     };
 
-    // Helper function to right-align text
-    const rightText = (text, width = LINE_WIDTH) => {
-      if (text.length >= width) return text;
-      return " ".repeat(width - text.length) + text;
-    };
-
-    // Extract data from orderInfo
     const orderId =
       orderInfo._id?.slice(-8) ||
       (orderInfo.orderDate
@@ -499,7 +566,6 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     const customerType = orderInfo.customerType || "walk-in";
     const paymentMethod = orderInfo.paymentMethod || "Cash";
 
-    // Get totals from bills
     const totals = {
       baseGrossTotal: safeNumber(orderInfo.bills?.total || 0),
       pwdSeniorDiscountAmount: safeNumber(
@@ -516,19 +582,11 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       total: safeNumber(orderInfo.bills?.totalWithTax || 0),
       cashAmount: safeNumber(orderInfo.bills?.cashAmount || 0),
       change: safeNumber(orderInfo.bills?.change || 0),
-      netSales: safeNumber(orderInfo.bills?.netSales || 0),
     };
-
-    // Get PWD/Senior details
-    const pwdSeniorDetails = orderInfo.pwdSeniorDetails;
-    const pwdSeniorDiscountApplied = !!pwdSeniorDetails;
-
-    // Get items (combined if needed)
-    const items = orderInfo.items || [];
 
     let receiptText = thermalCommands.INIT;
 
-    // Set alignment and text size for header
+    // Header
     receiptText += thermalCommands.ALIGN_CENTER;
     receiptText += thermalCommands.TEXT_LARGE;
     receiptText += "DELISH CHEESECAKE CAFE\n";
@@ -560,8 +618,8 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     receiptText += thermalCommands.BOLD_OFF;
     receiptText += "--------------------------------\n";
 
-    // Items list - format EXACTLY like in Bill
-    items.forEach((item) => {
+    // Items list
+    (orderInfo.items || []).forEach((item) => {
       const name = item.name || "Unknown Item";
       const quantity = item.quantity || 1;
       const price = safeNumber(
@@ -571,10 +629,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       const isRedeemed = item.isRedeemed || item.isFree || false;
       const isPwdSeniorDiscounted = item.isPwdSeniorDiscounted || false;
 
-      // Format quantity (2 chars)
       const qtyStr = quantity.toString().padStart(2, " ");
-
-      // Format item name (max 20 chars)
       let nameStr = name;
       if (nameStr.length > 20) {
         nameStr = nameStr.substring(0, 17) + "...";
@@ -582,26 +637,23 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         nameStr = nameStr.padEnd(20, " ");
       }
 
-      // Format amount (8 chars) - Using PHP instead of ₱
       const amountStr = (
         isRedeemed ? "FREE" : `PHP${total.toFixed(2)}`
       ).padStart(8, " ");
-
       receiptText += `${qtyStr}   ${nameStr}${amountStr}\n`;
 
-      // Add notes for redeemed or discounted items
       if (isRedeemed) {
         receiptText += "     *REDEEMED\n";
       } else if (isPwdSeniorDiscounted) {
         const originalTotal = price * quantity;
-        const discountAmount = originalTotal * 0.2; // 20% discount
+        const discountAmount = originalTotal * 0.2;
         receiptText += `     *PWD/SENIOR -PHP${discountAmount.toFixed(2)}\n`;
       }
     });
 
     receiptText += "--------------------------------\n";
 
-    // Totals - right aligned - Using PHP instead of ₱
+    // Totals
     receiptText += thermalCommands.ALIGN_RIGHT;
     receiptText += `SUBTOTAL:   PHP${totals.baseGrossTotal.toFixed(2)}\n`;
 
@@ -644,25 +696,23 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       receiptText += `Change:  PHP${totals.change.toFixed(2)}\n`;
     }
 
-    // PWD/Senior details if applied
-    if (pwdSeniorDiscountApplied && pwdSeniorDetails?.name) {
+    // PWD/Senior details
+    if (orderInfo.pwdSeniorDetails?.name) {
       receiptText += "--------------------------------\n";
       receiptText += "PWD/SENIOR DETAILS:\n";
-      receiptText += `Name: ${getFirstName(pwdSeniorDetails.name)}\n`;
-      receiptText += `ID #: ${pwdSeniorDetails.idNumber || ""}\n`;
-      receiptText += `Type: ${pwdSeniorDetails.type || "PWD"}\n`;
+      receiptText += `Name: ${getFirstName(orderInfo.pwdSeniorDetails.name)}\n`;
+      receiptText += `ID #: ${orderInfo.pwdSeniorDetails.idNumber || ""}\n`;
+      receiptText += `Type: ${orderInfo.pwdSeniorDetails.type || "PWD"}\n`;
     }
 
     receiptText += "--------------------------------\n";
 
-    // Footer with social media and branding - Better visual representation
+    // Footer
     receiptText += thermalCommands.ALIGN_CENTER;
     receiptText += thermalCommands.BOLD_ON;
     receiptText += "Follow us on:\n";
     receiptText += thermalCommands.BOLD_OFF;
-
-    // Social media representation with better spacing
-    receiptText += "[Facebook]  [I]  [T]\n"; // Facebook, Instagram, TikTok
+    receiptText += "[Facebook]  [I]  [T]\n";
     receiptText += thermalCommands.BOLD_ON;
     receiptText += "delish cheesecake\n";
     receiptText += thermalCommands.BOLD_OFF;
@@ -670,21 +720,71 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     receiptText += "Thank you for dining with us!\n";
     receiptText += "Please visit again!\n\n";
 
-    // Feed 3 lines and cut
+    // Feed and cut
     receiptText += thermalCommands.FEED_N_LINES(3);
     receiptText += thermalCommands.CUT_PARTIAL;
 
     return receiptText;
   };
 
-  // Print via Bluetooth
-  const printViaBluetooth = async () => {
+  // Print receipt
+  const printReceipt = async () => {
+    setIsPrinting(true);
+    setLastPrintAttempt(new Date());
+
     try {
-      if (!navigator.bluetooth) {
-        alertUser("Bluetooth is not supported in this browser.", "error");
-        return;
+      if (!isConnected) {
+        throw new Error("Not connected to printer");
       }
 
+      const receiptText = generateThermalText();
+      await sendToPrinter(receiptText);
+
+      console.log("✅ Receipt printed successfully!");
+
+      // Open cash drawer for cash payments
+      if (orderInfo.paymentMethod === "Cash") {
+        try {
+          await new Promise((resolve) => setTimeout(resolve, 500));
+          await sendToPrinter(thermalCommands.DRAWER_KICK);
+          console.log("✅ Cash drawer opened");
+        } catch (drawerError) {
+          console.warn("Could not open cash drawer:", drawerError);
+        }
+      }
+
+      return true;
+    } catch (error) {
+      console.error("❌ Print receipt error:", error);
+      throw error;
+    } finally {
+      setIsPrinting(false);
+    }
+  };
+
+  // Auto-print when connected
+  const handleAutoPrint = async () => {
+    if (!isConnected || isPrinting || !orderInfo) {
+      console.log("⏳ Cannot auto-print:", {
+        isConnected,
+        isPrinting,
+        hasOrder: !!orderInfo,
+      });
+      return;
+    }
+
+    try {
+      console.log("🔄 Starting auto-print...");
+      await printReceipt();
+      console.log("✅ Auto-print completed successfully");
+    } catch (error) {
+      console.error("❌ Auto-print failed:", error);
+    }
+  };
+
+  // Manual print function
+  const printViaBluetooth = async () => {
+    try {
       if (!isConnected) {
         alertUser("Please connect to Bluetooth printer first.", "warning");
         return;
@@ -693,32 +793,43 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       await printReceipt();
       alertUser("Receipt printed successfully!", "success");
     } catch (error) {
-      console.error("Bluetooth printing failed:", error);
+      console.error("Manual printing failed:", error);
       alertUser(`Printing error: ${error.message}. Please try again.`, "error");
     }
   };
 
-  // Function to open cash drawer
+  // Open cash drawer
   const openCashDrawer = async () => {
     try {
-      console.log("Attempting to open cash drawer...");
-
       if (isConnected && bluetoothDevice) {
         await sendToPrinter(thermalCommands.DRAWER_KICK);
         alertUser("Cash drawer opened successfully!", "success");
       } else {
-        alertUser(
-          "Not connected to printer. Please connect to Bluetooth first or open drawer manually.",
-          "warning"
-        );
+        alertUser("Not connected to printer. Please connect first.", "warning");
       }
     } catch (error) {
       console.error("Failed to open cash drawer:", error);
-      alertUser(
-        "Failed to send drawer command. Please open the cash drawer manually.",
-        "warning"
-      );
+      alertUser("Failed to open cash drawer. Please open manually.", "warning");
     }
+  };
+
+  // Alert user
+  const alertUser = (message, variant = "error") => {
+    setErrorMessage(message);
+    console.log(`${variant.toUpperCase()}: ${message}`);
+
+    // Auto-clear error after 5 seconds
+    setTimeout(() => {
+      setErrorMessage("");
+    }, 5000);
+  };
+
+  // Get connection status text
+  const getConnectionStatusText = () => {
+    if (isConnected) return "✓ Connected";
+    if (isConnecting) return "🔄 Connecting...";
+    if (connectionStatus === "error") return "❌ Connection Error";
+    return "🔌 Disconnected";
   };
 
   if (!orderInfo) {
@@ -748,7 +859,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         transition={{ duration: 0.15 }}
         className="bg-white rounded-lg shadow-xl w-full max-w-[320px] max-h-[70vh] overflow-hidden flex flex-col"
       >
-        {/* Header - Compact */}
+        {/* Header */}
         <div className="text-center p-3 border-b">
           <motion.div
             initial={{ scale: 0, opacity: 0 }}
@@ -768,24 +879,30 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
                 ? "bg-green-100 text-green-800"
                 : isConnecting
                 ? "bg-yellow-100 text-yellow-800"
-                : "bg-red-100 text-red-800"
+                : connectionStatus === "error"
+                ? "bg-red-100 text-red-800"
+                : "bg-gray-100 text-gray-800"
             }`}
           >
-            {isConnected
-              ? "✓ Bluetooth Connected"
-              : isConnecting
-              ? "Auto-connecting..."
-              : "Bluetooth Disconnected"}
+            {getConnectionStatusText()}
+            {printerName && isConnected && ` • ${printerName}`}
           </div>
 
+          {/* Print Queue Status */}
+          {printQueue.length > 0 && (
+            <div className="mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-[10px] font-semibold">
+              📋 {printQueue.length} in queue {isPrinting && "• Printing..."}
+            </div>
+          )}
+
           {/* Auto-print status */}
-          {isPrinting && (
+          {isPrinting && !printQueue.length && (
             <div className="mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-[10px] font-semibold">
               Auto-printing receipt...
             </div>
           )}
 
-          {/* Error Message Display */}
+          {/* Error Message */}
           {errorMessage && (
             <motion.div
               initial={{ opacity: 0, y: -5 }}
@@ -797,9 +914,9 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           )}
         </div>
 
-        {/* Scrollable Content - Compact */}
+        {/* Scrollable Content */}
         <div className="flex-1 overflow-y-auto p-3 space-y-2" ref={invoiceRef}>
-          {/* Order Details - Compact */}
+          {/* Order Details */}
           <div className="bg-gray-50 p-2 rounded-lg">
             <h3 className="font-semibold text-gray-700 text-xs mb-1">
               Order Details
@@ -808,12 +925,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               <div>
                 <span className="text-gray-600">ID:</span>
                 <p className="font-medium truncate">
-                  {orderInfo._id?.slice(-8) ||
-                    (orderInfo.orderDate
-                      ? Math.floor(new Date(orderInfo.orderDate).getTime())
-                          .toString()
-                          .slice(-6)
-                      : "N/A")}
+                  {orderInfo._id?.slice(-8) || "N/A"}
                 </p>
               </div>
               <div>
@@ -853,7 +965,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             </div>
           </div>
 
-          {/* PWD/Senior Details - Compact */}
+          {/* PWD/Senior Details */}
           {orderInfo.pwdSeniorDetails && (
             <div className="bg-green-50 p-2 rounded-lg border border-green-200">
               <h3 className="font-semibold text-green-700 text-xs mb-1 flex items-center gap-1">
@@ -883,7 +995,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             </div>
           )}
 
-          {/* Items Ordered - Compact */}
+          {/* Items */}
           <div className="bg-gray-50 p-2 rounded-lg">
             <h3 className="font-semibold text-gray-700 text-xs mb-1">
               Items ({(orderInfo.items || []).length})
@@ -942,7 +1054,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             </div>
           </div>
 
-          {/* Bill Summary - Compact */}
+          {/* Bill Summary */}
           <div className="bg-gray-50 p-2 rounded-lg">
             <h3 className="font-semibold text-gray-700 text-xs mb-1">
               Bill Summary
@@ -1040,7 +1152,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             </div>
           </div>
 
-          {/* Social Media Footer */}
+          {/* Social Media */}
           <div className="bg-gradient-to-r from-pink-50 to-purple-50 p-2 rounded-lg border border-pink-200">
             <h3 className="font-semibold text-gray-700 text-xs mb-1 text-center">
               Follow us on Social Media
@@ -1080,7 +1192,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           </div>
         </div>
 
-        {/* Action Buttons - Mobile Optimized */}
+        {/* Action Buttons */}
         <div className="p-3 border-t bg-gray-50">
           {/* Connection & Drawer Buttons */}
           <div className="grid grid-cols-2 gap-2 mb-2">
@@ -1105,7 +1217,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               {isConnecting
                 ? "Connecting"
                 : isConnected
-                ? "Disconnect BT"
+                ? "Disconnect"
                 : "Connect BT"}
             </button>
 
@@ -1154,6 +1266,15 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
               <IconTimes className="w-3 h-3" />
               Close
             </button>
+          </div>
+
+          {/* Auto-print info */}
+          <div className="mt-2 text-center">
+            <p className="text-[9px] text-gray-600">
+              {isConnected
+                ? "Receipt will auto-print when connected"
+                : "Connect Bluetooth printer for auto-printing"}
+            </p>
           </div>
         </div>
       </motion.div>

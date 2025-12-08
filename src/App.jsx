@@ -1,3 +1,4 @@
+// src/App.jsx
 import React, { useState, useEffect } from "react";
 import {
   BrowserRouter as Router,
@@ -19,8 +20,42 @@ import Header from "./components/shared/Header";
 import { useSelector, useDispatch } from "react-redux";
 import useLoadData from "./hooks/useLoadData";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
-import PropTypes from "prop-types";
 import { setUser } from "./redux/slices/userSlice";
+import POS58DConnectionManager from "./components/tables/POS58DConnectionManager";
+
+// Create a simple BluetoothScanner component since it might not exist
+const SimpleBluetoothScanner = () => {
+  return (
+    <div
+      style={{
+        padding: "20px",
+        backgroundColor: "#f3f4f6",
+        borderRadius: "8px",
+        border: "1px solid #e5e7eb",
+      }}
+    >
+      <h3 style={{ marginTop: 0 }}>Available Bluetooth Devices</h3>
+      <p style={{ color: "#6b7280" }}>
+        No Bluetooth devices found. Make sure Bluetooth is enabled on your
+        device.
+      </p>
+      <button
+        onClick={() => alert("Scanning for devices...")}
+        style={{
+          padding: "10px 20px",
+          backgroundColor: "#3b82f6",
+          color: "white",
+          border: "none",
+          borderRadius: "6px",
+          cursor: "pointer",
+          fontWeight: "600",
+        }}
+      >
+        Scan for Devices
+      </button>
+    </div>
+  );
+};
 
 // Custom hook for landscape detection
 const useLandscape = () => {
@@ -45,18 +80,132 @@ const useLandscape = () => {
   return isLandscape;
 };
 
-// Debug component - remove after testing
-function DebugAuth() {
-  const user = useSelector((state) => state.user);
-  const token = localStorage.getItem("token");
-  console.log("🔍 AUTH DEBUG:", {
-    reduxIsAuth: user.isAuth,
-    reduxToken: user.token,
-    localStorageToken: token,
-    userData: user,
+// Bluetooth Manager Component
+const BluetoothManager = () => {
+  const [showBluetoothManager, setShowBluetoothManager] = useState(false);
+  const [bluetoothStatus, setBluetoothStatus] = useState({
+    connected: false,
+    deviceName: null,
+    lastConnected: null,
   });
-  return null;
-}
+
+  // Load Bluetooth status from localStorage
+  useEffect(() => {
+    const savedStatus = localStorage.getItem("bluetooth_status");
+    if (savedStatus) {
+      setBluetoothStatus(JSON.parse(savedStatus));
+    }
+  }, []);
+
+  // Save Bluetooth status to localStorage
+  useEffect(() => {
+    localStorage.setItem("bluetooth_status", JSON.stringify(bluetoothStatus));
+  }, [bluetoothStatus]);
+
+  if (!showBluetoothManager) {
+    return (
+      <div
+        style={{
+          position: "fixed",
+          bottom: "80px",
+          right: "20px",
+          zIndex: 9990,
+        }}
+      >
+        <button
+          onClick={() => setShowBluetoothManager(true)}
+          style={{
+            backgroundColor: bluetoothStatus.connected ? "#10B981" : "#EF4444",
+            color: "white",
+            border: "none",
+            borderRadius: "50%",
+            width: "60px",
+            height: "60px",
+            fontSize: "24px",
+            cursor: "pointer",
+            boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          title={
+            bluetoothStatus.connected
+              ? `Connected to ${bluetoothStatus.deviceName}`
+              : "Bluetooth Disconnected"
+          }
+        >
+          {bluetoothStatus.connected ? "📠" : "🔌"}
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0,0,0,0.8)",
+        zIndex: 10000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "20px",
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: "white",
+          borderRadius: "12px",
+          width: "100%",
+          maxWidth: "800px",
+          maxHeight: "90vh",
+          overflow: "auto",
+          position: "relative",
+        }}
+      >
+        <div
+          style={{
+            position: "sticky",
+            top: 0,
+            backgroundColor: "white",
+            padding: "20px",
+            borderBottom: "1px solid #e5e7eb",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            zIndex: 1,
+          }}
+        >
+          <h2 style={{ margin: 0, fontSize: "20px", fontWeight: "bold" }}>
+            📠 Printer Connection Manager
+          </h2>
+          <button
+            onClick={() => setShowBluetoothManager(false)}
+            style={{
+              background: "none",
+              border: "none",
+              fontSize: "24px",
+              cursor: "pointer",
+              color: "#6b7280",
+            }}
+          >
+            ×
+          </button>
+        </div>
+        <div style={{ padding: "20px" }}>
+          <POS58DConnectionManager />
+          <div style={{ marginTop: "30px" }}>
+            <SimpleBluetoothScanner />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 // Simple localStorage-based persistence functions
 const saveAppData = (key, data) => {
@@ -87,25 +236,6 @@ const loadAppData = (key, defaultValue = null) => {
   }
 };
 
-// Service Worker Registration
-const registerServiceWorker = async () => {
-  if ("serviceWorker" in navigator) {
-    try {
-      const registration = await navigator.serviceWorker.register("/sw.js", {
-        scope: "/",
-        updateViaCache: "none",
-      });
-
-      console.log("✅ Service Worker registered:", registration.scope);
-      return registration;
-    } catch (error) {
-      console.error("❌ Service Worker registration failed:", error);
-      return null;
-    }
-  }
-  return null;
-};
-
 // Install Prompt Component (Landscape Optimized)
 const InstallPrompt = () => {
   const [showPrompt, setShowPrompt] = useState(false);
@@ -113,7 +243,6 @@ const InstallPrompt = () => {
   const isLandscape = useLandscape();
 
   useEffect(() => {
-    // Check if already installed
     const checkIfStandalone = () => {
       const standalone =
         window.matchMedia("(display-mode: standalone)").matches ||
@@ -121,7 +250,6 @@ const InstallPrompt = () => {
       setIsStandalone(standalone);
 
       if (!standalone) {
-        // Check if user declined recently (24-hour cooldown)
         const declinedTime = localStorage.getItem("install_prompt_declined");
         if (declinedTime) {
           const hoursSinceDecline =
@@ -131,7 +259,6 @@ const InstallPrompt = () => {
           }
         }
 
-        // Show prompt after 10 seconds
         setTimeout(() => {
           setShowPrompt(true);
         }, 10000);
@@ -143,24 +270,20 @@ const InstallPrompt = () => {
 
   const handleInstallClick = () => {
     setShowPrompt(false);
-
-    // Show browser-specific instructions
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isAndroid = /Android/.test(navigator.userAgent);
 
     let message = "";
     if (isIOS) {
       message =
-        'To install:\n1. Tap the Share button (square with arrow up)\n2. Scroll down and tap "Add to Home Screen"\n\nDelish POS works best in landscape mode!';
+        'To install:\n1. Tap Share button (square with arrow up)\n2. Tap "Add to Home Screen"';
     } else if (isAndroid) {
-      message =
-        'To install:\n1. Tap the menu (⋮) in your browser\n2. Select "Install app" or "Add to Home Screen"\n\nDelish POS works best in landscape mode!';
+      message = 'To install:\n1. Tap menu (⋮)\n2. Select "Install app"';
     } else {
-      message =
-        "To install:\nClick the install icon (📱) in your browser address bar\n\nDelish POS works best in landscape mode!";
+      message = "Click the install icon (📱) in your browser address bar";
     }
 
-    alert(message);
+    alert(message + "\n\nDelish POS works best in landscape mode!");
   };
 
   const handleDismiss = () => {
@@ -183,7 +306,6 @@ const InstallPrompt = () => {
         zIndex: 10000,
         border: "1px solid #e5e7eb",
         maxWidth: "400px",
-        width: "auto",
       }}
     >
       <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
@@ -264,12 +386,10 @@ const LandscapeWarning = () => {
         Rotate Your Device
       </h1>
       <p style={{ fontSize: "16px", marginBottom: "30px", maxWidth: "400px" }}>
-        Delish POS is optimized for landscape mode. Please rotate your device to
-        landscape orientation.
+        Delish POS is optimized for landscape mode. Please rotate your device.
       </p>
       <p style={{ fontSize: "14px", color: "#9ca3af", marginTop: "20px" }}>
-        If rotation doesn't work automatically, try locking your screen
-        rotation.
+        If rotation doesn't work, try locking screen rotation.
       </p>
     </div>
   );
@@ -283,58 +403,36 @@ function Layout() {
   const user = useSelector((state) => state.user);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [autoSaveInterval, setAutoSaveInterval] = useState(null);
+  const [printQueue, setPrintQueue] = useState([]);
+  const [isPrinting, setIsPrinting] = useState(false);
   const isLandscape = useLandscape();
 
-  // ✅ Check both Redux state AND localStorage as fallback
   const isAuthenticated = user.isAuth || localStorage.getItem("token");
 
-  // Setup data persistence when authenticated
+  // Setup data persistence
   useEffect(() => {
     if (isAuthenticated) {
-      // Load saved data
       const savedState = loadAppData("app_state");
       if (savedState?.user && !user.isAuth) {
         dispatch(setUser(savedState.user));
       }
 
-      // Setup auto-save every 30 seconds
-      const interval = setInterval(() => {
-        if (hasUnsavedChanges) {
-          saveCurrentState();
-          setHasUnsavedChanges(false);
-        }
-      }, 30000);
+      const savedQueue = localStorage.getItem("delish_print_queue");
+      if (savedQueue) {
+        setPrintQueue(JSON.parse(savedQueue));
+      }
 
-      setAutoSaveInterval(interval);
-
-      // Setup emergency save
       const handleBeforeUnload = () => {
         saveCurrentState();
       };
 
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === "hidden") {
-          saveCurrentState();
-        }
-      };
-
       window.addEventListener("beforeunload", handleBeforeUnload);
-      document.addEventListener("visibilitychange", handleVisibilityChange);
-
-      // Register service worker for PWA
-      registerServiceWorker();
 
       return () => {
-        clearInterval(interval);
         window.removeEventListener("beforeunload", handleBeforeUnload);
-        document.removeEventListener(
-          "visibilitychange",
-          handleVisibilityChange
-        );
       };
     }
-  }, [isAuthenticated, hasUnsavedChanges, user.isAuth, dispatch]);
+  }, [isAuthenticated, user.isAuth, dispatch]);
 
   // Handle online/offline status
   useEffect(() => {
@@ -350,79 +448,49 @@ function Layout() {
     };
   }, []);
 
-  // Listen for save events from index.html
+  // Process print queue
   useEffect(() => {
-    const handleSaveState = () => {
-      saveCurrentState();
-    };
+    const processPrintQueue = async () => {
+      if (printQueue.length > 0 && !isPrinting) {
+        setIsPrinting(true);
+        const item = printQueue[0];
 
-    const handleLoadState = (event) => {
-      loadStateFromStorage(event.detail);
-    };
-
-    window.addEventListener("saveAppState", handleSaveState);
-    window.addEventListener("loadAppState", handleLoadState);
-
-    return () => {
-      window.removeEventListener("saveAppState", handleSaveState);
-      window.removeEventListener("loadAppState", handleLoadState);
-    };
-  }, []);
-
-  const loadStateFromStorage = (savedData) => {
-    if (savedData && !user.isAuth) {
-      // Try to restore user session from localStorage
-      const token = localStorage.getItem("token");
-      const userData = localStorage.getItem("user");
-
-      if (token && userData) {
-        try {
-          const parsedUser = JSON.parse(userData);
-          dispatch(
-            setUser({
-              ...parsedUser,
-              token,
-              isAuth: true,
-            })
-          );
-          console.log("🔐 Restored user session from localStorage");
-        } catch (error) {
-          console.error("Error parsing saved user data:", error);
-        }
+        setTimeout(() => {
+          setPrintQueue((prev) => prev.slice(1));
+          setIsPrinting(false);
+        }, 500);
       }
+    };
+
+    processPrintQueue();
+  }, [printQueue, isPrinting]);
+
+  // Save print queue to localStorage
+  useEffect(() => {
+    if (printQueue.length > 0) {
+      localStorage.setItem("delish_print_queue", JSON.stringify(printQueue));
+    } else {
+      localStorage.removeItem("delish_print_queue");
     }
-  };
+  }, [printQueue]);
 
   const getCurrentState = () => {
-    // Get all Redux state
-    const state = {
+    return {
       user: user,
       timestamp: new Date().toISOString(),
-      // Add other state slices here as needed
     };
-    return state;
   };
 
   const saveCurrentState = () => {
     if (!isAuthenticated) return;
 
     const currentState = getCurrentState();
-
     saveAppData("app_state", currentState);
     localStorage.setItem("delish_pos_state", JSON.stringify(currentState));
-
-    // Dispatch event to clear unsaved changes flag
-    window.dispatchEvent(new CustomEvent("dataSaved"));
-
-    console.log("💾 App state saved");
   };
 
-  // Mark data as changed (call this whenever user modifies data)
   const markDataChanged = () => {
     setHasUnsavedChanges(true);
-    window.markDataChanged?.();
-
-    // Debounced save after 2 seconds of inactivity
     setTimeout(() => {
       if (hasUnsavedChanges) {
         saveCurrentState();
@@ -431,17 +499,25 @@ function Layout() {
     }, 2000);
   };
 
+  const addToPrintQueue = (printData) => {
+    setPrintQueue((prev) => [
+      ...prev,
+      {
+        ...printData,
+        id: Date.now(),
+        timestamp: new Date().toISOString(),
+        status: "pending",
+      },
+    ]);
+  };
+
   if (isLoading) return <FullScreenLoader />;
 
   return (
     <>
-      <DebugAuth /> {/* Remove this line after debugging */}
-      {/* Landscape Warning */}
       <LandscapeWarning />
-      {/* Only show app content in landscape mode */}
       {isLandscape && (
         <>
-          {/* Offline Indicator */}
           {isOffline && (
             <div
               style={{
@@ -462,29 +538,52 @@ function Layout() {
             </div>
           )}
 
-          {/* Auto-save Indicator */}
+          {printQueue.length > 0 && (
+            <div
+              style={{
+                position: "fixed",
+                top: isOffline ? "40px" : "0",
+                left: 0,
+                right: 0,
+                backgroundColor: "#F59E0B",
+                color: "white",
+                textAlign: "center",
+                padding: "8px",
+                fontSize: "14px",
+                zIndex: 9998,
+                fontWeight: "bold",
+                display: "flex",
+                justifyContent: "center",
+                alignItems: "center",
+                gap: "10px",
+              }}
+            >
+              <span>📋 {printQueue.length} item(s) in print queue</span>
+              {isPrinting && <span>🖨️ Printing...</span>}
+            </div>
+          )}
+
           {hasUnsavedChanges && (
             <div
               style={{
                 position: "fixed",
-                bottom: 10,
-                left: 10,
+                bottom: "10px",
+                left: "10px",
                 backgroundColor: "#F59E0B",
                 color: "white",
                 padding: "5px 10px",
                 borderRadius: "5px",
                 fontSize: "12px",
-                zIndex: 9998,
+                zIndex: 9997,
               }}
             >
               ⚡ Auto-saving...
             </div>
           )}
 
-          {/* Install Prompt for Mobile */}
           <InstallPrompt />
+          <BluetoothManager />
 
-          {/* Header - only show in landscape and when authenticated */}
           {!hideHeaderRoutes.includes(location.pathname) && isAuthenticated && (
             <Header />
           )}
@@ -494,7 +593,10 @@ function Layout() {
               path="/"
               element={
                 <ProtectedRoutes>
-                  <Home markDataChanged={markDataChanged} />
+                  <Home
+                    markDataChanged={markDataChanged}
+                    addToPrintQueue={addToPrintQueue}
+                  />
                 </ProtectedRoutes>
               }
             />
@@ -506,7 +608,10 @@ function Layout() {
               path="/orders"
               element={
                 <ProtectedRoutes>
-                  <Orders markDataChanged={markDataChanged} />
+                  <Orders
+                    markDataChanged={markDataChanged}
+                    addToPrintQueue={addToPrintQueue}
+                  />
                 </ProtectedRoutes>
               }
             />
@@ -550,15 +655,13 @@ function Layout() {
   );
 }
 
-function ProtectedRoutes({ children, markDataChanged }) {
+function ProtectedRoutes({ children }) {
   const user = useSelector((state) => state.user);
   const dispatch = useDispatch();
   const isLandscape = useLandscape();
 
-  // ✅ Check both Redux state AND localStorage as fallback
   const isAuthenticated = user.isAuth || localStorage.getItem("token");
 
-  // Attempt to restore session from localStorage if Redux doesn't have it
   useEffect(() => {
     if (!user.isAuth && localStorage.getItem("token")) {
       const userData = localStorage.getItem("user");
@@ -572,7 +675,6 @@ function ProtectedRoutes({ children, markDataChanged }) {
               isAuth: true,
             })
           );
-          console.log("🔄 Restored user session from localStorage");
         } catch (error) {
           console.error("Error parsing user data from localStorage:", error);
         }
@@ -580,7 +682,6 @@ function ProtectedRoutes({ children, markDataChanged }) {
     }
   }, [user.isAuth, dispatch]);
 
-  // Don't show anything if not in landscape
   if (!isLandscape) {
     return null;
   }
@@ -589,27 +690,12 @@ function ProtectedRoutes({ children, markDataChanged }) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Clone children and pass markDataChanged prop
-  const childrenWithProps = React.Children.map(children, (child) => {
-    if (React.isValidElement(child)) {
-      return React.cloneElement(child, { markDataChanged });
-    }
-    return child;
-  });
-
-  return childrenWithProps;
+  return children;
 }
 
-ProtectedRoutes.propTypes = {
-  children: PropTypes.node.isRequired,
-  markDataChanged: PropTypes.func,
-};
-
 function App() {
-  // Clear app data on logout
   useEffect(() => {
     const handleLogout = () => {
-      // Clear all delish app data
       Object.keys(localStorage).forEach((key) => {
         if (key.startsWith("delish_")) {
           localStorage.removeItem(key);
@@ -618,9 +704,11 @@ function App() {
       localStorage.removeItem("delish_pos_state");
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+      localStorage.removeItem("pos58d_connection");
+      localStorage.removeItem("bluetooth_status");
+      localStorage.removeItem("delish_print_queue");
     };
 
-    // Listen for logout events
     window.addEventListener("userLogout", handleLogout);
 
     return () => {
