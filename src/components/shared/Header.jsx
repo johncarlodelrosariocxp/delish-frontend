@@ -14,7 +14,6 @@ import { useMutation } from "@tanstack/react-query";
 import { logout } from "../../https";
 import { removeUser } from "../../redux/slices/userSlice";
 import { useNavigate, useLocation } from "react-router-dom";
-import { MdDashboard } from "react-icons/md";
 
 const Header = () => {
   const userData = useSelector((state) => state.user);

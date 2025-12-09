@@ -150,8 +150,9 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
   const [reconnectAttempts, setReconnectAttempts] = useState(0);
   const [printerName, setPrinterName] = useState(null);
   const [lastPrintAttempt, setLastPrintAttempt] = useState(null);
-  const [printQueue, setPrintQueue] = useState([]);
-  const [isProcessingQueue, setIsProcessingQueue] = useState(false);
+
+  // REMOVED printQueue and isProcessingQueue states
+  const [hasAutoPrinted, setHasAutoPrinted] = useState(false); // New state to track auto-print
 
   // POS58D printer configuration
   const PRINTER_CONFIG = {
@@ -222,62 +223,6 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
     loadSavedPrinter();
   }, []);
-
-  // Process print queue
-  useEffect(() => {
-    const processPrintQueue = async () => {
-      if (printQueue.length > 0 && !isProcessingQueue && isConnected) {
-        setIsProcessingQueue(true);
-        const nextPrint = printQueue[0];
-
-        try {
-          console.log("🖨️ Processing print from queue:", nextPrint.type);
-          await printReceipt();
-
-          // Remove from queue after successful print
-          setPrintQueue((prev) => prev.slice(1));
-        } catch (error) {
-          console.error("Print from queue failed:", error);
-          // Retry logic - move to end of queue
-          if (nextPrint.retryCount < 3) {
-            setPrintQueue((prev) => [
-              ...prev.slice(1),
-              { ...nextPrint, retryCount: nextPrint.retryCount + 1 },
-            ]);
-          }
-        } finally {
-          setIsProcessingQueue(false);
-        }
-      }
-    };
-
-    processPrintQueue();
-  }, [printQueue, isProcessingQueue, isConnected]);
-
-  // Add order to print queue when component mounts
-  useEffect(() => {
-    if (orderInfo && orderInfo._id) {
-      const printJob = {
-        orderId: orderInfo._id,
-        timestamp: new Date().toISOString(),
-        type: "receipt",
-        retryCount: 0,
-        data: orderInfo,
-      };
-
-      setPrintQueue((prev) => [...prev, printJob]);
-      console.log("📝 Added order to print queue:", orderInfo._id);
-
-      // Auto-print if connected
-      if (isConnected && !isPrinting) {
-        const timer = setTimeout(() => {
-          handleAutoPrint();
-        }, 1500);
-
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [orderInfo, isConnected]);
 
   // Auto-connect to POS58D printer
   const autoConnectToPrinter = async () => {
@@ -372,6 +317,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         setIsConnected(false);
         setBluetoothDevice(null);
         setConnectionStatus("disconnected");
+        setHasAutoPrinted(false); // Reset auto-print flag
 
         // Attempt reconnection
         setTimeout(() => {
@@ -453,6 +399,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       setPrinterName(device.name);
       setConnectionStatus("connected");
       setAutoConnectAttempted(true);
+      setHasAutoPrinted(false); // Reset auto-print flag when manually connecting
 
       // Save connection
       localStorage.setItem(
@@ -474,6 +421,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         setIsConnected(false);
         setBluetoothDevice(null);
         setConnectionStatus("disconnected");
+        setHasAutoPrinted(false); // Reset auto-print flag
         alertUser("Bluetooth printer disconnected", "warning");
       });
 
@@ -505,6 +453,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
         setBluetoothDevice(null);
         setPrinterName(null);
         setConnectionStatus("disconnected");
+        setHasAutoPrinted(false); // Reset auto-print flag
         localStorage.removeItem("pos58d_connection");
         setAutoConnectAttempted(false);
         alertUser("Disconnected from printer", "info");
@@ -727,7 +676,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     return receiptText;
   };
 
-  // Print receipt
+  // Print receipt - SIMPLIFIED to print only once
   const printReceipt = async () => {
     setIsPrinting(true);
     setLastPrintAttempt(new Date());
@@ -741,6 +690,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       await sendToPrinter(receiptText);
 
       console.log("✅ Receipt printed successfully!");
+      setHasAutoPrinted(true); // Mark that auto-print has been done
 
       // Open cash drawer for cash payments
       if (orderInfo.paymentMethod === "Cash") {
@@ -756,31 +706,45 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
       return true;
     } catch (error) {
       console.error("❌ Print receipt error:", error);
+      setHasAutoPrinted(false); // Reset if print failed
       throw error;
     } finally {
       setIsPrinting(false);
     }
   };
 
-  // Auto-print when connected
-  const handleAutoPrint = async () => {
-    if (!isConnected || isPrinting || !orderInfo) {
-      console.log("⏳ Cannot auto-print:", {
-        isConnected,
-        isPrinting,
-        hasOrder: !!orderInfo,
-      });
-      return;
-    }
+  // Auto-print when connected - MODIFIED to print only once
+  useEffect(() => {
+    const handleAutoPrint = async () => {
+      if (!isConnected || isPrinting || !orderInfo || hasAutoPrinted) {
+        console.log("⏳ Cannot auto-print:", {
+          isConnected,
+          isPrinting,
+          hasOrder: !!orderInfo,
+          hasAutoPrinted,
+        });
+        return;
+      }
 
-    try {
-      console.log("🔄 Starting auto-print...");
-      await printReceipt();
-      console.log("✅ Auto-print completed successfully");
-    } catch (error) {
-      console.error("❌ Auto-print failed:", error);
+      try {
+        console.log("🔄 Starting auto-print...");
+        await printReceipt();
+        console.log("✅ Auto-print completed successfully");
+      } catch (error) {
+        console.error("❌ Auto-print failed:", error);
+      }
+    };
+
+    // Only auto-print if we're connected and haven't auto-printed yet
+    if (isConnected && !hasAutoPrinted) {
+      // Small delay to ensure printer is ready
+      const timer = setTimeout(() => {
+        handleAutoPrint();
+      }, 1000);
+
+      return () => clearTimeout(timer);
     }
-  };
+  }, [isConnected, hasAutoPrinted, orderInfo, isPrinting]);
 
   // Manual print function
   const printViaBluetooth = async () => {
@@ -888,17 +852,12 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             {printerName && isConnected && ` • ${printerName}`}
           </div>
 
-          {/* Print Queue Status */}
-          {printQueue.length > 0 && (
-            <div className="mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-[10px] font-semibold">
-              📋 {printQueue.length} in queue {isPrinting && "• Printing..."}
-            </div>
-          )}
-
           {/* Auto-print status */}
-          {isPrinting && !printQueue.length && (
+          {isPrinting && (
             <div className="mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-[10px] font-semibold">
-              Auto-printing receipt...
+              {hasAutoPrinted
+                ? "Re-printing receipt..."
+                : "Auto-printing receipt..."}
             </div>
           )}
 
@@ -1271,9 +1230,9 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           {/* Auto-print info */}
           <div className="mt-2 text-center">
             <p className="text-[9px] text-gray-600">
-              {isConnected
+              {isConnected && !hasAutoPrinted
                 ? "Receipt will auto-print when connected"
-                : "Connect Bluetooth printer for auto-printing"}
+                : "Connect Bluetooth printer for printing"}
             </p>
           </div>
         </div>

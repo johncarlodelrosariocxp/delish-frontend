@@ -9,11 +9,18 @@ import {
   FaPrint,
   FaCalendar,
   FaTachometerAlt,
+  FaTrash,
+  FaBan,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { getOrders, getAdminOrders } from "../https/index";
+import { getOrders, getAdminOrders, updateOrderStatus } from "../https/index";
 import BottomNav from "../components/shared/BottomNav";
 import BackButton from "../components/shared/BackButton";
 import Invoice from "../components/invoice/Invoice";
@@ -25,12 +32,14 @@ const Orders = () => {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [totalSales, setTotalSales] = useState(0);
   const [dateFilter, setDateFilter] = useState("today");
+  const [orderToDelete, setOrderToDelete] = useState(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
   const scrollRef = useRef(null);
 
   const user = useSelector((state) => state.user);
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
 
-  // Debug function to check API response
   const debugAPI = (data, context) => {
     console.log(`🔍 ${context}:`, data);
     if (data?.response?.data) {
@@ -73,18 +82,94 @@ const Orders = () => {
     placeholderData: keepPreviousData,
   });
 
-  // Status configuration - All orders are completed
-  const getStatusConfig = () => {
-    return {
-      icon: FaCheckCircle,
-      color: "text-green-500",
-      bgColor: "bg-green-50",
-      borderColor: "border-green-200",
-      text: "Completed",
-    };
+  // Cancel/Delete order mutation using updateOrderStatus
+  const cancelOrderMutation = useMutation({
+    mutationFn: async (orderId) => {
+      console.log("🗑️ Cancelling order:", orderId);
+      const response = await updateOrderStatus({
+        orderId,
+        orderStatus: "cancelled",
+      });
+      console.log("🗑️ Cancel response:", response);
+      return response;
+    },
+    onSuccess: (data, orderId) => {
+      console.log("✅ Order cancelled successfully:", orderId);
+
+      // Invalidate and refetch orders query
+      queryClient.invalidateQueries({ queryKey: ["orders", user.role] });
+
+      // Close delete modal
+      setShowDeleteModal(false);
+      setOrderToDelete(null);
+
+      // Show success message
+      enqueueSnackbar("Order cancelled successfully!", {
+        variant: "success",
+      });
+
+      // Recalculate total sales (remove cancelled order from total)
+      const updatedOrders = orders.filter((order) => order._id !== orderId);
+      const filteredByDate = updatedOrders.filter((order) =>
+        filterByDateRange(order, dateFilter)
+      );
+      const total = filteredByDate.reduce((sum, order) => {
+        if (!order) return sum;
+        const amount = order.bills?.totalWithTax || order.totalAmount || 0;
+        return sum + (Number(amount) || 0);
+      }, 0);
+      setTotalSales(total);
+    },
+    onError: (error) => {
+      console.error("❌ Cancel order error:", error);
+
+      let errorMessage = "Failed to cancel order. Please try again.";
+
+      if (error.response?.data?.message) {
+        errorMessage = error.response.data.message;
+      } else if (error.response?.data?.error) {
+        errorMessage = error.response.data.error;
+      }
+
+      enqueueSnackbar(errorMessage, {
+        variant: "error",
+      });
+    },
+  });
+
+  // Get status configuration based on order status
+  const getStatusConfig = (orderStatus) => {
+    const status = orderStatus?.toLowerCase() || "completed";
+
+    switch (status) {
+      case "cancelled":
+        return {
+          icon: FaBan,
+          color: "text-red-500",
+          bgColor: "bg-red-50",
+          borderColor: "border-red-200",
+          text: "Cancelled",
+        };
+      case "pending":
+        return {
+          icon: FaCheckCircle,
+          color: "text-yellow-500",
+          bgColor: "bg-yellow-50",
+          borderColor: "border-yellow-200",
+          text: "Pending",
+        };
+      case "completed":
+      default:
+        return {
+          icon: FaCheckCircle,
+          color: "text-green-500",
+          bgColor: "bg-green-50",
+          borderColor: "border-green-200",
+          text: "Completed",
+        };
+    }
   };
 
-  // ✅ FIXED: Handle data safely
   const orders = React.useMemo(() => {
     try {
       const ordersData = resData?.data?.data;
@@ -92,7 +177,6 @@ const Orders = () => {
         console.log("📦 Orders data (array):", ordersData.length);
         return ordersData;
       } else if (ordersData && typeof ordersData === "object") {
-        // Handle case where data might be an object with orders property
         const ordersArray = ordersData.orders || ordersData.data || [];
         if (Array.isArray(ordersArray)) {
           console.log("📦 Orders data (from object):", ordersArray.length);
@@ -115,7 +199,6 @@ const Orders = () => {
     }
   }, [isError]);
 
-  // Filter orders by date range
   const filterByDateRange = (order, range) => {
     if (range === "all" || !order) return true;
 
@@ -124,7 +207,6 @@ const Orders = () => {
     );
     const today = new Date();
 
-    // Handle invalid dates
     if (isNaN(orderDate.getTime())) return true;
 
     switch (range) {
@@ -169,22 +251,21 @@ const Orders = () => {
     }
   };
 
-  // Calculate metrics based on date filter
   useEffect(() => {
     const filteredByDate = orders.filter((order) =>
       filterByDateRange(order, dateFilter)
     );
 
-    // All orders are considered completed for sales calculation
     const total = filteredByDate.reduce((sum, order) => {
       if (!order) return sum;
+      // Don't include cancelled orders in sales total
+      if (order.orderStatus?.toLowerCase() === "cancelled") return sum;
       const amount = order.bills?.totalWithTax || order.totalAmount || 0;
       return sum + (Number(amount) || 0);
     }, 0);
     setTotalSales(total);
   }, [orders, dateFilter]);
 
-  // Filter orders based on search query and date filter
   const filteredOrders = React.useMemo(() => {
     try {
       if (!Array.isArray(orders)) {
@@ -202,13 +283,15 @@ const Orders = () => {
             .toLowerCase()
             .includes(searchQuery.toLowerCase()) ||
           (order._id || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-          "completed".includes(searchQuery.toLowerCase()) || // Search for "completed" status
+          (order.orderStatus || "completed")
+            .toLowerCase()
+            .includes(searchQuery.toLowerCase()) ||
           (order.cashier || "")
             .toLowerCase()
-            .includes(searchQuery.toLowerCase()) || // Search for cashier name
+            .includes(searchQuery.toLowerCase()) ||
           (order.user?.name || "")
             .toLowerCase()
-            .includes(searchQuery.toLowerCase()); // Search for user name
+            .includes(searchQuery.toLowerCase());
 
         return dateMatch && searchMatch;
       });
@@ -221,7 +304,6 @@ const Orders = () => {
     }
   }, [orders, searchQuery, dateFilter]);
 
-  // Calculate and format total amount
   const calculateTotalAmount = (order) => {
     if (!order) return 0;
 
@@ -244,7 +326,6 @@ const Orders = () => {
     return 0;
   };
 
-  // Format currency
   const formatCurrency = (amount) => {
     const numericAmount =
       typeof amount === "number" ? amount : parseFloat(amount) || 0;
@@ -256,7 +337,6 @@ const Orders = () => {
     }).format(numericAmount);
   };
 
-  // Format date with time for better sorting visibility
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     try {
@@ -275,7 +355,6 @@ const Orders = () => {
     }
   };
 
-  // Get items count
   const getItemsCount = (order) => {
     if (!order) return 0;
 
@@ -288,7 +367,6 @@ const Orders = () => {
     return Number(order.itemsCount || order.quantity || 0);
   };
 
-  // Get items preview text
   const getItemsPreview = (order) => {
     if (!order) return "No items";
 
@@ -322,6 +400,23 @@ const Orders = () => {
     setShowInvoice(true);
   };
 
+  const handleCancelOrder = (order) => {
+    setOrderToDelete(order);
+    setShowDeleteModal(true);
+  };
+
+  const confirmCancel = () => {
+    if (orderToDelete && orderToDelete._id) {
+      console.log("🔄 Cancelling order:", orderToDelete._id);
+      cancelOrderMutation.mutate(orderToDelete._id);
+    }
+  };
+
+  const cancelDelete = () => {
+    setShowDeleteModal(false);
+    setOrderToDelete(null);
+  };
+
   const handleScroll = () => {
     if (scrollRef.current) {
       const scrollTop = scrollRef.current.scrollTop;
@@ -335,14 +430,11 @@ const Orders = () => {
     }
   };
 
-  // Navigate to dashboard
   const navigateToDashboard = () => {
     navigate("/dashboard");
   };
 
-  // Get user display name
   const getUserDisplayName = (order) => {
-    // Check for user name in different possible locations
     if (order.cashier) return order.cashier;
     if (order.user?.name) return order.user.name;
     if (order.userDetails?.name) return order.userDetails.name;
@@ -350,11 +442,9 @@ const Orders = () => {
     return "Admin";
   };
 
-  // Check if order has discount
   const hasDiscount = (order) => {
     if (!order) return false;
 
-    // Check for any discount in bills
     if (order.bills) {
       return (
         (order.bills.discount && order.bills.discount > 0) ||
@@ -369,7 +459,6 @@ const Orders = () => {
     return false;
   };
 
-  // Get discount type
   const getDiscountType = (order) => {
     if (!order || !order.bills) return null;
 
@@ -382,11 +471,11 @@ const Orders = () => {
     return null;
   };
 
-  // Order Card Component
-  const OrderCard = ({ order, onViewReceipt }) => {
+  const OrderCard = ({ order, onViewReceipt, onCancelOrder }) => {
     if (!order) return null;
 
-    const statusConfig = getStatusConfig();
+    const orderStatus = order.orderStatus || "completed";
+    const statusConfig = getStatusConfig(orderStatus);
     const StatusIcon = statusConfig.icon;
     const totalAmount = calculateTotalAmount(order);
     const itemsCount = getItemsCount(order);
@@ -394,10 +483,16 @@ const Orders = () => {
     const userDisplayName = getUserDisplayName(order);
     const discountExists = hasDiscount(order);
     const discountType = getDiscountType(order);
+    const canCancel =
+      user.role?.toLowerCase() === "admin" && orderStatus !== "cancelled";
+    const isCancelled = orderStatus.toLowerCase() === "cancelled";
 
     return (
-      <div className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-all duration-200 w-full h-full flex flex-col">
-        {/* Order Header */}
+      <div
+        className={`border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-all duration-200 w-full h-full flex flex-col relative group ${
+          isCancelled ? "opacity-75" : ""
+        }`}
+      >
         <div className="flex justify-between items-start mb-3">
           <div className="flex items-center gap-2">
             <FaReceipt className="text-gray-600 text-sm" />
@@ -415,7 +510,6 @@ const Orders = () => {
           </div>
         </div>
 
-        {/* Customer Info */}
         <div className="flex items-center gap-2 mb-3">
           <FaUser className="text-gray-500 text-xs" />
           <span className="text-xs font-medium text-gray-800">
@@ -423,13 +517,11 @@ const Orders = () => {
           </span>
         </div>
 
-        {/* User/Cashier Info */}
         <div className="flex items-center gap-2 mb-3 text-xs text-gray-600">
           <span>Cashier:</span>
           <span className="font-medium text-gray-800">{userDisplayName}</span>
         </div>
 
-        {/* Discount Badge */}
         {discountExists && discountType && (
           <div className="mb-3">
             <span className="bg-yellow-100 text-yellow-800 text-[10px] px-2 py-1 rounded-full font-medium">
@@ -438,7 +530,6 @@ const Orders = () => {
           </div>
         )}
 
-        {/* Table Info */}
         {order.table?.tableNo && (
           <div className="flex items-center gap-2 mb-3 text-xs text-gray-600">
             <span>Table {order.table.tableNo}</span>
@@ -447,7 +538,6 @@ const Orders = () => {
           </div>
         )}
 
-        {/* Order Details */}
         <div className="grid grid-cols-2 gap-3 text-xs mb-3">
           <div className="space-y-1">
             <div className="text-gray-600">Date</div>
@@ -457,13 +547,16 @@ const Orders = () => {
           </div>
           <div className="space-y-1 text-right">
             <div className="text-gray-600">Amount</div>
-            <div className="font-semibold text-gray-800">
+            <div
+              className={`font-semibold ${
+                isCancelled ? "text-red-600 line-through" : "text-gray-800"
+              }`}
+            >
               {formatCurrency(totalAmount)}
             </div>
           </div>
         </div>
 
-        {/* Items Preview */}
         {((order.items && order.items.length > 0) || itemsCount > 0) && (
           <div className="mt-2 pt-2 border-t border-gray-200 mb-3">
             <div className="text-xs text-gray-600 mb-1">
@@ -475,15 +568,27 @@ const Orders = () => {
           </div>
         )}
 
-        {/* Receipt Button */}
+        {/* Only one button row - View Receipt and Cancel buttons side by side */}
         <div className="flex gap-2 pt-2 border-t border-gray-200 mt-auto">
           <button
             onClick={() => onViewReceipt(order)}
             className="flex-1 bg-[#025cca] text-white px-2 py-2 rounded text-xs font-medium flex items-center gap-2 justify-center hover:bg-[#014aa3] transition-colors"
+            disabled={isCancelled}
           >
             <FaPrint className="text-[10px]" />
-            View Receipt
+            {isCancelled ? "Cancelled" : "View Receipt"}
           </button>
+
+          {/* Cancel button - visible always for admin users */}
+          {canCancel && (
+            <button
+              onClick={() => onCancelOrder(order)}
+              className="bg-red-100 hover:bg-red-200 text-red-600 px-3 py-2 rounded text-xs font-medium flex items-center gap-1 justify-center transition-colors"
+              title="Cancel Order"
+            >
+              <FaTrash className="text-[10px]" />
+            </button>
+          )}
         </div>
       </div>
     );
@@ -491,7 +596,6 @@ const Orders = () => {
 
   return (
     <section className="bg-gradient-to-br from-blue-50 via-white to-cyan-50 min-h-screen flex flex-col relative pb-20 md:pb-6">
-      {/* Header */}
       <div className="bg-white/80 backdrop-blur-md shadow-sm border-b border-gray-200/50 sticky top-0 z-30">
         <div className="flex flex-col md:flex-row items-start md:items-center justify-between px-4 md:px-6 py-4 gap-4">
           <div className="flex items-center gap-4">
@@ -517,7 +621,6 @@ const Orders = () => {
             </span>
           </div>
           <div className="flex flex-wrap gap-2 md:gap-4 items-center">
-            {/* Dashboard Button */}
             <button
               onClick={navigateToDashboard}
               className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
@@ -526,7 +629,6 @@ const Orders = () => {
               Dashboard
             </button>
 
-            {/* Date Filter */}
             <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border">
               <FaCalendar className="text-gray-600 text-xs" />
               <select
@@ -544,7 +646,6 @@ const Orders = () => {
               </select>
             </div>
 
-            {/* Metrics Display */}
             <div className="flex flex-wrap gap-2 md:gap-4">
               <span className="text-xs sm:text-sm font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">
                 Sales: {formatCurrency(totalSales)}
@@ -553,12 +654,11 @@ const Orders = () => {
           </div>
         </div>
 
-        {/* Search Bar */}
         <div className="flex items-center gap-2 bg-gray-100 rounded-md px-3 py-2 mx-4 mb-4 mt-2">
           <FaSearch className="text-gray-600 text-xs sm:text-sm" />
           <input
             type="text"
-            placeholder="Search by name, order ID, or cashier..."
+            placeholder="Search by name, order ID, status, or cashier..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="bg-transparent outline-none text-black w-full text-xs sm:text-sm placeholder-gray-500"
@@ -566,7 +666,6 @@ const Orders = () => {
         </div>
       </div>
 
-      {/* Orders Grid */}
       <div
         ref={scrollRef}
         onScroll={handleScroll}
@@ -586,6 +685,7 @@ const Orders = () => {
                 key={order._id || Math.random().toString()}
                 order={order}
                 onViewReceipt={handleViewReceipt}
+                onCancelOrder={handleCancelOrder}
               />
             ))
           ) : (
@@ -616,7 +716,70 @@ const Orders = () => {
         </div>
       </div>
 
-      {/* Scroll to Top */}
+      {showDeleteModal && orderToDelete && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
+            <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
+              <FaTrash className="text-red-600 text-xl" />
+            </div>
+            <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
+              Cancel Order
+            </h3>
+            <p className="text-gray-600 text-sm text-center mb-4">
+              Are you sure you want to cancel order #
+              <span className="font-mono font-semibold">
+                {orderToDelete._id?.slice(-8) || "N/A"}
+              </span>
+              ? This will mark the order as cancelled and remove it from sales
+              totals.
+            </p>
+
+            {orderToDelete.customerDetails?.name && (
+              <div className="bg-gray-50 p-3 rounded-lg mb-6">
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium">Customer:</span>{" "}
+                  {orderToDelete.customerDetails.name}
+                </p>
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium">Amount:</span>{" "}
+                  {formatCurrency(calculateTotalAmount(orderToDelete))}
+                </p>
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium">Date:</span>{" "}
+                  {formatDate(
+                    orderToDelete.createdAt || orderToDelete.orderDate
+                  )}
+                </p>
+              </div>
+            )}
+
+            <div className="flex gap-3">
+              <button
+                onClick={cancelDelete}
+                disabled={cancelOrderMutation.isPending}
+                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
+              >
+                Back
+              </button>
+              <button
+                onClick={confirmCancel}
+                disabled={cancelOrderMutation.isPending}
+                className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {cancelOrderMutation.isPending ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Cancelling...
+                  </>
+                ) : (
+                  "Cancel Order"
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {showScrollButton && (
         <button
           onClick={scrollToTop}
@@ -626,12 +789,10 @@ const Orders = () => {
         </button>
       )}
 
-      {/* Invoice Modal */}
       {showInvoice && selectedOrder && (
         <Invoice orderInfo={selectedOrder} setShowInvoice={setShowInvoice} />
       )}
 
-      {/* Bottom Navigation */}
       <div className="fixed bottom-0 left-0 right-0 md:relative">
         <BottomNav />
       </div>
