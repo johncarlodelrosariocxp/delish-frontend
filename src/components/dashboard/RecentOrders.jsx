@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   keepPreviousData,
   useMutation,
@@ -6,12 +6,27 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { getOrders, updateOrderStatus } from "../../https/index";
+import {
+  getOrders,
+  updateOrderStatus,
+  getAdminOrders,
+} from "../../https/index";
 import { formatDateAndTime } from "../../utils";
+import { useSelector } from "react-redux";
 
 const RecentOrders = () => {
   const queryClient = useQueryClient();
   const [timeFilter, setTimeFilter] = useState("all"); // all, today, week, month, year
+  const user = useSelector((state) => state.user);
+
+  // Determine which API to call based on user role
+  const fetchOrders = async () => {
+    if (user?.role?.toLowerCase() === "admin") {
+      return await getAdminOrders(); // Admin sees all orders
+    } else {
+      return await getOrders(); // Cashiers see only their orders
+    }
+  };
 
   const orderStatusUpdateMutation = useMutation({
     mutationFn: ({ orderId, orderStatus }) =>
@@ -20,7 +35,7 @@ const RecentOrders = () => {
       enqueueSnackbar("Order status updated successfully!", {
         variant: "success",
       });
-      queryClient.invalidateQueries(["orders"]);
+      queryClient.invalidateQueries(["orders", user?.role]);
     },
     onError: () => {
       enqueueSnackbar("Failed to update order status!", { variant: "error" });
@@ -31,22 +46,17 @@ const RecentOrders = () => {
     data: resData,
     isError,
     isLoading,
+    error,
   } = useQuery({
-    queryKey: ["orders"],
-    queryFn: getOrders,
+    queryKey: ["orders", user?.role],
+    queryFn: fetchOrders,
     placeholderData: keepPreviousData,
+    enabled: !!user, // Only fetch when user is available
   });
 
   // Helper function to get date ranges with UTC handling
   const getDateRange = (filter) => {
     const now = new Date();
-
-    // Create dates with proper UTC handling to avoid timezone issues
-    const getUTCDate = (date) => {
-      return new Date(
-        Date.UTC(date.getFullYear(), date.getMonth(), date.getDate())
-      );
-    };
 
     switch (filter) {
       case "today": {
@@ -90,7 +100,7 @@ const RecentOrders = () => {
 
   // Filter orders based on time filter
   const filterOrdersByTime = (orders) => {
-    if (!orders) return [];
+    if (!orders || !Array.isArray(orders)) return [];
 
     if (timeFilter === "all") {
       return orders;
@@ -101,7 +111,7 @@ const RecentOrders = () => {
 
     return orders.filter((order) => {
       // Parse the order date
-      const orderDate = new Date(order.orderDate);
+      const orderDate = new Date(order.orderDate || order.createdAt);
 
       // Make sure we're comparing dates correctly by checking if orderDate is valid
       if (isNaN(orderDate.getTime())) {
@@ -126,54 +136,44 @@ const RecentOrders = () => {
     }
   };
 
-  // Debug function to check filtering
-  const logFilteredData = () => {
-    if (resData?.data?.data) {
-      const dateRange = getDateRange(timeFilter);
-      console.log("Time Filter:", timeFilter);
-      console.log("Date Range:", dateRange);
-      console.log("Total Orders:", resData.data.data.length);
+  // Helper to safely extract orders data based on API response structure
+  const extractOrdersData = () => {
+    if (!resData?.data) return [];
 
-      const filtered = filterOrdersByTime(resData.data.data);
-      console.log("Filtered Orders:", filtered.length);
-
-      // Log some sample dates
-      if (filtered.length > 0) {
-        console.log(
-          "Sample order dates:",
-          filtered.slice(0, 3).map((order) => ({
-            orderId: order.orderId,
-            date: new Date(order.orderDate).toISOString(),
-            localDate: new Date(order.orderDate).toString(),
-          }))
-        );
-      }
+    // Handle different response structures
+    if (resData.data.data && Array.isArray(resData.data.data)) {
+      return resData.data.data; // From getOrders()
+    } else if (Array.isArray(resData.data)) {
+      return resData.data; // From getAdminOrders()
     }
-  };
 
-  // Call this in useEffect if you want to debug
-  // useEffect(() => {
-  //   logFilteredData();
-  // }, [timeFilter, resData]);
+    return [];
+  };
 
   if (isLoading) {
     return (
-      <div className="text-center text-gray-600 py-10">
-        Loading recent orders...
+      <div className="container mx-auto bg-gradient-to-br from-gray-100 to-gray-200 p-6 rounded-2xl shadow-2xl border border-gray-300">
+        <div className="text-center text-gray-600 py-10">
+          Loading recent orders...
+        </div>
       </div>
     );
   }
 
-  if (isError || !resData?.data?.data) {
-    enqueueSnackbar("Something went wrong!", { variant: "error" });
+  if (isError) {
+    enqueueSnackbar(error?.message || "Something went wrong!", {
+      variant: "error",
+    });
     return (
-      <div className="text-center text-gray-600 py-10">
-        Unable to load orders.
+      <div className="container mx-auto bg-gradient-to-br from-gray-100 to-gray-200 p-6 rounded-2xl shadow-2xl border border-gray-300">
+        <div className="text-center text-gray-600 py-10">
+          Unable to load orders. Please try again.
+        </div>
       </div>
     );
   }
 
-  const allOrders = resData.data.data;
+  const allOrders = extractOrdersData();
   const filteredOrders = filterOrdersByTime(allOrders);
   const totalOrders = filteredOrders.length;
 
@@ -186,7 +186,7 @@ const RecentOrders = () => {
     { "In Progress": 0, Ready: 0, Completed: 0 }
   );
 
-  // Display current filter info for debugging (remove in production)
+  // Display current filter info
   const getFilterDisplayText = () => {
     const dateRange = getDateRange(timeFilter);
     if (dateRange) {
@@ -195,14 +195,34 @@ const RecentOrders = () => {
     return "Showing all orders";
   };
 
+  // Role-based display text
+  const getRoleBasedText = () => {
+    if (user?.role?.toLowerCase() === "admin") {
+      return {
+        title: "All Orders Dashboard",
+        subtitle: "Complete overview of all restaurant orders",
+      };
+    } else {
+      return {
+        title: "Recent Orders",
+        subtitle: "Your recent order history",
+      };
+    }
+  };
+
+  const roleText = getRoleBasedText();
+
   return (
     <div className="container mx-auto bg-gradient-to-br from-gray-100 to-gray-200 p-6 rounded-2xl shadow-2xl border border-gray-300">
       {/* Header */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-8 gap-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">Recent Orders</h2>
+          <h2 className="text-2xl font-bold text-gray-800">{roleText.title}</h2>
           <p className="text-sm text-gray-600 mt-1">
             {getFilterDisplayText()} • {totalOrders} orders found
+            {user?.role?.toLowerCase() === "admin"
+              ? " • All Users"
+              : " • Your Orders"}
           </p>
         </div>
 
@@ -227,7 +247,6 @@ const RecentOrders = () => {
         </div>
       </div>
 
-      {/* Rest of your component remains the same */}
       {/* Status Summary */}
       <div className="mb-6 grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="bg-yellow-50 border border-yellow-200 p-3 rounded-lg">
@@ -261,6 +280,11 @@ const RecentOrders = () => {
         <table className="w-full text-left">
           <thead className="bg-gradient-to-r from-gray-200 to-gray-300">
             <tr>
+              {user?.role?.toLowerCase() === "admin" && (
+                <th className="p-4 font-semibold text-gray-700 text-sm uppercase tracking-wider">
+                  Cashier
+                </th>
+              )}
               <th className="p-4 font-semibold text-gray-700 text-sm uppercase tracking-wider">
                 Order ID
               </th>
@@ -290,7 +314,10 @@ const RecentOrders = () => {
           <tbody className="bg-white divide-y divide-gray-200">
             {filteredOrders.length === 0 ? (
               <tr>
-                <td colSpan="8" className="p-8 text-center text-gray-500">
+                <td
+                  colSpan={user?.role?.toLowerCase() === "admin" ? 9 : 8}
+                  className="p-8 text-center text-gray-500"
+                >
                   <div className="flex flex-col items-center justify-center">
                     <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center mb-4">
                       <svg
@@ -322,11 +349,23 @@ const RecentOrders = () => {
                   key={order._id || index}
                   className="hover:bg-gray-50 transition-colors duration-200"
                 >
+                  {user?.role?.toLowerCase() === "admin" && (
+                    <td className="p-4">
+                      <div className="text-sm text-gray-700">
+                        {order.user?.name || "System"}
+                      </div>
+                      <div className="text-xs text-gray-500">
+                        {order.user?.role || "Cashier"}
+                      </div>
+                    </td>
+                  )}
                   <td className="p-4">
                     <div className="font-mono text-sm font-semibold text-gray-700">
                       #
                       {order.orderId?.slice(-6) ||
-                        Math.floor(new Date(order.orderDate).getTime())
+                        Math.floor(
+                          new Date(order.orderDate || order.createdAt).getTime()
+                        )
                           .toString()
                           .slice(-6)}
                     </div>
@@ -357,7 +396,7 @@ const RecentOrders = () => {
                   </td>
                   <td className="p-4">
                     <div className="text-sm text-gray-600">
-                      {formatDateAndTime(order.orderDate)}
+                      {formatDateAndTime(order.orderDate || order.createdAt)}
                     </div>
                   </td>
                   <td className="p-4">
