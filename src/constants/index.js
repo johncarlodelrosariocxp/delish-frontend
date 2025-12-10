@@ -15,11 +15,11 @@ export const cheesecakeFlavorOptions = [
 
 // Additional Keto Mini flavors (from image: Lemon, Queso de Bola, Dark Chocolate, New York, Coffee)
 export const ketoMiniFlavorOptions = [
-  { label: "Lemon", price: 160 },
-  { label: "Queso de Bola", price: 160 },
-  { label: "Dark Chocolate", price: 160 },
-  { label: "New York", price: 160 },
-  { label: "Coffee", price: 160 },
+  { label: "Lemon", price: 330 },
+  { label: "Queso de Bola", price: 330 },
+  { label: "Dark Chocolate", price: 330 },
+  { label: "New York", price: 330 },
+  { label: "Coffee", price: 330 },
 ];
 
 // 🍳 All-Day Breakfast (Updated from image)

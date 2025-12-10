@@ -21,6 +21,28 @@ const MenuContainer = ({ orderId }) => {
 
   const dispatch = useDispatch();
 
+  // Update the Keto Cheesecake - Slices price to 330 pesos
+  const updatedMenus = menus.map((menu) => {
+    if (menu.name === "Keto Cheesecakes") {
+      return {
+        ...menu,
+        items: menu.items.map((item) => {
+          if (item.name === "Keto Cheesecake - Slices") {
+            return {
+              ...item,
+              variants: item.variants.map((variant) => ({
+                ...variant,
+                price: 330, // Set price to 330 pesos
+              })),
+            };
+          }
+          return item;
+        }),
+      };
+    }
+    return menu;
+  });
+
   // Handle regular item add to cart
   const handleAddToCart = (item, variant) => {
     const newObj = {
@@ -170,7 +192,7 @@ const MenuContainer = ({ orderId }) => {
       {/* 🟡 Category Sidebar */}
       <div className="w-48 sm:w-56 md:w-60 lg:w-64 bg-white shadow-md overflow-y-auto flex-shrink-0">
         <div className="grid grid-cols-2 gap-2 p-3">
-          {menus.map((menu) => (
+          {updatedMenus.map((menu) => (
             <div
               key={menu.id}
               onClick={() => {
