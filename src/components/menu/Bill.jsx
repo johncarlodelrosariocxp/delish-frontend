@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   removeItemFromOrder,
@@ -16,6 +16,9 @@ import { addOrder } from "../../https/index";
 import { enqueueSnackbar } from "notistack";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
+
+// Import Invoice component
+import Invoice from "../../components/invoice/Invoice";
 
 const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
   const dispatch = useDispatch();
@@ -112,8 +115,23 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     return pendingOrders.find((order) => order.id !== currentOrder?.id);
   };
 
+  // ✅ NEW: Get all pending orders in sequence
+  const getAllPendingOrders = () => {
+    return orders.filter(
+      (order) =>
+        !order.orderStatus ||
+        order.orderStatus === "pending" ||
+        order.orderStatus === "processing" ||
+        order.orderStatus === "in-progress" ||
+        order.status === "pending" ||
+        order.status === "processing" ||
+        order.status === "in-progress"
+    );
+  };
+
   const currentOrder = findCurrentOrder();
   const nextOrder = findNextPendingOrder();
+  const pendingOrders = getAllPendingOrders();
   const cartData = currentOrder?.items || [];
 
   const vatRate = 12;
@@ -137,6 +155,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     type: "PWD",
   });
   const [customerType, setCustomerType] = useState("walk-in");
+  const [customerPhone, setCustomerPhone] = useState("");
   const [cashAmount, setCashAmount] = useState(0);
   const [showCashModal, setShowCashModal] = useState(false);
   const [showOnlineOptions, setShowOnlineOptions] = useState(false);
@@ -148,9 +167,19 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
   });
   const [showMixedPaymentModal, setShowMixedPaymentModal] = useState(false);
   const [activeCategory, setActiveCategory] = useState(null);
-  const [showInvoice, setShowInvoice] = useState(false);
-  const [invoiceData, setInvoiceData] = useState(null);
+
+  // ✅ ADDED: State for showing Invoice component
+  const [showInvoiceComponent, setShowInvoiceComponent] = useState(false);
+  const [invoiceOrderData, setInvoiceOrderData] = useState(null);
+
+  // ✅ FIXED: Added missing state declaration
   const [showNextOrderConfirm, setShowNextOrderConfirm] = useState(false);
+
+  // ✅ NEW: Track processed orders to prevent double switching
+  const [processedOrders, setProcessedOrders] = useState(new Set());
+
+  // ✅ NEW: Ref for auto-printing
+  const printRef = useRef();
 
   // Safe number conversion helper
   const safeNumber = (value) => {
@@ -678,6 +707,11 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     );
   };
 
+  // Handle customer phone input
+  const handlePhoneChange = (e) => {
+    setCustomerPhone(e.target.value);
+  };
+
   // ✅ FIXED: Handle cash payment selection
   const handleCashPayment = () => {
     setPaymentMethod("Cash");
@@ -781,7 +815,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     return `ORD-${timestamp}-${randomSuffix}`;
   };
 
-  // ✅ FIXED: Prepare order data with proper payment handling
+  // ✅ FIXED: Prepare order data WITHOUT table field
   const prepareOrderData = () => {
     // Determine payment details
     let paymentMethodValue = "Cash";
@@ -814,6 +848,10 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
       onlinePaymentAmount = safeNumber(mixedPayment.onlineAmount);
       onlinePaymentMethod = mixedPayment.onlineMethod;
     }
+
+    // FIXED: Use lowercase enum values for status
+    const paymentStatusValue = isPartialPayment ? "partial" : "completed";
+    const orderStatusValue = isPartialPayment ? "pending" : "completed";
 
     // Prepare bills data
     const bills = {
@@ -859,9 +897,12 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
       })
       .filter((item) => item !== null);
 
-    // Prepare customer details
+    // Prepare customer details - FIXED: Provide valid phone number or "Not provided"
     const customerName =
       customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer";
+
+    // Use customer phone if provided, otherwise use "0000000000"
+    const customerPhoneValue = customerPhone.trim() || "0000000000";
 
     // Get user ID
     let userId = user?._id;
@@ -883,10 +924,10 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     return {
       customerDetails: {
         name: customerName,
-        phone: "",
-        guests: 1,
+        phone: customerPhoneValue,
         email: "",
         address: "",
+        guests: 1,
       },
       customerType: customerType,
       customerStatus: customerType === "walk-in" ? "Dine-in" : "Take-out",
@@ -905,8 +946,8 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
           mixedPayment
         ),
       },
-      paymentStatus: isPartialPayment ? "Partial" : "Completed",
-      orderStatus: isPartialPayment ? "Pending" : "Completed",
+      paymentStatus: paymentStatusValue, // FIXED: lowercase
+      orderStatus: orderStatusValue, // FIXED: lowercase
       pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
       pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
       pwdSeniorSelectedItems: pwdSeniorDiscountApplied
@@ -914,7 +955,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
         : [],
       cashier: user?.name || "Admin",
       user: userId || "000000000000000000000001",
-      tableId: currentOrder?.tableId || null,
+      // REMOVED: tableId field to avoid backend error
       orderNumber: orderNumber,
       totalAmount: Number(totals.total.toFixed(2)),
       cashAmount: Number(cashPaymentAmount.toFixed(2)),
@@ -924,6 +965,8 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
       isPartialPayment: isPartialPayment,
       remainingBalance: Number(remainingBalance.toFixed(2)),
       amountPaid: Number(totalPaid.toFixed(2)),
+      // FIXED: Added table field with null value to match schema
+      table: null,
     };
   };
 
@@ -972,7 +1015,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
         ...orderData.bills,
         netSales: totals.netSales,
       },
-      orderStatus: orderData.isPartialPayment ? "Pending" : "Completed",
+      orderStatus: orderData.orderStatus, // Use the already fixed status
       orderDate: new Date().toISOString(),
       cashier: user?.name || "Admin",
       orderNumber: orderData.orderNumber,
@@ -981,6 +1024,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
       paymentMethod: orderData.paymentDetails.paymentMethodDisplay,
       isPartialPayment: orderData.isPartialPayment,
       remainingBalance: orderData.remainingBalance,
+      table: null, // FIXED: Add table field
     };
   };
 
@@ -1040,8 +1084,10 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
       // Generate invoice data
       const invoiceData = generateInvoiceData();
 
-      // Mark order as completed with invoice data
+      // Mark current order as processed
       if (currentOrder) {
+        setProcessedOrders((prev) => new Set(prev).add(currentOrder.id));
+
         console.log("✅ Completing order in Redux with invoice data");
         dispatch(
           completeOrder({
@@ -1065,20 +1111,12 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
 
       setIsProcessing(false);
 
-      // Show invoice immediately
-      setInvoiceData({
+      // ✅ UPDATED: Show Invoice component instead of modal
+      setInvoiceOrderData({
         ...invoiceData,
         _id: data._id || invoiceData._id,
       });
-      setShowInvoice(true);
-
-      // Call parent callback if provided
-      if (onInvoiceGenerated) {
-        onInvoiceGenerated({
-          ...invoiceData,
-          _id: data._id || invoiceData._id,
-        });
-      }
+      setShowInvoiceComponent(true);
     },
     onError: (error) => {
       console.error("❌ Order placement error:", error);
@@ -1192,8 +1230,8 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
 
   // ✅ FIXED: Handle invoice close - auto go to next order
   const handleCloseInvoice = () => {
-    setShowInvoice(false);
-    setInvoiceData(null);
+    setShowInvoiceComponent(false);
+    setInvoiceOrderData(null);
 
     // Reset all states for next order
     setPwdSeniorDiscountApplied(false);
@@ -1209,6 +1247,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
       type: "PWD",
     });
     setCustomerType("walk-in");
+    setCustomerPhone("");
     setCashAmount(0);
     setShowCashModal(false);
     setShowOnlineOptions(false);
@@ -1221,35 +1260,61 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     setShowMixedPaymentModal(false);
     setActiveCategory(null);
     setIsProcessing(false);
+    setShowNextOrderConfirm(false); // Also reset this modal
 
     // Check if there's a next order
-    if (nextOrder) {
+    if (nextOrder && !processedOrders.has(nextOrder.id)) {
       // Set the next order as active
       dispatch(setActiveOrder(nextOrder.id));
       enqueueSnackbar(`Now working on Order ${nextOrder.number}`, {
         variant: "info",
       });
     } else {
-      // No next order - show empty state
-      enqueueSnackbar("No more pending orders. Start a new order from menu.", {
-        variant: "info",
-      });
+      // Try to find any other pending order
+      const pendingOrders = getAllPendingOrders();
+      const nextPendingOrder = pendingOrders.find(
+        (order) =>
+          !processedOrders.has(order.id) && order.id !== currentOrder?.id
+      );
+
+      if (nextPendingOrder) {
+        dispatch(setActiveOrder(nextPendingOrder.id));
+        enqueueSnackbar(`Now working on Order ${nextPendingOrder.number}`, {
+          variant: "info",
+        });
+      } else {
+        // No next order - show empty state
+        enqueueSnackbar(
+          "No more pending orders. Start a new order from menu.",
+          {
+            variant: "info",
+          }
+        );
+      }
     }
   };
 
   // ✅ NEW: Handle go to next order directly
   const handleGoToNextOrder = () => {
-    if (nextOrder) {
+    if (nextOrder && !processedOrders.has(nextOrder.id)) {
       dispatch(setActiveOrder(nextOrder.id));
       setShowNextOrderConfirm(false);
       enqueueSnackbar(`Now working on Order ${nextOrder.number}`, {
         variant: "info",
       });
+    } else {
+      enqueueSnackbar("Next order is already processed", {
+        variant: "warning",
+      });
+      setShowNextOrderConfirm(false);
     }
   };
 
+  // ✅ NEW: Pending orders counter
+  const pendingOrderCount = pendingOrders.length;
+
   // ✅ FIXED: Main render logic
-  if (!currentOrder && !showInvoice) {
+  if (!currentOrder && !showInvoiceComponent) {
     return (
       <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
         <div className="max-w-[600px] mx-auto text-center">
@@ -1271,24 +1336,26 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
                 </svg>
               </div>
               <h2 className="text-gray-900 text-xl font-semibold mb-2">
-                {nextOrder ? "Switch to Next Order?" : "No Active Order"}
+                {pendingOrderCount > 0
+                  ? "Pending Orders Available"
+                  : "No Active Order"}
               </h2>
               <p className="text-gray-500 text-sm mb-6">
-                {nextOrder
-                  ? `There are ${
-                      orders.filter(
-                        (o) => !o.orderStatus || o.orderStatus === "pending"
-                      ).length
-                    } pending orders.`
+                {pendingOrderCount > 0
+                  ? `There are ${pendingOrderCount} pending order${
+                      pendingOrderCount > 1 ? "s" : ""
+                    }.`
                   : "Please select items from the menu to create an order."}
               </p>
-              {nextOrder && (
+              {pendingOrderCount > 0 && (
                 <div className="mb-6">
                   <button
                     onClick={() => {
-                      dispatch(setActiveOrder(nextOrder.id));
+                      // Get the first pending order
+                      const firstPendingOrder = pendingOrders[0];
+                      dispatch(setActiveOrder(firstPendingOrder.id));
                       enqueueSnackbar(
-                        `Now working on Order ${nextOrder.number}`,
+                        `Now working on Order ${firstPendingOrder.number}`,
                         {
                           variant: "success",
                         }
@@ -1296,7 +1363,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
                     }}
                     className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors"
                   >
-                    Work on Order {nextOrder.number}
+                    Start First Pending Order
                   </button>
                 </div>
               )}
@@ -1323,6 +1390,323 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
 
   return (
     <>
+      {/* ✅ ADDED: Invoice Component */}
+      {showInvoiceComponent && invoiceOrderData && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">INVOICE</h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => {
+                    window.print();
+                  }}
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors"
+                >
+                  Print Invoice
+                </button>
+                <button
+                  onClick={handleCloseInvoice}
+                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+                >
+                  Close & Next Order
+                </button>
+              </div>
+            </div>
+
+            {/* Invoice Header */}
+            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600">Order Number</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {invoiceOrderData.orderNumber}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-600">Date</p>
+                  <p className="text-lg font-bold text-gray-900">
+                    {new Date().toLocaleDateString()}
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600">Cashier</p>
+                  <p className="font-medium text-gray-900">
+                    {invoiceOrderData.cashier}
+                  </p>
+                </div>
+                <div className="text-right">
+                  <p className="text-sm text-gray-600">Customer</p>
+                  <p className="font-medium text-gray-900">
+                    {invoiceOrderData.customerDetails.name}
+                  </p>
+                  {invoiceOrderData.customerDetails.phone && (
+                    <p className="text-sm text-gray-600">
+                      Phone: {invoiceOrderData.customerDetails.phone}
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Items Table */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-3 text-gray-900">
+                Order Items
+              </h3>
+              <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Item
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Qty
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Price
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                        Total
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {invoiceOrderData.items?.map((item, index) => (
+                      <tr key={index}>
+                        <td className="px-4 py-3">
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">
+                              {item.name}
+                              {item.isFree && (
+                                <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
+                                  FREE
+                                </span>
+                              )}
+                              {item.isPwdSeniorDiscounted && (
+                                <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
+                                  PWD/SENIOR -20%
+                                </span>
+                              )}
+                            </p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          {item.quantity}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-900">
+                          ₱{item.pricePerQuantity.toFixed(2)}
+                        </td>
+                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
+                          {item.isFree ? (
+                            <span className="text-green-600">FREE</span>
+                          ) : (
+                            `₱${item.price.toFixed(2)}`
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Totals Section */}
+            <div className="mb-6">
+              <h3 className="text-lg font-semibold mb-3 text-gray-900">
+                Payment Summary
+              </h3>
+              <div className="bg-gray-50 rounded-lg p-4">
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Subtotal:</span>
+                    <span className="font-medium">
+                      ₱{invoiceOrderData.bills?.total.toFixed(2)}
+                    </span>
+                  </div>
+
+                  {/* Discounts */}
+                  {invoiceOrderData.bills?.pwdSeniorDiscount > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>PWD/Senior Discount (20%):</span>
+                      <span className="font-medium">
+                        -₱{invoiceOrderData.bills?.pwdSeniorDiscount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+
+                  {invoiceOrderData.bills?.employeeDiscount > 0 && (
+                    <div className="flex justify-between text-yellow-600">
+                      <span>Employee Discount (15%):</span>
+                      <span className="font-medium">
+                        -₱{invoiceOrderData.bills?.employeeDiscount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+
+                  {invoiceOrderData.bills?.shareholderDiscount > 0 && (
+                    <div className="flex justify-between text-purple-600">
+                      <span>Shareholder Discount (10%):</span>
+                      <span className="font-medium">
+                        -₱
+                        {invoiceOrderData.bills?.shareholderDiscount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+
+                  {invoiceOrderData.bills?.redemptionDiscount > 0 && (
+                    <div className="flex justify-between text-blue-600">
+                      <span>Redemption Discount:</span>
+                      <span className="font-medium">
+                        -₱
+                        {invoiceOrderData.bills?.redemptionDiscount.toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+
+                  <div className="flex justify-between border-t pt-2">
+                    <span className="text-gray-600">Net of VAT:</span>
+                    <span className="font-medium">
+                      ₱{invoiceOrderData.bills?.netSales.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">VAT (12%):</span>
+                    <span className="font-medium">
+                      ₱{invoiceOrderData.bills?.tax.toFixed(2)}
+                    </span>
+                  </div>
+
+                  <div className="flex justify-between border-t pt-2 text-lg font-bold">
+                    <span>Total:</span>
+                    <span>₱{invoiceOrderData.totalAmount.toFixed(2)}</span>
+                  </div>
+
+                  {/* Payment Details */}
+                  <div className="border-t pt-4 mt-4">
+                    <p className="font-medium mb-2">Payment Details:</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <p className="text-sm text-gray-600">Method:</p>
+                        <p className="font-medium">
+                          {invoiceOrderData.paymentMethod}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-gray-600">Amount Paid:</p>
+                        <p className="font-medium">
+                          ₱{invoiceOrderData.amountPaid.toFixed(2)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {invoiceOrderData.cashAmount > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm text-gray-600">Cash:</p>
+                        <p className="font-medium">
+                          ₱{invoiceOrderData.cashAmount.toFixed(2)}
+                        </p>
+                      </div>
+                    )}
+
+                    {invoiceOrderData.onlineAmount > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm text-gray-600">
+                          Online ({invoiceOrderData.bills?.onlineMethod}):
+                        </p>
+                        <p className="font-medium">
+                          ₱{invoiceOrderData.onlineAmount.toFixed(2)}
+                        </p>
+                      </div>
+                    )}
+
+                    {invoiceOrderData.change > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm text-gray-600">Change:</p>
+                        <p className="font-medium text-green-600">
+                          ₱{invoiceOrderData.change.toFixed(2)}
+                        </p>
+                      </div>
+                    )}
+
+                    {invoiceOrderData.remainingBalance > 0 && (
+                      <div className="mt-2">
+                        <p className="text-sm text-gray-600">
+                          Remaining Balance:
+                        </p>
+                        <p className="font-medium text-red-600">
+                          ₱{invoiceOrderData.remainingBalance.toFixed(2)}
+                        </p>
+                      </div>
+                    )}
+
+                    {invoiceOrderData.isPartialPayment && (
+                      <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
+                        <p className="text-sm text-yellow-800 font-medium">
+                          ⚠️ Partial Payment
+                        </p>
+                        <p className="text-xs text-yellow-700">
+                          Remaining balance to be paid later.
+                        </p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* PWD/Senior Details */}
+                  {invoiceOrderData.pwdSeniorDetails && (
+                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
+                      <p className="text-sm font-medium text-blue-800 mb-1">
+                        PWD/Senior Details:
+                      </p>
+                      <p className="text-sm text-blue-700">
+                        Name: {invoiceOrderData.pwdSeniorDetails.name}
+                      </p>
+                      <p className="text-sm text-blue-700">
+                        ID: {invoiceOrderData.pwdSeniorDetails.idNumber}
+                      </p>
+                      <p className="text-sm text-blue-700">
+                        Type: {invoiceOrderData.pwdSeniorDetails.type}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="text-center text-sm text-gray-500 border-t pt-4">
+              <p>Thank you for your order!</p>
+              <p className="mt-1">Please keep this invoice for your records.</p>
+              <p className="mt-2 text-xs">
+                Order ID: {invoiceOrderData._id || invoiceOrderData.orderId}
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => {
+                  window.print();
+                }}
+                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors"
+              >
+                Print Invoice
+              </button>
+              <button
+                onClick={handleCloseInvoice}
+                className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 transition-colors"
+              >
+                Complete & Next Order
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Next Order Confirmation Modal */}
       {showNextOrderConfirm && nextOrder && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -1370,306 +1754,6 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
                 Yes, Switch Now
               </button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* Invoice Modal */}
-      {showInvoice && invoiceData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">INVOICE</h2>
-              <button
-                onClick={handleCloseInvoice}
-                className="text-gray-500 hover:text-gray-700"
-              >
-                <svg
-                  className="w-6 h-6"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M6 18L18 6M6 6l12 12"
-                  />
-                </svg>
-              </button>
-            </div>
-
-            {/* Invoice Header */}
-            <div className="mb-6">
-              <div className="flex justify-between mb-2">
-                <div>
-                  <p className="text-sm text-gray-600">Order #</p>
-                  <p className="font-semibold">{invoiceData.orderNumber}</p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-600">Date</p>
-                  <p className="font-semibold">
-                    {new Date(invoiceData.orderDate).toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-              <div className="mb-4">
-                <p className="text-sm text-gray-600">Customer</p>
-                <p className="font-semibold">
-                  {invoiceData.customerDetails.name}
-                </p>
-              </div>
-              <div className="mb-4">
-                <p className="text-sm text-gray-600">Cashier</p>
-                <p className="font-semibold">{invoiceData.cashier}</p>
-              </div>
-
-              {/* Show Partial Payment Warning */}
-              {invoiceData.isPartialPayment && (
-                <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <svg
-                      className="w-5 h-5 text-yellow-600"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.795-.833-2.565 0L5.346 16.5c-.77.833.192 2.5 1.732 2.5z"
-                      />
-                    </svg>
-                    <p className="text-sm font-medium text-yellow-800">
-                      PARTIAL PAYMENT - Balance: ₱
-                      {invoiceData.remainingBalance?.toFixed(2) || "0.00"}
-                    </p>
-                  </div>
-                  <p className="text-xs text-yellow-700 mt-1">
-                    Payment Status: {invoiceData.paymentStatus} | Order Status:{" "}
-                    {invoiceData.orderStatus}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Invoice Items */}
-            <div className="mb-6">
-              <h3 className="font-semibold text-lg mb-3">Order Items</h3>
-              <div className="space-y-3">
-                {invoiceData.items.map((item, index) => (
-                  <div
-                    key={index}
-                    className="flex justify-between items-center"
-                  >
-                    <div>
-                      <p className="font-medium">{item.name}</p>
-                      <p className="text-sm text-gray-600">
-                        {item.quantity} × ₱{item.pricePerQuantity.toFixed(2)}
-                      </p>
-                    </div>
-                    <p className="font-bold">
-                      {item.isFree ? (
-                        <span className="text-green-600">FREE</span>
-                      ) : (
-                        `₱${item.price.toFixed(2)}`
-                      )}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Invoice Totals */}
-            <div className="border-t pt-4">
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <span className="text-gray-600">Subtotal:</span>
-                  <span>₱{invoiceData.bills.total.toFixed(2)}</span>
-                </div>
-
-                {invoiceData.bills.pwdSeniorDiscount > 0 && (
-                  <div className="flex justify-between text-green-600">
-                    <span>PWD/Senior Discount:</span>
-                    <span>
-                      -₱{invoiceData.bills.pwdSeniorDiscount.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-
-                {invoiceData.bills.employeeDiscount > 0 && (
-                  <div className="flex justify-between text-yellow-600">
-                    <span>Employee Discount:</span>
-                    <span>
-                      -₱{invoiceData.bills.employeeDiscount.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-
-                {invoiceData.bills.shareholderDiscount > 0 && (
-                  <div className="flex justify-between text-purple-600">
-                    <span>Shareholder Discount:</span>
-                    <span>
-                      -₱{invoiceData.bills.shareholderDiscount.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-
-                {invoiceData.bills.redemptionDiscount > 0 && (
-                  <div className="flex justify-between text-blue-600">
-                    <span>Redemption Discount:</span>
-                    <span>
-                      -₱{invoiceData.bills.redemptionDiscount.toFixed(2)}
-                    </span>
-                  </div>
-                )}
-
-                <div className="flex justify-between">
-                  <span className="text-gray-600">VAT (12%):</span>
-                  <span>₱{invoiceData.bills.tax.toFixed(2)}</span>
-                </div>
-
-                <div className="flex justify-between text-lg font-bold border-t pt-2">
-                  <span>TOTAL:</span>
-                  <span>₱{invoiceData.bills.totalWithTax.toFixed(2)}</span>
-                </div>
-
-                {/* Show payment details */}
-                <div className="border-t pt-2 mt-2">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Amount Paid:</span>
-                    <span className="font-medium">
-                      ₱{invoiceData.bills.amountPaid?.toFixed(2) || "0.00"}
-                    </span>
-                  </div>
-
-                  {invoiceData.bills.cashAmount > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">Cash:</span>
-                      <span>₱{invoiceData.bills.cashAmount.toFixed(2)}</span>
-                    </div>
-                  )}
-
-                  {invoiceData.bills.onlineAmount > 0 && (
-                    <div className="flex justify-between">
-                      <span className="text-gray-600">
-                        Online ({invoiceData.bills.onlineMethod}):
-                      </span>
-                      <span>₱{invoiceData.bills.onlineAmount.toFixed(2)}</span>
-                    </div>
-                  )}
-
-                  {invoiceData.bills.change > 0 && (
-                    <div className="flex justify-between text-green-600">
-                      <span>Change:</span>
-                      <span>₱{invoiceData.bills.change.toFixed(2)}</span>
-                    </div>
-                  )}
-
-                  {invoiceData.isPartialPayment && (
-                    <div className="flex justify-between text-red-600 font-bold mt-2 pt-2 border-t">
-                      <span>Remaining Balance:</span>
-                      <span>
-                        ₱{invoiceData.remainingBalance?.toFixed(2) || "0.00"}
-                      </span>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Payment Method */}
-            <div className="mt-6 pt-4 border-t">
-              <p className="text-gray-600">Payment Method:</p>
-              <p className="font-bold">{invoiceData.paymentMethod}</p>
-              {invoiceData.isPartialPayment && (
-                <p className="text-sm text-red-600 mt-1">
-                  ⚠️ Partial Payment - Balance Due: ₱
-                  {invoiceData.remainingBalance?.toFixed(2) || "0.00"}
-                </p>
-              )}
-            </div>
-
-            {/* Thank You Message */}
-            <div className="mt-8 text-center">
-              <p className="text-gray-600 italic">
-                Thank you for your purchase!
-              </p>
-              <p className="text-sm text-gray-500 mt-2">
-                Order ID: {invoiceData._id}
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="mt-6 flex gap-3">
-              <button
-                onClick={handleCloseInvoice}
-                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-                {nextOrder
-                  ? `Close & Go to Order ${nextOrder.number}`
-                  : "Close Invoice"}
-              </button>
-              <button
-                onClick={() => {
-                  navigate(`/invoice/${invoiceData._id}`);
-                }}
-                className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <svg
-                  className="w-5 h-5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
-                  />
-                </svg>
-                View Full Invoice
-              </button>
-            </div>
-
-            {/* Next Order Info */}
-            {nextOrder && (
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-blue-800">
-                      Next Order Available
-                    </p>
-                    <p className="text-xs text-blue-600">
-                      Order {nextOrder.number} has{" "}
-                      {nextOrder.items?.length || 0} items
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowNextOrderConfirm(true)}
-                    className="text-sm text-blue-700 hover:text-blue-900 font-medium"
-                  >
-                    Switch Now →
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -1954,7 +2038,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
         {currentOrder && (
           <div className="max-w-[600px] mx-auto space-y-4 pb-8">
             {/* Next Order Banner */}
-            {nextOrder && (
+            {nextOrder && !processedOrders.has(nextOrder.id) && (
               <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                 <div className="flex items-center justify-between">
                   <div>
@@ -1964,6 +2048,10 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
                     <p className="text-xs text-blue-600">
                       Order {nextOrder.number} has{" "}
                       {nextOrder.items?.length || 0} items
+                    </p>
+                    <p className="text-xs text-gray-500 mt-1">
+                      {pendingOrderCount - 1} more order
+                      {pendingOrderCount - 1 > 1 ? "s" : ""} pending
                     </p>
                   </div>
                   <button
@@ -1976,12 +2064,12 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
               </div>
             )}
 
-            {/* 🧾 CUSTOMER TYPE */}
+            {/* 🧾 CUSTOMER TYPE & PHONE */}
             <div className="bg-white rounded-lg p-4 shadow-md">
               <h2 className="text-gray-900 text-sm font-semibold mb-3">
-                Customer Type
+                Customer Details
               </h2>
-              <div className="flex gap-3">
+              <div className="flex gap-3 mb-3">
                 <button
                   onClick={() => handleCustomerTypeChange("walk-in")}
                   className={`flex-1 px-4 py-3 rounded-lg font-semibold text-sm ${
@@ -2002,6 +2090,21 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
                 >
                   Take-out
                 </button>
+              </div>
+              <div className="mt-3">
+                <label className="block text-xs font-medium text-gray-700 mb-1">
+                  Customer Phone (Optional)
+                </label>
+                <input
+                  type="tel"
+                  value={customerPhone}
+                  onChange={handlePhoneChange}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+                  placeholder="Enter phone number (optional)"
+                />
+                <p className="text-xs text-gray-500 mt-1">
+                  Phone number is optional for walk-in customers
+                </p>
               </div>
             </div>
 
@@ -2397,7 +2500,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
                   </>
                 ) : (
                   <>
-                    Place Order
+                    Place Order & Show Invoice
                     {totals.remainingBalance > 0 && (
                       <span className="text-xs bg-yellow-500 text-white px-2 py-1 rounded-full">
                         Partial

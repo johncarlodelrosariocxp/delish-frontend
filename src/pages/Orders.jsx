@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
 import { useSelector } from "react-redux";
 import {
   FaSearch,
@@ -15,6 +15,8 @@ import {
   FaTimes,
   FaChevronLeft,
   FaChevronRight,
+  FaSync,
+  FaExclamationTriangle,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import {
@@ -24,7 +26,7 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { enqueueSnackbar } from "notistack";
-import { getOrders, getAdminOrders, updateOrderStatus } from "../https/index";
+import { getOrders, getAdminOrders, updateOrderStatus } from "../https";
 import BottomNav from "../components/shared/BottomNav";
 import BackButton from "../components/shared/BackButton";
 import Invoice from "../components/invoice/Invoice";
@@ -47,22 +49,24 @@ const Orders = () => {
   const [selectingStartDate, setSelectingStartDate] = useState(true);
   const [orderToDelete, setOrderToDelete] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 50,
+    totalPages: 1,
+    totalItems: 0,
+    hasMore: true,
+  });
+  const [isFetchingAll, setIsFetchingAll] = useState(false);
+  const [allOrdersFetched, setAllOrdersFetched] = useState([]);
+  const [isLoadingAll, setIsLoadingAll] = useState(false);
+
   const scrollRef = useRef(null);
   const datePickerRef = useRef(null);
+  const observerRef = useRef(null);
 
   const user = useSelector((state) => state.user);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-
-  const debugAPI = (data, context) => {
-    console.log(`🔍 ${context}:`, data);
-    if (data?.response?.data) {
-      console.log(`🔍 ${context} Response Data:`, data.response.data);
-    }
-    if (data?.message) {
-      console.log(`🔍 ${context} Message:`, data.message);
-    }
-  };
 
   useEffect(() => {
     document.title = "POS | Orders";
@@ -81,50 +85,329 @@ const Orders = () => {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Function to fetch ALL orders from the database using existing APIs
+  const fetchAllOrdersFromDatabase = useCallback(async () => {
+    try {
+      setIsLoadingAll(true);
+      console.log("🔄 Starting to fetch ALL orders from database...");
+
+      let allOrders = [];
+      let currentPage = 1;
+      let hasMorePages = true;
+      const limit = 100; // Fetch 100 orders per request
+
+      // For admins, use getAdminOrders API with pagination
+      if (user.role?.toLowerCase() === "admin") {
+        console.log("🛠️ Using admin API to fetch all orders");
+
+        while (hasMorePages) {
+          console.log(`📄 Fetching page ${currentPage}...`);
+
+          let response;
+          try {
+            response = await getAdminOrders();
+          } catch (error) {
+            console.log(
+              `⚠️ Error on page ${currentPage}, trying without params:`,
+              error
+            );
+            // Try without params if the API doesn't support them
+            response = await getAdminOrders();
+          }
+
+          if (!response || !response.data) {
+            throw new Error("Invalid response from server");
+          }
+
+          // Extract orders based on response structure
+          const ordersArray = extractOrdersFromResponse(response.data);
+
+          if (ordersArray.length > 0) {
+            allOrders = [...allOrders, ...ordersArray];
+            console.log(
+              `✅ Fetched ${ordersArray.length} orders from page ${currentPage}`
+            );
+
+            // If we got fewer orders than the limit, we've reached the end
+            if (ordersArray.length < limit) {
+              hasMorePages = false;
+            } else {
+              currentPage++;
+            }
+          } else {
+            // No more orders
+            hasMorePages = false;
+          }
+
+          // Safety limit to prevent infinite loops
+          if (currentPage > 10) {
+            console.warn("⚠️ Safety limit reached: stopped after 10 pages");
+            break;
+          }
+        }
+      } else {
+        // For regular users - try to get all pages
+        console.log("👤 Using user API to fetch all orders");
+        let response;
+        try {
+          response = await getOrders();
+        } catch (error) {
+          console.log("⚠️ Error fetching user orders:", error);
+          throw error;
+        }
+
+        if (!response || !response.data) {
+          throw new Error("Invalid response from server");
+        }
+
+        const ordersArray = extractOrdersFromResponse(response.data);
+        allOrders = ordersArray;
+      }
+
+      console.log(
+        `✅ Successfully fetched ALL ${allOrders.length} orders from database`
+      );
+      return allOrders;
+    } catch (error) {
+      console.error("❌ Error fetching all orders:", error);
+
+      // Show user-friendly error message
+      let errorMessage = "Failed to load orders. Please try again.";
+
+      if (error.message.includes("401") || error.response?.status === 401) {
+        errorMessage = "Session expired. Please login again.";
+        setTimeout(() => navigate("/auth"), 2000);
+      } else if (error.response?.status === 403) {
+        errorMessage = "You don't have permission to view orders.";
+      } else if (!navigator.onLine) {
+        errorMessage = "You are offline. Please check your connection.";
+      }
+
+      enqueueSnackbar(errorMessage, {
+        variant: "error",
+      });
+
+      throw error;
+    } finally {
+      setIsLoadingAll(false);
+    }
+  }, [user.role, navigate]);
+
+  // Helper function to extract orders from API response
+  const extractOrdersFromResponse = (data) => {
+    if (!data) return [];
+
+    console.log("📦 Extracting orders from response:", typeof data);
+
+    // Try different possible response structures
+    if (Array.isArray(data)) {
+      console.log("✅ Response is an array, returning directly");
+      return data.filter((order) => order && typeof order === "object");
+    }
+
+    if (data.data && Array.isArray(data.data)) {
+      console.log("✅ Found orders in data.data array");
+      return data.data.filter((order) => order && typeof order === "object");
+    }
+
+    if (data.orders && Array.isArray(data.orders)) {
+      console.log("✅ Found orders in data.orders array");
+      return data.orders.filter((order) => order && typeof order === "object");
+    }
+
+    if (data.result && Array.isArray(data.result)) {
+      console.log("✅ Found orders in data.result array");
+      return data.result.filter((order) => order && typeof order === "object");
+    }
+
+    if (data.items && Array.isArray(data.items)) {
+      console.log("✅ Found orders in data.items array");
+      return data.items.filter((order) => order && typeof order === "object");
+    }
+
+    if (data.docs && Array.isArray(data.docs)) {
+      console.log("✅ Found orders in data.docs array");
+      return data.docs.filter((order) => order && typeof order === "object");
+    }
+
+    // Check if any property is an array of orders
+    const arrayProperties = Object.values(data).filter((value) =>
+      Array.isArray(value)
+    );
+    if (arrayProperties.length > 0) {
+      console.log("✅ Found array in response properties");
+      // Find the array that contains order-like objects
+      const ordersArray = arrayProperties.find(
+        (arr) => arr.length > 0 && arr[0] && typeof arr[0] === "object"
+      );
+      if (ordersArray) {
+        return ordersArray.filter(
+          (order) => order && typeof order === "object"
+        );
+      }
+    }
+
+    console.warn(
+      "⚠️ Could not find orders array in response structure, returning empty array"
+    );
+    return [];
+  };
+
+  // Main query to fetch orders
   const {
     data: resData,
     isError,
     isLoading,
+    error,
+    refetch,
   } = useQuery({
     queryKey: ["orders", user.role],
     queryFn: async () => {
       try {
+        console.log("📋 Fetching orders...", {
+          role: user.role,
+        });
+
+        let response;
+
         if (user.role?.toLowerCase() === "admin") {
-          console.log("📋 Orders Page: Fetching all orders (admin)...");
-          const response = await getAdminOrders();
-          debugAPI(response, "Admin Orders API");
-          return response;
+          console.log("🛠️ Calling getAdminOrders API");
+          response = await getAdminOrders();
         } else {
-          console.log("📋 Orders Page: Fetching user orders...");
-          const response = await getOrders();
-          debugAPI(response, "User Orders API");
-          return response;
+          console.log("👤 Calling getOrders API for user");
+          response = await getOrders();
         }
+
+        console.log("✅ API Response received:", {
+          status: response?.status,
+          hasData: !!response?.data,
+        });
+
+        if (!response) {
+          throw new Error("No response from server");
+        }
+
+        if (response.status !== 200 && response.status !== 201) {
+          throw new Error(`API returned status ${response.status}`);
+        }
+
+        // Extract orders from response
+        const ordersArray = extractOrdersFromResponse(response.data);
+
+        // Update pagination info
+        setPagination((prev) => ({
+          ...prev,
+          totalItems: ordersArray.length,
+          hasMore: false, // Assuming single page if API doesn't support pagination
+        }));
+
+        return {
+          orders: ordersArray,
+          rawData: response.data,
+        };
       } catch (error) {
-        console.error("❌ Orders fetch error:", error);
-        debugAPI(error, "Orders Fetch Error");
+        console.error("❌ Error fetching orders:", error);
+
+        // Show specific error messages
+        if (error.response?.status === 401) {
+          enqueueSnackbar("Session expired. Please login again.", {
+            variant: "error",
+          });
+          setTimeout(() => navigate("/auth"), 2000);
+        } else if (error.response?.status === 403) {
+          enqueueSnackbar("You don't have permission to view orders.", {
+            variant: "error",
+          });
+        } else if (error.response?.status === 404) {
+          enqueueSnackbar("Orders endpoint not found.", {
+            variant: "error",
+          });
+        } else if (!navigator.onLine) {
+          enqueueSnackbar("You are offline. Please check your connection.", {
+            variant: "warning",
+          });
+        } else {
+          enqueueSnackbar("Failed to fetch orders. Please try again.", {
+            variant: "error",
+          });
+        }
+
         throw error;
       }
     },
     placeholderData: keepPreviousData,
+    retry: 3, // Retry failed requests 3 times
+    enabled: !!user?.token, // Only fetch if user is authenticated
   });
 
-  // Cancel/Delete order mutation using updateOrderStatus
+  // Function to load ALL orders at once
+  const handleFetchAllOrders = async () => {
+    try {
+      setIsFetchingAll(true);
+      const allOrders = await fetchAllOrdersFromDatabase();
+      setAllOrdersFetched(allOrders);
+
+      enqueueSnackbar(
+        `Successfully loaded ${allOrders.length} orders from database`,
+        {
+          variant: "success",
+        }
+      );
+    } catch (error) {
+      console.error("Failed to fetch all orders:", error);
+    } finally {
+      setIsFetchingAll(false);
+    }
+  };
+
+  // Reset to show paginated view
+  const handleResetPagination = () => {
+    setAllOrdersFetched([]);
+    refetch(); // Refetch the normal query
+  };
+
+  // FIXED: Cancel order mutation
   const cancelOrderMutation = useMutation({
     mutationFn: async (orderId) => {
-      console.log("🗑️ Cancelling order:", orderId);
-      const response = await updateOrderStatus({
-        orderId,
-        orderStatus: "cancelled",
-      });
-      console.log("🗑️ Cancel response:", response);
-      return response;
+      try {
+        console.log("🗑️ Cancelling order:", orderId);
+        if (!orderId) {
+          throw new Error("Order ID is required");
+        }
+
+        const response = await updateOrderStatus({
+          orderId,
+          orderStatus: "cancelled",
+        });
+
+        console.log("✅ Cancel response:", response);
+
+        if (!response || response.status !== 200) {
+          throw new Error("Failed to cancel order");
+        }
+
+        return response.data;
+      } catch (error) {
+        console.error("❌ Cancel order error:", error);
+        throw error;
+      }
     },
     onSuccess: (data, orderId) => {
       console.log("✅ Order cancelled successfully:", orderId);
 
       // Invalidate and refetch orders query
       queryClient.invalidateQueries({ queryKey: ["orders", user.role] });
+
+      // Also update allOrdersFetched if it exists
+      if (allOrdersFetched.length > 0) {
+        setAllOrdersFetched((prev) =>
+          prev.map((order) =>
+            order._id === orderId
+              ? { ...order, orderStatus: "cancelled" }
+              : order
+          )
+        );
+      }
 
       // Close delete modal
       setShowDeleteModal(false);
@@ -144,6 +427,8 @@ const Orders = () => {
         errorMessage = error.response.data.message;
       } else if (error.response?.data?.error) {
         errorMessage = error.response.data.error;
+      } else if (error.message) {
+        errorMessage = error.message;
       }
 
       enqueueSnackbar(errorMessage, {
@@ -185,34 +470,79 @@ const Orders = () => {
     }
   };
 
+  // FIXED: Proper data extraction from query response
   const orders = React.useMemo(() => {
     try {
-      const ordersData = resData?.data?.data;
-      if (Array.isArray(ordersData)) {
-        console.log("📦 Orders data (array):", ordersData.length);
-        return ordersData;
-      } else if (ordersData && typeof ordersData === "object") {
-        const ordersArray = ordersData.orders || ordersData.data || [];
-        if (Array.isArray(ordersArray)) {
-          console.log("📦 Orders data (from object):", ordersArray.length);
-          return ordersArray;
-        }
+      // Use allOrdersFetched if available, otherwise use paginated data
+      if (allOrdersFetched.length > 0) {
+        console.log(
+          `📊 Using ${allOrdersFetched.length} orders from allOrdersFetched`
+        );
+        return allOrdersFetched;
       }
-      console.log("📦 No valid orders data found, returning empty array");
-      return [];
+
+      if (!resData) {
+        console.log("📦 No response data available");
+        return [];
+      }
+
+      console.log("📦 Raw response data type:", typeof resData);
+
+      // Extract orders from the response structure
+      let ordersArray = [];
+
+      if (resData.orders && Array.isArray(resData.orders)) {
+        ordersArray = resData.orders;
+      } else if (Array.isArray(resData)) {
+        ordersArray = resData;
+      } else if (resData.data && Array.isArray(resData.data)) {
+        ordersArray = resData.data;
+      } else if (resData.rawData) {
+        // Extract from rawData if it exists
+        ordersArray = extractOrdersFromResponse(resData.rawData);
+      }
+
+      console.log("📦 Extracted orders:", ordersArray.length);
+
+      // Ensure we have valid orders
+      const validOrders = ordersArray.filter(
+        (order) => order && typeof order === "object"
+      );
+
+      return validOrders;
     } catch (error) {
       console.error("❌ Error processing orders data:", error);
       return [];
     }
-  }, [resData]);
+  }, [resData, allOrdersFetched]);
+
+  // Combine all orders from all pages for display
+  const allOrdersCombined = React.useMemo(() => {
+    // If we have fetched all orders, use that
+    if (allOrdersFetched.length > 0) {
+      return allOrdersFetched;
+    }
+
+    // Otherwise use the orders from query
+    return orders || [];
+  }, [orders, allOrdersFetched]);
 
   useEffect(() => {
-    if (isError) {
-      enqueueSnackbar("Something went wrong while fetching orders!", {
-        variant: "error",
+    if (isError && error) {
+      console.error("❌ Query error details:", {
+        message: error.message,
+        response: error.response?.data,
+        status: error.response?.status,
       });
     }
-  }, [isError]);
+  }, [isError, error]);
+
+  const handleScroll = () => {
+    if (scrollRef.current) {
+      const scrollTop = scrollRef.current.scrollTop;
+      setShowScrollButton(scrollTop > 300);
+    }
+  };
 
   // Generate calendar days for the current month
   const generateCalendarDays = () => {
@@ -270,9 +600,21 @@ const Orders = () => {
   const filterByDateRange = (order) => {
     if (!order) return false;
 
-    const orderDate = new Date(
-      order.createdAt || order.orderDate || order.date
-    );
+    let orderDate;
+
+    // Try different possible date fields
+    if (order.createdAt) {
+      orderDate = new Date(order.createdAt);
+    } else if (order.orderDate) {
+      orderDate = new Date(order.orderDate);
+    } else if (order.date) {
+      orderDate = new Date(order.date);
+    } else if (order.timestamp) {
+      orderDate = new Date(order.timestamp);
+    } else {
+      return false; // No date available
+    }
+
     if (isNaN(orderDate.getTime())) return false;
 
     // Reset time for date comparison
@@ -348,14 +690,21 @@ const Orders = () => {
 
   // Calculate totals when orders or filters change
   useEffect(() => {
-    const filteredByDate = orders.filter(filterByDateRange);
+    if (!allOrdersCombined || !Array.isArray(allOrdersCombined)) {
+      setTotalSales(0);
+      setTotalOrders(0);
+      return;
+    }
+
+    const filteredByDate = allOrdersCombined.filter(filterByDateRange);
 
     // Calculate total sales
     const salesTotal = filteredByDate.reduce((sum, order) => {
       if (!order) return sum;
       // Don't include cancelled orders in sales total
       if (order.orderStatus?.toLowerCase() === "cancelled") return sum;
-      const amount = order.bills?.totalWithTax || order.totalAmount || 0;
+      const amount =
+        order.totalAmount || order.bills?.totalWithTax || order.amount || 0;
       return sum + (Number(amount) || 0);
     }, 0);
 
@@ -364,34 +713,34 @@ const Orders = () => {
     // Calculate total orders count
     const ordersCount = filteredByDate.length;
     setTotalOrders(ordersCount);
-  }, [orders, dateFilter, customDateRange]);
+  }, [allOrdersCombined, dateFilter, customDateRange]);
 
   const filteredOrders = React.useMemo(() => {
     try {
-      if (!Array.isArray(orders)) {
-        console.log("❌ Orders is not an array:", orders);
+      if (!Array.isArray(allOrdersCombined)) {
+        console.log("❌ Orders is not an array:", allOrdersCombined);
         return [];
       }
 
-      const filtered = orders.filter((order) => {
+      const filtered = allOrdersCombined.filter((order) => {
         if (!order) return false;
 
         const dateMatch = filterByDateRange(order);
 
+        // Search in multiple fields
+        const searchLower = searchQuery.toLowerCase();
+        const orderId = order._id || order.id || "";
+        const customerName =
+          order.customerDetails?.name || order.customerName || "";
+        const cashierName =
+          order.cashier || order.user?.name || order.userDetails?.name || "";
+        const orderStatus = order.orderStatus || "completed";
+
         const searchMatch =
-          (order.customerDetails?.name || "")
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase()) ||
-          (order._id || "").toLowerCase().includes(searchQuery.toLowerCase()) ||
-          (order.orderStatus || "completed")
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase()) ||
-          (order.cashier || "")
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase()) ||
-          (order.user?.name || "")
-            .toLowerCase()
-            .includes(searchQuery.toLowerCase());
+          orderId.toLowerCase().includes(searchLower) ||
+          customerName.toLowerCase().includes(searchLower) ||
+          cashierName.toLowerCase().includes(searchLower) ||
+          orderStatus.toLowerCase().includes(searchLower);
 
         return dateMatch && searchMatch;
       });
@@ -402,11 +751,12 @@ const Orders = () => {
       console.error("❌ Error filtering orders:", error);
       return [];
     }
-  }, [orders, searchQuery, dateFilter, customDateRange]);
+  }, [allOrdersCombined, searchQuery, dateFilter, customDateRange]);
 
   const calculateTotalAmount = (order) => {
     if (!order) return 0;
 
+    // Try different possible amount fields
     if (order.totalAmount !== undefined && order.totalAmount !== null) {
       return Number(order.totalAmount) || 0;
     }
@@ -416,9 +766,14 @@ const Orders = () => {
     ) {
       return Number(order.bills.totalWithTax) || 0;
     }
+    if (order.amount !== undefined && order.amount !== null) {
+      return Number(order.amount) || 0;
+    }
     if (order.items && Array.isArray(order.items)) {
       return order.items.reduce((total, item) => {
-        const price = Number(item.price || item.unitPrice || 0);
+        const price = Number(
+          item.price || item.unitPrice || item.totalPrice || 0
+        );
         const quantity = Number(item.quantity || 1);
         return total + price * quantity;
       }, 0);
@@ -473,7 +828,7 @@ const Orders = () => {
         0
       );
     }
-    return Number(order.itemsCount || order.quantity || 0);
+    return Number(order.itemsCount || order.quantity || order.totalItems || 0);
   };
 
   const getItemsPreview = (order) => {
@@ -486,7 +841,8 @@ const Orders = () => {
     const itemsText = order.items
       .slice(0, 3)
       .map((item) => {
-        const name = item.name || item.productName || "Unknown Item";
+        const name =
+          item.name || item.productName || item.itemName || "Unknown Item";
         const quantity = item.quantity > 1 ? ` (${item.quantity})` : "";
         return name + quantity;
       })
@@ -526,13 +882,6 @@ const Orders = () => {
     setOrderToDelete(null);
   };
 
-  const handleScroll = () => {
-    if (scrollRef.current) {
-      const scrollTop = scrollRef.current.scrollTop;
-      setShowScrollButton(scrollTop > 300);
-    }
-  };
-
   const scrollToTop = () => {
     if (scrollRef.current) {
       scrollRef.current.scrollTo({ top: 0, behavior: "smooth" });
@@ -548,7 +897,7 @@ const Orders = () => {
     if (order.user?.name) return order.user.name;
     if (order.userDetails?.name) return order.userDetails.name;
     if (user.name && order.user?._id === user._id) return user.name;
-    return "Admin";
+    return "Cashier";
   };
 
   const hasDiscount = (order) => {
@@ -565,17 +914,26 @@ const Orders = () => {
       );
     }
 
-    return false;
+    // Check other possible discount fields
+    return (
+      (order.discount && order.discount > 0) ||
+      (order.totalDiscount && order.totalDiscount > 0)
+    );
   };
 
   const getDiscountType = (order) => {
-    if (!order || !order.bills) return null;
+    if (!order) return null;
 
-    if (order.bills.pwdSeniorDiscount > 0) return "PWD/Senior";
-    if (order.bills.employeeDiscount > 0) return "Employee";
-    if (order.bills.shareholderDiscount > 0) return "Shareholder";
-    if (order.bills.redemptionDiscount > 0) return "Redemption";
-    if (order.bills.discount > 0) return "Discount";
+    if (order.bills) {
+      if (order.bills.pwdSeniorDiscount > 0) return "PWD/Senior";
+      if (order.bills.employeeDiscount > 0) return "Employee";
+      if (order.bills.shareholderDiscount > 0) return "Shareholder";
+      if (order.bills.redemptionDiscount > 0) return "Redemption";
+      if (order.bills.discount > 0) return "Discount";
+    }
+
+    if (order.discountType) return order.discountType;
+    if (order.discount > 0) return "Discount";
 
     return null;
   };
@@ -704,7 +1062,7 @@ const Orders = () => {
           <div className="flex items-center gap-2">
             <FaReceipt className="text-gray-600 text-sm" />
             <span className="font-mono text-xs text-gray-700">
-              #{order._id?.slice(-8) || "N/A"}
+              #{order._id?.slice(-8) || order.id?.slice(-8) || "N/A"}
             </span>
           </div>
           <div className="flex items-center gap-1">
@@ -720,7 +1078,9 @@ const Orders = () => {
         <div className="flex items-center gap-2 mb-3">
           <FaUser className="text-gray-500 text-xs" />
           <span className="text-xs font-medium text-gray-800">
-            {order.customerDetails?.name || "Unknown Customer"}
+            {order.customerDetails?.name ||
+              order.customerName ||
+              "Unknown Customer"}
           </span>
         </div>
 
@@ -749,7 +1109,7 @@ const Orders = () => {
           <div className="space-y-1">
             <div className="text-gray-600">Date</div>
             <div className="font-medium text-gray-800">
-              {formatDate(order.createdAt || order.orderDate)}
+              {formatDate(order.createdAt || order.orderDate || order.date)}
             </div>
           </div>
           <div className="space-y-1 text-right">
@@ -841,7 +1201,28 @@ const Orders = () => {
                 : "User View"}
             </span>
           </div>
+
+          {/* Fetch All Orders Button */}
           <div className="flex flex-wrap gap-2 md:gap-4 items-center">
+            <button
+              onClick={handleFetchAllOrders}
+              disabled={isFetchingAll || isLoadingAll}
+              className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              title="Fetch ALL orders from database"
+            >
+              {isFetchingAll || isLoadingAll ? (
+                <>
+                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                  Loading All...
+                </>
+              ) : (
+                <>
+                  <FaSync className="text-sm" />
+                  Fetch All Orders
+                </>
+              )}
+            </button>
+
             <button
               onClick={navigateToDashboard}
               className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg"
@@ -851,6 +1232,41 @@ const Orders = () => {
             </button>
           </div>
         </div>
+
+        {/* Connection Status & Stats */}
+        {isError && (
+          <div className="px-4 pb-2">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+              <p className="text-red-700 text-sm flex items-center gap-2">
+                <FaExclamationTriangle />
+                Unable to connect to server. Please check:
+              </p>
+              <ul className="text-red-600 text-xs mt-1 ml-4 list-disc">
+                <li>Backend server is running</li>
+                <li>Network connection is active</li>
+                <li>You are logged in</li>
+              </ul>
+            </div>
+          </div>
+        )}
+
+        {/* Fetch Status */}
+        {allOrdersFetched.length > 0 && (
+          <div className="px-4 pb-2">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+              <p className="text-green-700 text-sm">
+                ✅ Successfully loaded{" "}
+                <strong>{allOrdersFetched.length}</strong> orders from database
+                <button
+                  onClick={handleResetPagination}
+                  className="ml-3 text-blue-600 hover:text-blue-800 text-xs underline"
+                >
+                  Switch back to paginated view
+                </button>
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* Date Filter Section */}
         <div className="px-4 pb-4">
@@ -1075,6 +1491,14 @@ const Orders = () => {
               <span className="text-xs sm:text-sm font-semibold text-green-700 bg-green-50 px-3 py-2 rounded-lg">
                 Sales: {formatCurrency(totalSales)}
               </span>
+
+              {/* Database Stats */}
+              {allOrdersFetched.length > 0 && (
+                <span className="text-xs sm:text-sm font-semibold text-purple-700 bg-purple-50 px-3 py-2 rounded-lg">
+                  DB Total:{" "}
+                  <span className="text-lg">{allOrdersFetched.length}</span>
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -1107,7 +1531,18 @@ const Orders = () => {
       >
         {/* Orders Summary */}
         <div className="mb-4 text-sm text-gray-600">
-          Showing {filteredOrders.length} of {orders.length} total orders
+          <div className="flex flex-wrap items-center gap-4">
+            <div>
+              Showing {filteredOrders.length} of {allOrdersCombined.length}{" "}
+              total orders
+              {allOrdersFetched.length > 0 && (
+                <span className="text-green-600 font-medium ml-2">
+                  (Full database loaded)
+                </span>
+              )}
+            </div>
+          </div>
+
           {dateFilter === "custom" &&
             customDateRange.startDate &&
             customDateRange.endDate && (
@@ -1132,15 +1567,43 @@ const Orders = () => {
                 <p className="text-gray-500 text-sm">Loading orders...</p>
               </div>
             </div>
+          ) : isError ? (
+            <div className="col-span-full flex justify-center items-center py-8">
+              <div className="text-center bg-white rounded-lg p-6 max-w-md">
+                <FaReceipt className="mx-auto text-red-400 text-2xl mb-2" />
+                <p className="text-gray-500 text-sm mb-3">
+                  Failed to load orders. Please check:
+                </p>
+                <ul className="text-gray-600 text-xs text-left mb-4 ml-4 list-disc">
+                  <li>Backend server is running on port 5000</li>
+                  <li>You are properly authenticated</li>
+                  <li>Network connection is active</li>
+                </ul>
+                <button
+                  onClick={() => refetch()}
+                  className="text-[#025cca] text-xs hover:underline mr-4"
+                >
+                  Try Again
+                </button>
+                <button
+                  onClick={handleFetchAllOrders}
+                  className="text-green-600 text-xs hover:underline"
+                >
+                  Try Fetch All Directly
+                </button>
+              </div>
+            </div>
           ) : filteredOrders.length > 0 ? (
-            filteredOrders.map((order) => (
-              <OrderCard
-                key={order._id || Math.random().toString()}
-                order={order}
-                onViewReceipt={handleViewReceipt}
-                onCancelOrder={handleCancelOrder}
-              />
-            ))
+            <>
+              {filteredOrders.map((order) => (
+                <OrderCard
+                  key={order._id || Math.random().toString()}
+                  order={order}
+                  onViewReceipt={handleViewReceipt}
+                  onCancelOrder={handleCancelOrder}
+                />
+              ))}
+            </>
           ) : (
             <div className="col-span-full flex justify-center items-center py-8">
               <div className="text-center bg-white rounded-lg p-6">
@@ -1162,6 +1625,16 @@ const Orders = () => {
                     className="text-[#025cca] text-xs mt-2 hover:underline"
                   >
                     Clear all filters
+                  </button>
+                )}
+
+                {allOrdersCombined.length === 0 && (
+                  <button
+                    onClick={handleFetchAllOrders}
+                    className="mt-4 bg-green-500 hover:bg-green-600 text-white px-4 py-2 rounded-lg text-sm font-medium flex items-center gap-2 mx-auto"
+                  >
+                    <FaSync className="text-xs" />
+                    Fetch Orders from Database
                   </button>
                 )}
               </div>
