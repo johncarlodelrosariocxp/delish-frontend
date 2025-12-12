@@ -61,6 +61,15 @@ const orderSlice = createSlice({
       state.showInvoiceForOrder = null;
     },
 
+    // ✅ ADDED: setActiveOrder action (alias for switchOrder)
+    setActiveOrder: (state, action) => {
+      const orderId = action.payload;
+      const order = state.orders.find((order) => order.id === orderId);
+      if (order && order.status === "active") {
+        state.activeOrderId = orderId;
+      }
+    },
+
     switchOrder: (state, action) => {
       const orderId = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
@@ -383,9 +392,10 @@ const orderSlice = createSlice({
 });
 
 export const {
-  clearCurrentOrder, // ✅ ADDED to exports
+  clearCurrentOrder,
   createNewOrder,
-  switchOrder,
+  setActiveOrder, // ✅ ADDED: Export setActiveOrder
+  switchOrder, // ✅ Keep for backward compatibility
   closeOrder,
   processOrder,
   completeOrder,
