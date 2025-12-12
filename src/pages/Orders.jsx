@@ -11,6 +11,10 @@ import {
   FaTachometerAlt,
   FaTrash,
   FaBan,
+  FaFilter,
+  FaTimes,
+  FaChevronLeft,
+  FaChevronRight,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import {
@@ -31,10 +35,20 @@ const Orders = () => {
   const [showInvoice, setShowInvoice] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [totalSales, setTotalSales] = useState(0);
+  const [totalOrders, setTotalOrders] = useState(0);
   const [dateFilter, setDateFilter] = useState("today");
+  const [customDateRange, setCustomDateRange] = useState({
+    startDate: null,
+    endDate: null,
+  });
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [calendarMonth, setCalendarMonth] = useState(new Date().getMonth());
+  const [calendarYear, setCalendarYear] = useState(new Date().getFullYear());
+  const [selectingStartDate, setSelectingStartDate] = useState(true);
   const [orderToDelete, setOrderToDelete] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const scrollRef = useRef(null);
+  const datePickerRef = useRef(null);
 
   const user = useSelector((state) => state.user);
   const navigate = useNavigate();
@@ -52,6 +66,19 @@ const Orders = () => {
 
   useEffect(() => {
     document.title = "POS | Orders";
+
+    // Close date picker when clicking outside
+    const handleClickOutside = (event) => {
+      if (
+        datePickerRef.current &&
+        !datePickerRef.current.contains(event.target)
+      ) {
+        setShowDatePicker(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
   const {
@@ -107,18 +134,6 @@ const Orders = () => {
       enqueueSnackbar("Order cancelled successfully!", {
         variant: "success",
       });
-
-      // Recalculate total sales (remove cancelled order from total)
-      const updatedOrders = orders.filter((order) => order._id !== orderId);
-      const filteredByDate = updatedOrders.filter((order) =>
-        filterByDateRange(order, dateFilter)
-      );
-      const total = filteredByDate.reduce((sum, order) => {
-        if (!order) return sum;
-        const amount = order.bills?.totalWithTax || order.totalAmount || 0;
-        return sum + (Number(amount) || 0);
-      }, 0);
-      setTotalSales(total);
     },
     onError: (error) => {
       console.error("❌ Cancel order error:", error);
@@ -199,32 +214,112 @@ const Orders = () => {
     }
   }, [isError]);
 
-  const filterByDateRange = (order, range) => {
-    if (range === "all" || !order) return true;
+  // Generate calendar days for the current month
+  const generateCalendarDays = () => {
+    const days = [];
+    const firstDay = new Date(calendarYear, calendarMonth, 1);
+    const lastDay = new Date(calendarYear, calendarMonth + 1, 0);
+    const startingDay = firstDay.getDay();
+    const totalDays = lastDay.getDate();
+
+    // Previous month days
+    const prevMonth = new Date(calendarYear, calendarMonth, 0);
+    const prevMonthDays = prevMonth.getDate();
+    for (let i = startingDay - 1; i >= 0; i--) {
+      days.push({
+        day: prevMonthDays - i,
+        month: calendarMonth - 1,
+        year: calendarYear,
+        isCurrentMonth: false,
+        date: new Date(calendarYear, calendarMonth - 1, prevMonthDays - i),
+      });
+    }
+
+    // Current month days
+    for (let day = 1; day <= totalDays; day++) {
+      const date = new Date(calendarYear, calendarMonth, day);
+      days.push({
+        day,
+        month: calendarMonth,
+        year: calendarYear,
+        isCurrentMonth: true,
+        date,
+      });
+    }
+
+    // Next month days
+    const totalCells = 42; // 6 weeks * 7 days
+    const nextMonthDays = totalCells - days.length;
+    for (let i = 1; i <= nextMonthDays; i++) {
+      days.push({
+        day: i,
+        month: calendarMonth + 1,
+        year: calendarMonth === 11 ? calendarYear + 1 : calendarYear,
+        isCurrentMonth: false,
+        date: new Date(
+          calendarMonth === 11 ? calendarYear + 1 : calendarYear,
+          calendarMonth + 1,
+          i
+        ),
+      });
+    }
+
+    return days;
+  };
+
+  const filterByDateRange = (order) => {
+    if (!order) return false;
 
     const orderDate = new Date(
       order.createdAt || order.orderDate || order.date
     );
+    if (isNaN(orderDate.getTime())) return false;
+
+    // Reset time for date comparison
+    orderDate.setHours(0, 0, 0, 0);
+
+    if (
+      dateFilter === "custom" &&
+      (customDateRange.startDate || customDateRange.endDate)
+    ) {
+      const startDate = customDateRange.startDate
+        ? new Date(customDateRange.startDate)
+        : null;
+      const endDate = customDateRange.endDate
+        ? new Date(customDateRange.endDate)
+        : null;
+
+      if (startDate && endDate) {
+        startDate.setHours(0, 0, 0, 0);
+        endDate.setHours(23, 59, 59, 999);
+        return orderDate >= startDate && orderDate <= endDate;
+      } else if (startDate) {
+        startDate.setHours(0, 0, 0, 0);
+        return orderDate.getTime() === startDate.getTime();
+      } else if (endDate) {
+        endDate.setHours(0, 0, 0, 0);
+        return orderDate.getTime() === endDate.getTime();
+      }
+    }
+
+    if (dateFilter === "all") return true;
+
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
-    if (isNaN(orderDate.getTime())) return true;
-
-    switch (range) {
+    switch (dateFilter) {
       case "today":
-        return (
-          orderDate.getDate() === today.getDate() &&
-          orderDate.getMonth() === today.getMonth() &&
-          orderDate.getFullYear() === today.getFullYear()
-        );
+        return orderDate.getTime() === today.getTime();
 
       case "yesterday":
         const yesterday = new Date(today);
         yesterday.setDate(today.getDate() - 1);
-        return (
-          orderDate.getDate() === yesterday.getDate() &&
-          orderDate.getMonth() === yesterday.getMonth() &&
-          orderDate.getFullYear() === yesterday.getFullYear()
-        );
+        return orderDate.getTime() === yesterday.getTime();
+
+      case "thisWeek":
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - today.getDay());
+        return orderDate >= startOfWeek;
 
       case "thisMonth":
         return (
@@ -251,20 +346,25 @@ const Orders = () => {
     }
   };
 
+  // Calculate totals when orders or filters change
   useEffect(() => {
-    const filteredByDate = orders.filter((order) =>
-      filterByDateRange(order, dateFilter)
-    );
+    const filteredByDate = orders.filter(filterByDateRange);
 
-    const total = filteredByDate.reduce((sum, order) => {
+    // Calculate total sales
+    const salesTotal = filteredByDate.reduce((sum, order) => {
       if (!order) return sum;
       // Don't include cancelled orders in sales total
       if (order.orderStatus?.toLowerCase() === "cancelled") return sum;
       const amount = order.bills?.totalWithTax || order.totalAmount || 0;
       return sum + (Number(amount) || 0);
     }, 0);
-    setTotalSales(total);
-  }, [orders, dateFilter]);
+
+    setTotalSales(salesTotal);
+
+    // Calculate total orders count
+    const ordersCount = filteredByDate.length;
+    setTotalOrders(ordersCount);
+  }, [orders, dateFilter, customDateRange]);
 
   const filteredOrders = React.useMemo(() => {
     try {
@@ -276,7 +376,7 @@ const Orders = () => {
       const filtered = orders.filter((order) => {
         if (!order) return false;
 
-        const dateMatch = filterByDateRange(order, dateFilter);
+        const dateMatch = filterByDateRange(order);
 
         const searchMatch =
           (order.customerDetails?.name || "")
@@ -302,7 +402,7 @@ const Orders = () => {
       console.error("❌ Error filtering orders:", error);
       return [];
     }
-  }, [orders, searchQuery, dateFilter]);
+  }, [orders, searchQuery, dateFilter, customDateRange]);
 
   const calculateTotalAmount = (order) => {
     if (!order) return 0;
@@ -353,6 +453,15 @@ const Orders = () => {
     } catch (error) {
       return "Invalid Date";
     }
+  };
+
+  const formatDateShort = (date) => {
+    if (!date) return "";
+    return date.toLocaleDateString("en-US", {
+      month: "2-digit",
+      day: "2-digit",
+      year: "numeric",
+    });
   };
 
   const getItemsCount = (order) => {
@@ -471,6 +580,104 @@ const Orders = () => {
     return null;
   };
 
+  const handleDateSelect = (date) => {
+    if (selectingStartDate) {
+      setCustomDateRange({
+        startDate: date,
+        endDate: customDateRange.endDate,
+      });
+      setSelectingStartDate(false);
+    } else {
+      // If end date is before start date, swap them
+      if (customDateRange.startDate && date < customDateRange.startDate) {
+        setCustomDateRange({
+          startDate: date,
+          endDate: customDateRange.startDate,
+        });
+      } else {
+        setCustomDateRange({
+          startDate: customDateRange.startDate,
+          endDate: date,
+        });
+      }
+      setSelectingStartDate(true);
+    }
+  };
+
+  const handleTodayClick = () => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    if (selectingStartDate) {
+      setCustomDateRange({
+        startDate: today,
+        endDate: customDateRange.endDate,
+      });
+    } else {
+      setCustomDateRange({
+        startDate: customDateRange.startDate,
+        endDate: today,
+      });
+    }
+  };
+
+  const handleClearClick = () => {
+    setCustomDateRange({
+      startDate: null,
+      endDate: null,
+    });
+    setSelectingStartDate(true);
+  };
+
+  const handleApplyDateRange = () => {
+    setDateFilter("custom");
+    setShowDatePicker(false);
+  };
+
+  const handlePrevMonth = () => {
+    if (calendarMonth === 0) {
+      setCalendarMonth(11);
+      setCalendarYear(calendarYear - 1);
+    } else {
+      setCalendarMonth(calendarMonth - 1);
+    }
+  };
+
+  const handleNextMonth = () => {
+    if (calendarMonth === 11) {
+      setCalendarMonth(0);
+      setCalendarYear(calendarYear + 1);
+    } else {
+      setCalendarMonth(calendarMonth + 1);
+    }
+  };
+
+  const isDateInRange = (date) => {
+    if (!customDateRange.startDate || !customDateRange.endDate) return false;
+    return date >= customDateRange.startDate && date <= customDateRange.endDate;
+  };
+
+  const isStartDate = (date) => {
+    if (!customDateRange.startDate) return false;
+    return date.getTime() === customDateRange.startDate.getTime();
+  };
+
+  const isEndDate = (date) => {
+    if (!customDateRange.endDate) return false;
+    return date.getTime() === customDateRange.endDate.getTime();
+  };
+
+  const getDateRangeLabel = () => {
+    if (customDateRange.startDate && customDateRange.endDate) {
+      return `${formatDateShort(customDateRange.startDate)} - ${formatDateShort(
+        customDateRange.endDate
+      )}`;
+    } else if (customDateRange.startDate) {
+      return `From ${formatDateShort(customDateRange.startDate)}`;
+    }
+    return "Select dates";
+  };
+
   const OrderCard = ({ order, onViewReceipt, onCancelOrder }) => {
     if (!order) return null;
 
@@ -568,7 +775,6 @@ const Orders = () => {
           </div>
         )}
 
-        {/* Only one button row - View Receipt and Cancel buttons side by side */}
         <div className="flex gap-2 pt-2 border-t border-gray-200 mt-auto">
           <button
             onClick={() => onViewReceipt(order)}
@@ -579,7 +785,6 @@ const Orders = () => {
             {isCancelled ? "Cancelled" : "View Receipt"}
           </button>
 
-          {/* Cancel button - visible always for admin users */}
           {canCancel && (
             <button
               onClick={() => onCancelOrder(order)}
@@ -593,6 +798,22 @@ const Orders = () => {
       </div>
     );
   };
+
+  const calendarDays = generateCalendarDays();
+  const monthNames = [
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ];
 
   return (
     <section className="bg-gradient-to-br from-blue-50 via-white to-cyan-50 min-h-screen flex flex-col relative pb-20 md:pb-6">
@@ -628,33 +849,238 @@ const Orders = () => {
               <FaTachometerAlt className="text-sm" />
               Dashboard
             </button>
+          </div>
+        </div>
 
-            <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border">
-              <FaCalendar className="text-gray-600 text-xs" />
-              <select
-                value={dateFilter}
-                onChange={(e) => setDateFilter(e.target.value)}
-                className="bg-transparent outline-none text-black text-xs sm:text-sm"
+        {/* Date Filter Section */}
+        <div className="px-4 pb-4">
+          <div className="flex flex-col md:flex-row gap-3 md:items-center">
+            {/* Date Range Selector */}
+            <div className="relative" ref={datePickerRef}>
+              <div
+                className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border cursor-pointer hover:border-blue-300 transition-colors"
+                onClick={() => setShowDatePicker(!showDatePicker)}
               >
-                <option value="today">Today</option>
-                <option value="yesterday">Yesterday</option>
-                <option value="thisMonth">This Month</option>
-                <option value="lastMonth">Last Month</option>
-                <option value="thisYear">This Year</option>
-                <option value="lastYear">Last Year</option>
-                <option value="all">All Time</option>
-              </select>
+                <FaCalendar className="text-gray-600 text-xs" />
+                <span className="text-xs sm:text-sm text-gray-700">
+                  Filter by Order Date
+                </span>
+                <FaTimes
+                  className="text-gray-400 hover:text-gray-600 ml-auto cursor-pointer"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDateFilter("today");
+                    setCustomDateRange({ startDate: null, endDate: null });
+                  }}
+                />
+              </div>
+
+              {/* Date Range Display */}
+              <div className="flex items-center gap-2 mt-2">
+                <div className="flex-1">
+                  <div className="text-xs text-gray-600 mb-1">From Date</div>
+                  <div
+                    className="bg-gray-100 rounded px-3 py-2 text-sm cursor-pointer hover:bg-gray-200 transition-colors flex items-center justify-between"
+                    onClick={() => {
+                      setShowDatePicker(true);
+                      setSelectingStartDate(true);
+                    }}
+                  >
+                    <span
+                      className={
+                        customDateRange.startDate
+                          ? "text-gray-800"
+                          : "text-gray-400"
+                      }
+                    >
+                      {customDateRange.startDate
+                        ? formatDateShort(customDateRange.startDate)
+                        : "mm/dd/yyyy"}
+                    </span>
+                  </div>
+                </div>
+                <div className="pt-5">-</div>
+                <div className="flex-1">
+                  <div className="text-xs text-gray-600 mb-1">To Date</div>
+                  <div
+                    className="bg-gray-100 rounded px-3 py-2 text-sm cursor-pointer hover:bg-gray-200 transition-colors flex items-center justify-between"
+                    onClick={() => {
+                      setShowDatePicker(true);
+                      setSelectingStartDate(false);
+                    }}
+                  >
+                    <span
+                      className={
+                        customDateRange.endDate
+                          ? "text-gray-800"
+                          : "text-gray-400"
+                      }
+                    >
+                      {customDateRange.endDate
+                        ? formatDateShort(customDateRange.endDate)
+                        : "mm/dd/yyyy"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Calendar Popup */}
+              {showDatePicker && (
+                <div className="absolute top-full left-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 z-40 w-80 p-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <button
+                      onClick={handlePrevMonth}
+                      className="p-2 hover:bg-gray-100 rounded-full"
+                    >
+                      <FaChevronLeft className="text-gray-600" />
+                    </button>
+                    <div className="text-lg font-semibold">
+                      {monthNames[calendarMonth]} {calendarYear}
+                    </div>
+                    <button
+                      onClick={handleNextMonth}
+                      className="p-2 hover:bg-gray-100 rounded-full"
+                    >
+                      <FaChevronRight className="text-gray-600" />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1 mb-2">
+                    {["Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"].map((day) => (
+                      <div
+                        key={day}
+                        className="text-center text-xs text-gray-500 py-1"
+                      >
+                        {day}
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-7 gap-1">
+                    {calendarDays.map((dayInfo, index) => {
+                      const isSelected =
+                        isStartDate(dayInfo.date) || isEndDate(dayInfo.date);
+                      const isInRange = isDateInRange(dayInfo.date);
+                      const isToday =
+                        dayInfo.date.toDateString() ===
+                        new Date().toDateString();
+
+                      return (
+                        <button
+                          key={index}
+                          onClick={() => handleDateSelect(dayInfo.date)}
+                          disabled={!dayInfo.isCurrentMonth}
+                          className={`
+                            h-8 rounded text-sm flex items-center justify-center
+                            ${
+                              !dayInfo.isCurrentMonth
+                                ? "text-gray-300"
+                                : "text-gray-700"
+                            }
+                            ${isSelected ? "bg-blue-500 text-white" : ""}
+                            ${isInRange && !isSelected ? "bg-blue-100" : ""}
+                            ${
+                              isToday && !isSelected
+                                ? "border border-blue-300"
+                                : ""
+                            }
+                            ${dayInfo.isCurrentMonth ? "hover:bg-gray-100" : ""}
+                            ${isSelected ? "font-semibold" : ""}
+                          `}
+                        >
+                          {dayInfo.day}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  <div className="flex justify-between mt-4 pt-4 border-t">
+                    <button
+                      onClick={handleClearClick}
+                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
+                    >
+                      Clear
+                    </button>
+                    <button
+                      onClick={handleTodayClick}
+                      className="px-4 py-2 text-sm text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded"
+                    >
+                      Today
+                    </button>
+                    <button
+                      onClick={handleApplyDateRange}
+                      className="px-4 py-2 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
+                      disabled={
+                        !customDateRange.startDate || !customDateRange.endDate
+                      }
+                    >
+                      Apply
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
 
+            {/* Quick Date Filters */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                "today",
+                "yesterday",
+                "thisWeek",
+                "thisMonth",
+                "lastMonth",
+                "thisYear",
+                "all",
+              ].map((filter) => (
+                <button
+                  key={filter}
+                  onClick={() => {
+                    setDateFilter(filter);
+                    setCustomDateRange({ startDate: null, endDate: null });
+                    setShowDatePicker(false);
+                  }}
+                  className={`
+                    px-3 py-1.5 text-xs rounded-full transition-colors
+                    ${
+                      dateFilter === filter && !customDateRange.startDate
+                        ? "bg-blue-500 text-white"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }
+                  `}
+                >
+                  {filter === "today"
+                    ? "Today"
+                    : filter === "yesterday"
+                    ? "Yesterday"
+                    : filter === "thisWeek"
+                    ? "This Week"
+                    : filter === "thisMonth"
+                    ? "This Month"
+                    : filter === "lastMonth"
+                    ? "Last Month"
+                    : filter === "thisYear"
+                    ? "This Year"
+                    : "All Time"}
+                </button>
+              ))}
+            </div>
+
+            <div className="flex-1" />
+
+            {/* Stats Section */}
             <div className="flex flex-wrap gap-2 md:gap-4">
-              <span className="text-xs sm:text-sm font-semibold text-green-700 bg-green-50 px-3 py-1 rounded-full">
+              <span className="text-xs sm:text-sm font-semibold text-blue-700 bg-blue-50 px-3 py-2 rounded-lg">
+                Orders: <span className="text-lg">{totalOrders}</span>
+              </span>
+              <span className="text-xs sm:text-sm font-semibold text-green-700 bg-green-50 px-3 py-2 rounded-lg">
                 Sales: {formatCurrency(totalSales)}
               </span>
             </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-gray-100 rounded-md px-3 py-2 mx-4 mb-4 mt-2">
+        {/* Search Bar */}
+        <div className="flex items-center gap-2 bg-gray-100 rounded-md px-3 py-2 mx-4 mb-4">
           <FaSearch className="text-gray-600 text-xs sm:text-sm" />
           <input
             type="text"
@@ -663,6 +1089,14 @@ const Orders = () => {
             onChange={(e) => setSearchQuery(e.target.value)}
             className="bg-transparent outline-none text-black w-full text-xs sm:text-sm placeholder-gray-500"
           />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery("")}
+              className="text-gray-500 hover:text-gray-700"
+            >
+              <FaTimes className="text-sm" />
+            </button>
+          )}
         </div>
       </div>
 
@@ -671,6 +1105,25 @@ const Orders = () => {
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto px-4 py-4 mb-16 md:mb-6"
       >
+        {/* Orders Summary */}
+        <div className="mb-4 text-sm text-gray-600">
+          Showing {filteredOrders.length} of {orders.length} total orders
+          {dateFilter === "custom" &&
+            customDateRange.startDate &&
+            customDateRange.endDate && (
+              <span className="text-gray-800 font-medium">
+                {" "}
+                • Filtered by {getDateRangeLabel()}
+              </span>
+            )}
+          {dateFilter !== "custom" && dateFilter !== "all" && (
+            <span className="text-gray-800 font-medium">
+              {" "}
+              • Filtered by {dateFilter}
+            </span>
+          )}
+        </div>
+
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 auto-rows-fr">
           {isLoading ? (
             <div className="col-span-full flex justify-center items-center py-8">
@@ -704,10 +1157,11 @@ const Orders = () => {
                     onClick={() => {
                       setSearchQuery("");
                       setDateFilter("today");
+                      setCustomDateRange({ startDate: null, endDate: null });
                     }}
-                    className="text-[#025cca] text-xs mt-1 hover:underline"
+                    className="text-[#025cca] text-xs mt-2 hover:underline"
                   >
-                    Clear filters
+                    Clear all filters
                   </button>
                 )}
               </div>

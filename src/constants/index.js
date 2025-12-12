@@ -162,13 +162,13 @@ export const regularCheesecakes = [
     id: 1,
     name: "Regular Cheesecake - Whole",
     category: "Cheesecake",
-    variants: [{ label: "Whole", price: 2200 }],
+    variants: [{ label: "Whole", price: 2100 }],
   },
   {
     id: 2,
     name: "Regular Cheesecake - Pinwheel",
     category: "Cheesecake",
-    variants: [{ label: "Pinwheel", price: 2300 }],
+    variants: [{ label: "Pinwheel", price: 2200 }],
   },
   {
     id: 3,
@@ -222,13 +222,13 @@ export const ketoCheesecakes = [
     id: 1,
     name: "Keto Cheesecake - Whole",
     category: "Keto Cheesecake",
-    variants: [{ label: "Whole", price: 3200 }],
+    variants: [{ label: "Whole", price: 3100 }],
   },
   {
     id: 2,
     name: "Keto Cheesecake - Pinwheel",
     category: "Keto Cheesecake",
-    variants: [{ label: "Pinwheel", price: 3400 }],
+    variants: [{ label: "Pinwheel", price: 3200 }],
   },
   {
     id: 3,

@@ -138,7 +138,7 @@ const getFirstName = (fullName) => {
   return firstName.charAt(0).toUpperCase() + firstName.slice(1).toLowerCase();
 };
 
-const Invoice = ({ orderInfo, setShowInvoice }) => {
+const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
   const invoiceRef = useRef(null);
   const [bluetoothDevice, setBluetoothDevice] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
@@ -713,15 +713,22 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
     }
   };
 
-  // Auto-print when connected - MODIFIED to print only once
+  // Auto-print when connected - MODIFIED to check disableAutoPrint prop
   useEffect(() => {
     const handleAutoPrint = async () => {
+      // Check if auto-print is disabled via prop
+      if (disableAutoPrint) {
+        console.log("⏸️ Auto-print disabled (opened from Orders page)");
+        return;
+      }
+
       if (!isConnected || isPrinting || !orderInfo || hasAutoPrinted) {
         console.log("⏳ Cannot auto-print:", {
           isConnected,
           isPrinting,
           hasOrder: !!orderInfo,
           hasAutoPrinted,
+          disableAutoPrint,
         });
         return;
       }
@@ -744,7 +751,7 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
 
       return () => clearTimeout(timer);
     }
-  }, [isConnected, hasAutoPrinted, orderInfo, isPrinting]);
+  }, [isConnected, hasAutoPrinted, orderInfo, isPrinting, disableAutoPrint]);
 
   // Manual print function
   const printViaBluetooth = async () => {
@@ -836,6 +843,13 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           <h2 className="text-lg font-bold text-gray-800">Order Confirmed!</h2>
           <p className="text-gray-600 text-[10px] mt-0.5">Receipt ready</p>
 
+          {/* Manual Mode Indicator */}
+          {disableAutoPrint && (
+            <div className="mt-1 px-2 py-0.5 bg-yellow-100 text-yellow-800 rounded-full text-[9px] font-semibold">
+              Manual Mode
+            </div>
+          )}
+
           {/* Connection Status */}
           <div
             className={`mt-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
@@ -857,6 +871,8 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
             <div className="mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-[10px] font-semibold">
               {hasAutoPrinted
                 ? "Re-printing receipt..."
+                : disableAutoPrint
+                ? "Printing receipt..."
                 : "Auto-printing receipt..."}
             </div>
           )}
@@ -1230,7 +1246,9 @@ const Invoice = ({ orderInfo, setShowInvoice }) => {
           {/* Auto-print info */}
           <div className="mt-2 text-center">
             <p className="text-[9px] text-gray-600">
-              {isConnected && !hasAutoPrinted
+              {disableAutoPrint
+                ? "Click 'Print Receipt' to print manually"
+                : isConnected && !hasAutoPrinted
                 ? "Receipt will auto-print when connected"
                 : "Connect Bluetooth printer for printing"}
             </p>
