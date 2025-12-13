@@ -169,8 +169,8 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
   const [activeCategory, setActiveCategory] = useState(null);
 
   // ✅ ADDED: State for showing Invoice component
-  const [showInvoiceComponent, setShowInvoiceComponent] = useState(false);
-  const [invoiceOrderData, setInvoiceOrderData] = useState(null);
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [invoiceData, setInvoiceData] = useState(null);
 
   // ✅ FIXED: Added missing state declaration
   const [showNextOrderConfirm, setShowNextOrderConfirm] = useState(false);
@@ -1111,12 +1111,20 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
 
       setIsProcessing(false);
 
-      // ✅ UPDATED: Show Invoice component instead of modal
-      setInvoiceOrderData({
+      // ✅ UPDATED: Show Invoice component with auto-print enabled
+      setInvoiceData({
         ...invoiceData,
         _id: data._id || invoiceData._id,
+        // Add missing fields that Invoice component expects
+        orderDate: invoiceData.orderDate || new Date().toISOString(),
+        cashier: user?.name || "Admin",
       });
-      setShowInvoiceComponent(true);
+      setShowInvoice(true);
+
+      // Call onInvoiceGenerated callback if provided
+      if (onInvoiceGenerated) {
+        onInvoiceGenerated(invoiceData);
+      }
     },
     onError: (error) => {
       console.error("❌ Order placement error:", error);
@@ -1230,8 +1238,8 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
 
   // ✅ FIXED: Handle invoice close - auto go to next order
   const handleCloseInvoice = () => {
-    setShowInvoiceComponent(false);
-    setInvoiceOrderData(null);
+    setShowInvoice(false);
+    setInvoiceData(null);
 
     // Reset all states for next order
     setPwdSeniorDiscountApplied(false);
@@ -1314,7 +1322,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
   const pendingOrderCount = pendingOrders.length;
 
   // ✅ FIXED: Main render logic
-  if (!currentOrder && !showInvoiceComponent) {
+  if (!currentOrder && !showInvoice) {
     return (
       <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
         <div className="max-w-[600px] mx-auto text-center">
@@ -1391,320 +1399,12 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
   return (
     <>
       {/* ✅ ADDED: Invoice Component */}
-      {showInvoiceComponent && invoiceOrderData && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-6">
-              <h2 className="text-2xl font-bold text-gray-900">INVOICE</h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => {
-                    window.print();
-                  }}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors"
-                >
-                  Print Invoice
-                </button>
-                <button
-                  onClick={handleCloseInvoice}
-                  className="px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
-                >
-                  Close & Next Order
-                </button>
-              </div>
-            </div>
-
-            {/* Invoice Header */}
-            <div className="mb-6 p-4 bg-gray-50 rounded-lg">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Order Number</p>
-                  <p className="text-lg font-bold text-gray-900">
-                    {invoiceOrderData.orderNumber}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-600">Date</p>
-                  <p className="text-lg font-bold text-gray-900">
-                    {new Date().toLocaleDateString()}
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm text-gray-600">Cashier</p>
-                  <p className="font-medium text-gray-900">
-                    {invoiceOrderData.cashier}
-                  </p>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm text-gray-600">Customer</p>
-                  <p className="font-medium text-gray-900">
-                    {invoiceOrderData.customerDetails.name}
-                  </p>
-                  {invoiceOrderData.customerDetails.phone && (
-                    <p className="text-sm text-gray-600">
-                      Phone: {invoiceOrderData.customerDetails.phone}
-                    </p>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Items Table */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-3 text-gray-900">
-                Order Items
-              </h3>
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Item
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Qty
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Price
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                        Total
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {invoiceOrderData.items?.map((item, index) => (
-                      <tr key={index}>
-                        <td className="px-4 py-3">
-                          <div>
-                            <p className="text-sm font-medium text-gray-900">
-                              {item.name}
-                              {item.isFree && (
-                                <span className="ml-2 bg-green-100 text-green-800 text-xs px-2 py-1 rounded">
-                                  FREE
-                                </span>
-                              )}
-                              {item.isPwdSeniorDiscounted && (
-                                <span className="ml-2 bg-blue-100 text-blue-800 text-xs px-2 py-1 rounded">
-                                  PWD/SENIOR -20%
-                                </span>
-                              )}
-                            </p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          {item.quantity}
-                        </td>
-                        <td className="px-4 py-3 text-sm text-gray-900">
-                          ₱{item.pricePerQuantity.toFixed(2)}
-                        </td>
-                        <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                          {item.isFree ? (
-                            <span className="text-green-600">FREE</span>
-                          ) : (
-                            `₱${item.price.toFixed(2)}`
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-            {/* Totals Section */}
-            <div className="mb-6">
-              <h3 className="text-lg font-semibold mb-3 text-gray-900">
-                Payment Summary
-              </h3>
-              <div className="bg-gray-50 rounded-lg p-4">
-                <div className="space-y-2">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Subtotal:</span>
-                    <span className="font-medium">
-                      ₱{invoiceOrderData.bills?.total.toFixed(2)}
-                    </span>
-                  </div>
-
-                  {/* Discounts */}
-                  {invoiceOrderData.bills?.pwdSeniorDiscount > 0 && (
-                    <div className="flex justify-between text-green-600">
-                      <span>PWD/Senior Discount (20%):</span>
-                      <span className="font-medium">
-                        -₱{invoiceOrderData.bills?.pwdSeniorDiscount.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  {invoiceOrderData.bills?.employeeDiscount > 0 && (
-                    <div className="flex justify-between text-yellow-600">
-                      <span>Employee Discount (15%):</span>
-                      <span className="font-medium">
-                        -₱{invoiceOrderData.bills?.employeeDiscount.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  {invoiceOrderData.bills?.shareholderDiscount > 0 && (
-                    <div className="flex justify-between text-purple-600">
-                      <span>Shareholder Discount (10%):</span>
-                      <span className="font-medium">
-                        -₱
-                        {invoiceOrderData.bills?.shareholderDiscount.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  {invoiceOrderData.bills?.redemptionDiscount > 0 && (
-                    <div className="flex justify-between text-blue-600">
-                      <span>Redemption Discount:</span>
-                      <span className="font-medium">
-                        -₱
-                        {invoiceOrderData.bills?.redemptionDiscount.toFixed(2)}
-                      </span>
-                    </div>
-                  )}
-
-                  <div className="flex justify-between border-t pt-2">
-                    <span className="text-gray-600">Net of VAT:</span>
-                    <span className="font-medium">
-                      ₱{invoiceOrderData.bills?.netSales.toFixed(2)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">VAT (12%):</span>
-                    <span className="font-medium">
-                      ₱{invoiceOrderData.bills?.tax.toFixed(2)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between border-t pt-2 text-lg font-bold">
-                    <span>Total:</span>
-                    <span>₱{invoiceOrderData.totalAmount.toFixed(2)}</span>
-                  </div>
-
-                  {/* Payment Details */}
-                  <div className="border-t pt-4 mt-4">
-                    <p className="font-medium mb-2">Payment Details:</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      <div>
-                        <p className="text-sm text-gray-600">Method:</p>
-                        <p className="font-medium">
-                          {invoiceOrderData.paymentMethod}
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-sm text-gray-600">Amount Paid:</p>
-                        <p className="font-medium">
-                          ₱{invoiceOrderData.amountPaid.toFixed(2)}
-                        </p>
-                      </div>
-                    </div>
-
-                    {invoiceOrderData.cashAmount > 0 && (
-                      <div className="mt-2">
-                        <p className="text-sm text-gray-600">Cash:</p>
-                        <p className="font-medium">
-                          ₱{invoiceOrderData.cashAmount.toFixed(2)}
-                        </p>
-                      </div>
-                    )}
-
-                    {invoiceOrderData.onlineAmount > 0 && (
-                      <div className="mt-2">
-                        <p className="text-sm text-gray-600">
-                          Online ({invoiceOrderData.bills?.onlineMethod}):
-                        </p>
-                        <p className="font-medium">
-                          ₱{invoiceOrderData.onlineAmount.toFixed(2)}
-                        </p>
-                      </div>
-                    )}
-
-                    {invoiceOrderData.change > 0 && (
-                      <div className="mt-2">
-                        <p className="text-sm text-gray-600">Change:</p>
-                        <p className="font-medium text-green-600">
-                          ₱{invoiceOrderData.change.toFixed(2)}
-                        </p>
-                      </div>
-                    )}
-
-                    {invoiceOrderData.remainingBalance > 0 && (
-                      <div className="mt-2">
-                        <p className="text-sm text-gray-600">
-                          Remaining Balance:
-                        </p>
-                        <p className="font-medium text-red-600">
-                          ₱{invoiceOrderData.remainingBalance.toFixed(2)}
-                        </p>
-                      </div>
-                    )}
-
-                    {invoiceOrderData.isPartialPayment && (
-                      <div className="mt-2 p-2 bg-yellow-50 border border-yellow-200 rounded">
-                        <p className="text-sm text-yellow-800 font-medium">
-                          ⚠️ Partial Payment
-                        </p>
-                        <p className="text-xs text-yellow-700">
-                          Remaining balance to be paid later.
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* PWD/Senior Details */}
-                  {invoiceOrderData.pwdSeniorDetails && (
-                    <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded">
-                      <p className="text-sm font-medium text-blue-800 mb-1">
-                        PWD/Senior Details:
-                      </p>
-                      <p className="text-sm text-blue-700">
-                        Name: {invoiceOrderData.pwdSeniorDetails.name}
-                      </p>
-                      <p className="text-sm text-blue-700">
-                        ID: {invoiceOrderData.pwdSeniorDetails.idNumber}
-                      </p>
-                      <p className="text-sm text-blue-700">
-                        Type: {invoiceOrderData.pwdSeniorDetails.type}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="text-center text-sm text-gray-500 border-t pt-4">
-              <p>Thank you for your order!</p>
-              <p className="mt-1">Please keep this invoice for your records.</p>
-              <p className="mt-2 text-xs">
-                Order ID: {invoiceOrderData._id || invoiceOrderData.orderId}
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="flex gap-3 mt-6">
-              <button
-                onClick={() => {
-                  window.print();
-                }}
-                className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors"
-              >
-                Print Invoice
-              </button>
-              <button
-                onClick={handleCloseInvoice}
-                className="flex-1 px-4 py-3 bg-green-600 text-white rounded-lg font-medium text-sm hover:bg-green-700 transition-colors"
-              >
-                Complete & Next Order
-              </button>
-            </div>
-          </div>
-        </div>
+      {showInvoice && invoiceData && (
+        <Invoice
+          orderInfo={invoiceData}
+          setShowInvoice={handleCloseInvoice}
+          disableAutoPrint={false} // Auto-print enabled for Bill orders
+        />
       )}
 
       {/* Next Order Confirmation Modal */}
