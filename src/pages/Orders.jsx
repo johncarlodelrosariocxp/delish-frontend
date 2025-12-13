@@ -387,6 +387,35 @@ const Orders = () => {
     refetch(); // Refetch the normal query
   };
 
+  // Check if user can cancel an order
+  const canUserCancelOrder = (order) => {
+    // Check user role and permissions
+    const userRole = user.role?.toLowerCase();
+
+    // Admin can cancel any order
+    if (userRole === "admin") return true;
+
+    // Cashier can cancel orders they created
+    if (userRole === "cashier") {
+      // Check if the current user is the creator of this order
+      const orderCashierId = order.cashierId || order.user?._id || order.userId;
+      const currentUserId = user._id || user.id;
+
+      // If order has cashier/user ID, check if it matches current user
+      if (orderCashierId && currentUserId) {
+        return orderCashierId === currentUserId;
+      }
+
+      // If no IDs available, check by name (fallback)
+      const orderCashierName = getUserDisplayName(order);
+      const currentUserName = user.name;
+
+      return orderCashierName === currentUserName;
+    }
+
+    return false;
+  };
+
   // FIXED: Cancel order mutation
   const cancelOrderMutation = useMutation({
     mutationFn: async (orderId) => {
@@ -1356,9 +1385,10 @@ const Orders = () => {
     const userDisplayName = getUserDisplayName(order);
     const discountExists = hasDiscount(order);
     const discountType = getDiscountType(order);
-    const canCancel =
-      user.role?.toLowerCase() === "admin" && orderStatus !== "cancelled";
     const isCancelled = orderStatus.toLowerCase() === "cancelled";
+
+    // Check if current user can cancel this order
+    const canCancel = canUserCancelOrder(order) && orderStatus !== "cancelled";
 
     return (
       <div
@@ -1395,6 +1425,12 @@ const Orders = () => {
         <div className="flex items-center gap-2 mb-3 text-xs text-gray-600">
           <span>Cashier:</span>
           <span className="font-medium text-gray-800">{userDisplayName}</span>
+          {/* Show "You" indicator if current user created this order */}
+          {user.name && userDisplayName === user.name && (
+            <span className="bg-blue-100 text-blue-800 text-[9px] px-1.5 py-0.5 rounded-full">
+              You
+            </span>
+          )}
         </div>
 
         {discountExists && discountType && (
@@ -1506,7 +1542,13 @@ const Orders = () => {
             >
               {user.role?.toLowerCase() === "admin"
                 ? "Admin View"
-                : "User View"}
+                : "Cashier View"}
+            </span>
+            {/* Cancel Permission Badge */}
+            <span className="bg-red-100 text-red-800 px-2 py-1 rounded-full text-xs font-medium">
+              {user.role?.toLowerCase() === "admin"
+                ? "Can Cancel All Orders"
+                : "Can Cancel Your Orders"}
             </span>
           </div>
 
@@ -2065,80 +2107,97 @@ const Orders = () => {
             </div>
           )}
         </div>
-      </div>
 
-      {showDeleteModal && orderToDelete && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
-            <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
-              <FaTrash className="text-red-600 text-xl" />
-            </div>
-            <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
-              Cancel Order
-            </h3>
-            <p className="text-gray-600 text-sm text-center mb-4">
-              Are you sure you want to cancel order #
-              <span className="font-mono font-semibold">
-                {orderToDelete._id?.slice(-8) || "N/A"}
-              </span>
-              ? This will mark the order as cancelled and remove it from sales
-              totals.
-            </p>
-
-            {orderToDelete.customerDetails?.name && (
-              <div className="bg-gray-50 p-3 rounded-lg mb-6">
-                <p className="text-sm text-gray-700">
-                  <span className="font-medium">Customer:</span>{" "}
-                  {orderToDelete.customerDetails.name}
-                </p>
-                <p className="text-sm text-gray-700">
-                  <span className="font-medium">Amount:</span>{" "}
-                  {formatCurrency(calculateTotalAmount(orderToDelete))}
-                </p>
-                <p className="text-sm text-gray-700">
-                  <span className="font-medium">Date:</span>{" "}
-                  {formatDate(
-                    orderToDelete.createdAt || orderToDelete.orderDate
-                  )}
-                </p>
+        {showDeleteModal && orderToDelete && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">
+              <div className="flex items-center justify-center w-12 h-12 mx-auto bg-red-100 rounded-full mb-4">
+                <FaTrash className="text-red-600 text-xl" />
               </div>
-            )}
+              <h3 className="text-lg font-semibold text-gray-900 text-center mb-2">
+                Cancel Order
+              </h3>
+              <p className="text-gray-600 text-sm text-center mb-4">
+                Are you sure you want to cancel order #
+                <span className="font-mono font-semibold">
+                  {orderToDelete._id?.slice(-8) || "N/A"}
+                </span>
+                ? This will mark the order as cancelled and remove it from sales
+                totals.
+              </p>
 
-            <div className="flex gap-3">
-              <button
-                onClick={cancelDelete}
-                disabled={cancelOrderMutation.isPending}
-                className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
-              >
-                Back
-              </button>
-              <button
-                onClick={confirmCancel}
-                disabled={cancelOrderMutation.isPending}
-                className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
-              >
-                {cancelOrderMutation.isPending ? (
-                  <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Cancelling...
-                  </>
-                ) : (
-                  "Cancel Order"
+              {/* Show user information */}
+              <div className="bg-blue-50 p-3 rounded-lg mb-3">
+                <p className="text-sm text-blue-700">
+                  <span className="font-medium">Cancelling as:</span>{" "}
+                  {user.name} ({user.role})
+                </p>
+                {user.role?.toLowerCase() === "cashier" && (
+                  <p className="text-xs text-blue-600 mt-1">
+                    Note: You can only cancel orders that you created
+                  </p>
                 )}
-              </button>
+              </div>
+
+              {orderToDelete.customerDetails?.name && (
+                <div className="bg-gray-50 p-3 rounded-lg mb-6">
+                  <p className="text-sm text-gray-700">
+                    <span className="font-medium">Customer:</span>{" "}
+                    {orderToDelete.customerDetails.name}
+                  </p>
+                  <p className="text-sm text-gray-700">
+                    <span className="font-medium">Amount:</span>{" "}
+                    {formatCurrency(calculateTotalAmount(orderToDelete))}
+                  </p>
+                  <p className="text-sm text-gray-700">
+                    <span className="font-medium">Date:</span>{" "}
+                    {formatDate(
+                      orderToDelete.createdAt || orderToDelete.orderDate
+                    )}
+                  </p>
+                  <p className="text-sm text-gray-700">
+                    <span className="font-medium">Created by:</span>{" "}
+                    {getUserDisplayName(orderToDelete)}
+                  </p>
+                </div>
+              )}
+
+              <div className="flex gap-3">
+                <button
+                  onClick={cancelDelete}
+                  disabled={cancelOrderMutation.isPending}
+                  className="flex-1 bg-gray-200 hover:bg-gray-300 text-gray-800 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={confirmCancel}
+                  disabled={cancelOrderMutation.isPending}
+                  className="flex-1 bg-yellow-600 hover:bg-yellow-700 text-white py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {cancelOrderMutation.isPending ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                      Cancelling...
+                    </>
+                  ) : (
+                    "Cancel Order"
+                  )}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {showScrollButton && (
-        <button
-          onClick={scrollToTop}
-          className="fixed bottom-24 md:bottom-6 right-4 sm:right-6 bg-[#025cca] text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all z-20"
-        >
-          <FaArrowUp />
-        </button>
-      )}
+        {showScrollButton && (
+          <button
+            onClick={scrollToTop}
+            className="fixed bottom-24 md:bottom-6 right-4 sm:right-6 bg-[#025cca] text-white p-3 rounded-full shadow-lg hover:shadow-xl transition-all z-20"
+          >
+            <FaArrowUp />
+          </button>
+        )}
+      </div>
 
       {showInvoice && selectedOrder && (
         <Invoice orderInfo={selectedOrder} setShowInvoice={setShowInvoice} />

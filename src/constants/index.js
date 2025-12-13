@@ -866,6 +866,22 @@ export const icedTeaItems = [
   },
 ];
 
+// 🥤 Beverages (New Category for Coke and Bottle Water)
+export const beverageItems = [
+  {
+    id: 1,
+    name: "Coke",
+    category: "Beverages",
+    variants: [{ label: "Regular", price: 75 }],
+  },
+  {
+    id: 2,
+    name: "Bottle Water",
+    category: "Beverages",
+    variants: [{ label: "Regular", price: 25 }],
+  },
+];
+
 // ➕ Add-ons Category (Coffee Add-ons from the drinks menu)
 export const addOnsItems = [
   {
@@ -900,7 +916,7 @@ export const addOnsItems = [
   },
 ];
 
-// 📊 Menu Sections (Updated with all categories)
+// 📊 Menu Sections (Updated with all categories including Beverages)
 export const menus = [
   {
     id: 1,
@@ -988,6 +1004,13 @@ export const menus = [
   },
   {
     id: 13,
+    name: "Beverages",
+    bgColor: "#2196F3",
+    icon: "🥤",
+    items: beverageItems,
+  },
+  {
+    id: 14,
     name: "Add-ons",
     bgColor: "#607D8B",
     icon: "➕",
@@ -1163,6 +1186,11 @@ export const isSnackItem = (item) => {
 // Function to check if item has Pastry selection
 export const isPastryItem = (item) => {
   return item.category === "Pastries";
+};
+
+// Function to check if item is a Beverage item
+export const isBeverageItem = (item) => {
+  return item.category === "Beverages";
 };
 
 // Function to get all Keto Mini flavors

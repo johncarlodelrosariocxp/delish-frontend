@@ -140,6 +140,13 @@ const Bill = ({ orderId }) => {
   const [employeeDiscountApplied, setEmployeeDiscountApplied] = useState(false);
   const [shareholderDiscountApplied, setShareholderDiscountApplied] =
     useState(false);
+  // ✅ ADDED: Custom discount state
+  const [customDiscountApplied, setCustomDiscountApplied] = useState(false);
+  const [customDiscountAmount, setCustomDiscountAmount] = useState(0);
+  const [customDiscountType, setCustomDiscountType] = useState("percentage"); // 'percentage' or 'fixed'
+  const [customDiscountValue, setCustomDiscountValue] = useState(0);
+  const [showCustomDiscountModal, setShowCustomDiscountModal] = useState(false);
+  const [customDiscountReason, setCustomDiscountReason] = useState("");
   const [paymentMethod, setPaymentMethod] = useState(null);
   const [showRedeemOptions, setShowRedeemOptions] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -397,7 +404,7 @@ const Bill = ({ orderId }) => {
     }`;
   };
 
-  // Calculate totals
+  // Calculate totals - UPDATED to include custom discount
   const calculateTotals = () => {
     try {
       const baseGrossTotal = cartData.reduce(
@@ -437,16 +444,34 @@ const Bill = ({ orderId }) => {
           : sum;
       }, 0);
 
-      const subtotalAfterPwdSeniorAndRedemption =
-        baseGrossTotal - pwdSeniorDiscountAmount - redemptionAmount;
+      // ✅ ADDED: Calculate custom discount amount
+      let customDiscountAmount = 0;
+      if (customDiscountApplied && customDiscountValue > 0) {
+        if (customDiscountType === "percentage") {
+          // Apply percentage discount to subtotal after other discounts
+          const subtotalBeforeCustom =
+            baseGrossTotal - pwdSeniorDiscountAmount - redemptionAmount;
+          customDiscountAmount =
+            (subtotalBeforeCustom * customDiscountValue) / 100;
+        } else {
+          // Fixed amount discount
+          customDiscountAmount = customDiscountValue;
+        }
+      }
+
+      const subtotalAfterPwdSeniorRedemptionAndCustom =
+        baseGrossTotal -
+        pwdSeniorDiscountAmount -
+        redemptionAmount -
+        customDiscountAmount;
 
       const employeeDiscountAmount = employeeDiscountApplied
-        ? Math.max(0, subtotalAfterPwdSeniorAndRedemption) *
+        ? Math.max(0, subtotalAfterPwdSeniorRedemptionAndCustom) *
           employeeDiscountRate
         : 0;
 
       const subtotalAfterEmployeeDiscount =
-        Math.max(0, subtotalAfterPwdSeniorAndRedemption) -
+        Math.max(0, subtotalAfterPwdSeniorRedemptionAndCustom) -
         employeeDiscountAmount;
 
       const shareholderDiscountAmount = shareholderDiscountApplied
@@ -465,7 +490,8 @@ const Bill = ({ orderId }) => {
         pwdSeniorDiscountAmount +
         employeeDiscountAmount +
         shareholderDiscountAmount +
-        redemptionAmount;
+        redemptionAmount +
+        customDiscountAmount; // ✅ Added custom discount to total
 
       // Calculate change
       const cashAmountNum = safeNumber(cashAmount);
@@ -486,11 +512,13 @@ const Bill = ({ orderId }) => {
         redemptionAmount,
         employeeDiscountAmount,
         shareholderDiscountAmount,
+        customDiscountAmount, // ✅ Added custom discount
         netSales,
         vatAmount,
         total,
         totalDiscountAmount,
-        subtotalAfterPwdSeniorAndRedemption,
+        subtotalAfterPwdSeniorAndRedemption:
+          subtotalAfterPwdSeniorRedemptionAndCustom,
         cashAmount: cashAmountNum,
         onlineAmount: onlineAmountNum,
         totalPaid,
@@ -506,6 +534,7 @@ const Bill = ({ orderId }) => {
         redemptionAmount: 0,
         employeeDiscountAmount: 0,
         shareholderDiscountAmount: 0,
+        customDiscountAmount: 0, // ✅ Added custom discount
         netSales: 0,
         vatAmount: 0,
         total: 0,
@@ -655,6 +684,104 @@ const Bill = ({ orderId }) => {
 
   const discountedItemsInfo = getDiscountedItemsInfo();
 
+  // ✅ ADDED: Handle custom discount
+  const handleCustomDiscount = () => {
+    if (!customDiscountApplied) {
+      setShowCustomDiscountModal(true);
+    } else {
+      setCustomDiscountApplied(false);
+      setCustomDiscountAmount(0);
+      setCustomDiscountValue(0);
+      setCustomDiscountReason("");
+      setCustomDiscountType("percentage");
+      enqueueSnackbar("Custom discount removed", { variant: "info" });
+    }
+  };
+
+  // ✅ ADDED: Apply custom discount
+  const handleApplyCustomDiscount = () => {
+    if (customDiscountValue <= 0) {
+      enqueueSnackbar("Please enter a valid discount value", {
+        variant: "warning",
+      });
+      return;
+    }
+
+    if (customDiscountType === "percentage" && customDiscountValue > 100) {
+      enqueueSnackbar("Percentage discount cannot exceed 100%", {
+        variant: "warning",
+      });
+      return;
+    }
+
+    // Calculate current subtotal for validation
+    const subtotalAfterPwdSeniorAndRedemption =
+      totals.baseGrossTotal -
+      totals.pwdSeniorDiscountAmount -
+      totals.redemptionAmount;
+
+    let calculatedDiscount = 0;
+
+    if (customDiscountType === "percentage") {
+      calculatedDiscount =
+        (subtotalAfterPwdSeniorAndRedemption * customDiscountValue) / 100;
+    } else {
+      // Fixed amount
+      calculatedDiscount = customDiscountValue;
+
+      // Check if fixed discount exceeds subtotal
+      if (calculatedDiscount > subtotalAfterPwdSeniorAndRedemption) {
+        enqueueSnackbar(
+          `Fixed discount (₱${calculatedDiscount.toFixed(
+            2
+          )}) cannot exceed subtotal (₱${subtotalAfterPwdSeniorAndRedemption.toFixed(
+            2
+          )})`,
+          { variant: "warning" }
+        );
+        return;
+      }
+    }
+
+    if (calculatedDiscount <= 0) {
+      enqueueSnackbar("Invalid discount amount", { variant: "warning" });
+      return;
+    }
+
+    setCustomDiscountAmount(calculatedDiscount);
+    setCustomDiscountApplied(true);
+    setShowCustomDiscountModal(false);
+
+    // Clear other discount types when applying custom discount
+    setPwdSeniorDiscountApplied(false);
+    setPwdSeniorDiscountItems([]);
+    setEmployeeDiscountApplied(false);
+    setShareholderDiscountApplied(false);
+
+    const reasonText = customDiscountReason
+      ? ` for ${customDiscountReason}`
+      : "";
+    const typeText =
+      customDiscountType === "percentage"
+        ? `${customDiscountValue}%`
+        : `₱${customDiscountValue.toFixed(2)}`;
+
+    enqueueSnackbar(
+      `Custom discount of ${typeText} applied${reasonText} (-₱${calculatedDiscount.toFixed(
+        2
+      )})`,
+      { variant: "success" }
+    );
+  };
+
+  // ✅ ADDED: Cancel custom discount modal
+  const handleCancelCustomDiscount = () => {
+    setShowCustomDiscountModal(false);
+    setCustomDiscountValue(0);
+    setCustomDiscountReason("");
+    setCustomDiscountType("percentage");
+  };
+
   // Handle PWD/Senior discount
   const handlePwdSeniorDiscount = () => {
     if (!pwdSeniorDiscountApplied) {
@@ -665,6 +792,7 @@ const Bill = ({ orderId }) => {
       setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
       setEmployeeDiscountApplied(false);
       setShareholderDiscountApplied(false);
+      setCustomDiscountApplied(false); // Clear custom discount too
       enqueueSnackbar("PWD/Senior discount removed", { variant: "info" });
     }
   };
@@ -675,6 +803,7 @@ const Bill = ({ orderId }) => {
     setPwdSeniorDiscountItems([]);
     setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
     setShareholderDiscountApplied(false);
+    setCustomDiscountApplied(false); // Clear custom discount too
   };
 
   const handleShareholderDiscount = () => {
@@ -683,6 +812,7 @@ const Bill = ({ orderId }) => {
     setPwdSeniorDiscountItems([]);
     setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
     setEmployeeDiscountApplied(false);
+    setCustomDiscountApplied(false); // Clear custom discount too
   };
 
   // ✅ IMPROVED: Get all eligible items for PWD/Senior discount
@@ -804,6 +934,7 @@ const Bill = ({ orderId }) => {
     setPwdSeniorDiscountApplied(true);
     setEmployeeDiscountApplied(false);
     setShareholderDiscountApplied(false);
+    setCustomDiscountApplied(false); // Clear custom discount too
     setShowPwdSeniorSelection(false);
 
     const selectedValue = pwdSeniorDiscountItems.reduce(
@@ -1039,7 +1170,7 @@ const Bill = ({ orderId }) => {
     const paymentStatusValue = "completed"; // Always completed
     const orderStatusValue = "completed"; // Always completed
 
-    // Prepare bills data
+    // Prepare bills data - UPDATED to include custom discount
     const bills = {
       total: Number(totals.baseGrossTotal.toFixed(2)),
       tax: Number(totals.vatAmount.toFixed(2)),
@@ -1050,6 +1181,10 @@ const Bill = ({ orderId }) => {
       employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
       shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
       redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
+      customDiscount: Number(totals.customDiscountAmount.toFixed(2)), // ✅ Added custom discount
+      customDiscountType: customDiscountApplied ? customDiscountType : null, // ✅ Added custom discount type
+      customDiscountValue: customDiscountApplied ? customDiscountValue : 0, // ✅ Added custom discount value
+      customDiscountReason: customDiscountApplied ? customDiscountReason : null, // ✅ Added custom discount reason
       netSales: Number(totals.netSales.toFixed(2)),
       cashAmount: Number(cashPaymentAmount.toFixed(2)),
       onlineAmount: Number(onlinePaymentAmount.toFixed(2)),
@@ -1156,6 +1291,15 @@ const Bill = ({ orderId }) => {
       pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
       pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
       pwdSeniorSelectedItems: pwdSeniorSelectedItems, // ✅ Fixed category values
+      customDiscountApplied: customDiscountApplied, // ✅ Added custom discount flag
+      customDiscountDetails: customDiscountApplied
+        ? {
+            type: customDiscountType,
+            value: customDiscountValue,
+            amount: totals.customDiscountAmount,
+            reason: customDiscountReason,
+          }
+        : null, // ✅ Added custom discount details
       cashier: user?.name || "Admin",
       user: userId || "000000000000000000000001",
       orderNumber: orderNumber,
@@ -1437,6 +1581,11 @@ const Bill = ({ orderId }) => {
     setPwdSeniorDiscountApplied(false);
     setEmployeeDiscountApplied(false);
     setShareholderDiscountApplied(false);
+    setCustomDiscountApplied(false); // ✅ Reset custom discount
+    setCustomDiscountAmount(0);
+    setCustomDiscountValue(0);
+    setCustomDiscountReason("");
+    setCustomDiscountType("percentage");
     setPaymentMethod(null);
     setShowRedeemOptions(false);
     setPwdSeniorDiscountItems([]);
@@ -1458,6 +1607,7 @@ const Bill = ({ orderId }) => {
       onlineMethod: null,
     });
     setShowMixedPaymentModal(false);
+    setShowCustomDiscountModal(false); // ✅ Reset custom discount modal
     setActiveCategory(null);
     setIsProcessing(false);
     setShowNextOrderConfirm(false);
@@ -1590,6 +1740,164 @@ const Bill = ({ orderId }) => {
 
   return (
     <>
+      {/* ✅ ADDED: Custom Discount Modal */}
+      {showCustomDiscountModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full">
+            <h3 className="text-lg font-semibold mb-4 text-gray-900">
+              Apply Custom Discount
+            </h3>
+
+            <div className="mb-4">
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Discount Type
+              </label>
+              <div className="flex gap-3 mb-4">
+                <button
+                  onClick={() => setCustomDiscountType("percentage")}
+                  className={`flex-1 px-4 py-3 rounded-lg font-semibold text-sm ${
+                    customDiscountType === "percentage"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                  } transition-colors`}
+                >
+                  Percentage
+                </button>
+                <button
+                  onClick={() => setCustomDiscountType("fixed")}
+                  className={`flex-1 px-4 py-3 rounded-lg font-semibold text-sm ${
+                    customDiscountType === "fixed"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200 text-gray-600 hover:bg-gray-300"
+                  } transition-colors`}
+                >
+                  Fixed Amount
+                </button>
+              </div>
+
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                {customDiscountType === "percentage"
+                  ? "Discount Percentage (%)"
+                  : "Discount Amount (₱)"}
+              </label>
+              <input
+                type="number"
+                value={customDiscountValue}
+                onChange={(e) =>
+                  setCustomDiscountValue(parseFloat(e.target.value) || 0)
+                }
+                className="w-full px-3 py-3 border border-gray-300 rounded-lg text-lg font-semibold focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none mb-4"
+                placeholder={
+                  customDiscountType === "percentage"
+                    ? "Enter percentage"
+                    : "Enter amount"
+                }
+                min="0"
+                step={customDiscountType === "percentage" ? "0.1" : "0.01"}
+                autoFocus
+              />
+
+              <label className="block text-sm font-medium text-gray-700 mb-2">
+                Reason (Optional)
+              </label>
+              <input
+                type="text"
+                value={customDiscountReason}
+                onChange={(e) => setCustomDiscountReason(e.target.value)}
+                className="w-full px-3 py-3 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none mb-4"
+                placeholder="e.g., Staff discount, Promo, etc."
+              />
+
+              {/* Preview */}
+              <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg mb-4">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">
+                  Discount Preview
+                </h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Subtotal:</span>
+                    <span className="font-medium text-gray-900">
+                      ₱
+                      {(
+                        totals.baseGrossTotal -
+                        totals.pwdSeniorDiscountAmount -
+                        totals.redemptionAmount
+                      ).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">
+                      {customDiscountType === "percentage"
+                        ? `Discount (${customDiscountValue}%):`
+                        : "Discount (Fixed):"}
+                    </span>
+                    <span className="font-bold text-red-600">
+                      -₱
+                      {customDiscountType === "percentage"
+                        ? (
+                            ((totals.baseGrossTotal -
+                              totals.pwdSeniorDiscountAmount -
+                              totals.redemptionAmount) *
+                              customDiscountValue) /
+                            100
+                          ).toFixed(2)
+                        : customDiscountValue.toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="pt-2 border-t border-gray-200">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-700 font-medium">
+                        New Subtotal:
+                      </span>
+                      <span className="font-bold text-green-600">
+                        ₱
+                        {(
+                          totals.baseGrossTotal -
+                          totals.pwdSeniorDiscountAmount -
+                          totals.redemptionAmount -
+                          (customDiscountType === "percentage"
+                            ? ((totals.baseGrossTotal -
+                                totals.pwdSeniorDiscountAmount -
+                                totals.redemptionAmount) *
+                                customDiscountValue) /
+                              100
+                            : customDiscountValue)
+                        ).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <p className="text-xs text-gray-500">
+                Note: Custom discount will replace any other discounts
+                (PWD/Senior, Employee, VIP).
+              </p>
+            </div>
+
+            <div className="flex gap-3">
+              <button
+                onClick={handleCancelCustomDiscount}
+                className="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleApplyCustomDiscount}
+                disabled={customDiscountValue <= 0}
+                className={`flex-1 px-4 py-3 rounded-lg font-medium text-sm ${
+                  customDiscountValue > 0
+                    ? "bg-blue-600 text-white hover:bg-blue-700"
+                    : "bg-blue-300 text-white cursor-not-allowed"
+                } transition-colors`}
+              >
+                Apply Discount
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ✅ ADDED: Invoice Component */}
       {showInvoice && invoiceData && (
         <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
@@ -2681,6 +2989,39 @@ const Bill = ({ orderId }) => {
                 </div>
               )}
 
+              {/* ✅ ADDED: Custom Discount Display */}
+              {customDiscountApplied && totals.customDiscountAmount > 0 && (
+                <div className="flex justify-between items-center text-purple-600">
+                  <div className="flex items-center">
+                    <p className="text-xs font-medium mr-2">
+                      Custom Discount{" "}
+                      {customDiscountType === "percentage"
+                        ? `(${customDiscountValue}%)`
+                        : `(₱${customDiscountValue.toFixed(2)})`}
+                      {customDiscountReason && ` - ${customDiscountReason}`}
+                    </p>
+                    <button
+                      onClick={() => {
+                        setCustomDiscountApplied(false);
+                        setCustomDiscountAmount(0);
+                        setCustomDiscountValue(0);
+                        setCustomDiscountReason("");
+                        enqueueSnackbar("Custom discount removed", {
+                          variant: "info",
+                        });
+                      }}
+                      className="text-xs text-red-500 hover:text-red-700 font-medium"
+                      disabled={isProcessing}
+                    >
+                      (Clear)
+                    </button>
+                  </div>
+                  <h1 className="text-md font-bold">
+                    -₱{totals.customDiscountAmount.toFixed(2)}
+                  </h1>
+                </div>
+              )}
+
               {employeeDiscountApplied && totals.employeeDiscountAmount > 0 && (
                 <div className="flex justify-between items-center text-yellow-600">
                   <p className="text-xs font-medium">Employee Discount (15%)</p>
@@ -2782,17 +3123,19 @@ const Bill = ({ orderId }) => {
                 )}
             </div>
 
-            {/* 🎟 DISCOUNT & REDEMPTION BUTTONS - FIXED LAYOUT */}
+            {/* 🎟 DISCOUNT & REDEMPTION BUTTONS - UPDATED with Custom Discount */}
             <div className="grid grid-cols-2 gap-3">
               {/* First Row */}
               <div className="flex gap-2">
                 <button
                   onClick={handlePwdSeniorDiscount}
-                  disabled={isProcessing}
+                  disabled={isProcessing || customDiscountApplied}
                   className={`flex-1 px-3 py-3 rounded-lg font-semibold text-xs ${
                     pwdSeniorDiscountApplied
                       ? "bg-green-500 text-white hover:bg-green-600"
                       : "bg-green-100 text-green-700 hover:bg-green-200"
+                  } ${
+                    customDiscountApplied ? "opacity-50 cursor-not-allowed" : ""
                   } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {pwdSeniorDiscountApplied ? "✓ PWD/SENIOR" : "PWD/SENIOR"}
@@ -2800,11 +3143,13 @@ const Bill = ({ orderId }) => {
 
                 <button
                   onClick={handleEmployeeDiscount}
-                  disabled={isProcessing}
+                  disabled={isProcessing || customDiscountApplied}
                   className={`flex-1 px-3 py-3 rounded-lg font-semibold text-xs ${
                     employeeDiscountApplied
                       ? "bg-yellow-500 text-white hover:bg-yellow-600"
                       : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                  } ${
+                    customDiscountApplied ? "opacity-50 cursor-not-allowed" : ""
                   } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {employeeDiscountApplied ? "✓ Employee" : "Employee"}
@@ -2815,31 +3160,49 @@ const Bill = ({ orderId }) => {
               <div className="flex gap-2">
                 <button
                   onClick={handleShareholderDiscount}
-                  disabled={isProcessing}
+                  disabled={isProcessing || customDiscountApplied}
                   className={`flex-1 px-3 py-3 rounded-lg font-semibold text-xs ${
                     shareholderDiscountApplied
                       ? "bg-purple-500 text-white hover:bg-purple-600"
                       : "bg-purple-100 text-purple-700 hover:bg-purple-200"
+                  } ${
+                    customDiscountApplied ? "opacity-50 cursor-not-allowed" : ""
                   } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
                   {shareholderDiscountApplied ? "✓ VIP" : "VIP"}
                 </button>
 
+                {/* ✅ ADDED: Custom Discount Button */}
+                <button
+                  onClick={handleCustomDiscount}
+                  disabled={isProcessing}
+                  className={`flex-1 px-3 py-3 rounded-lg font-semibold text-xs ${
+                    customDiscountApplied
+                      ? "bg-red-500 text-white hover:bg-red-600"
+                      : "bg-red-100 text-red-700 hover:bg-red-200"
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {customDiscountApplied ? "✓ Custom" : "Custom"}
+                </button>
+              </div>
+
+              {/* ✅ ADDED: Redemption Button Row */}
+              <div className="col-span-2">
                 {!hasRedeemedItem ? (
                   <button
                     onClick={handleShowRedeemOptions}
                     disabled={isProcessing || combinedCart.length === 0}
-                    className="flex-1 px-3 py-3 rounded-lg font-semibold text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full px-3 py-3 rounded-lg font-semibold text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Redeem
+                    Redeem Item for Free
                   </button>
                 ) : (
                   <button
                     onClick={handleRemoveRedemption}
                     disabled={isProcessing}
-                    className="flex-1 px-3 py-3 rounded-lg font-semibold text-xs bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full px-3 py-3 rounded-lg font-semibold text-xs bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    Remove
+                    Remove Redemption
                   </button>
                 )}
               </div>

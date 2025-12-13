@@ -6,6 +6,7 @@ import {
   MdClose,
   MdCheckCircle,
   MdPrint,
+  MdDoneAll,
 } from "react-icons/md";
 import MenuContainer from "../components/menu/MenuContainer";
 import CustomerInfo from "../components/menu/CustomerInfo";
@@ -38,10 +39,12 @@ const Menu = () => {
 
   const [activeTab, setActiveTab] = useState("active");
   const [printingOrderId, setPrintingOrderId] = useState(null);
+  const [showCompletionLoading, setShowCompletionLoading] = useState(false);
+  const [showCompleteButton, setShowCompleteButton] = useState(false);
 
-  // Use refs to prevent infinite loops
-  const hasAutoCompletedRef = useRef(false);
-  const isProcessingRef = useRef(false);
+  // Use refs to track completion state
+  const pendingCompletionRef = useRef(null);
+  const completionTimeoutRef = useRef(null);
 
   // Filter orders - only active and completed
   const activeOrders = orders.filter((order) => order.status === "active");
@@ -51,79 +54,116 @@ const Menu = () => {
     (order) => order.id === activeOrderId
   );
 
-  // ✅ FIXED: Effect to handle auto-completion ONLY when payment method is selected
+  // ✅ Check if order is ready for completion
   useEffect(() => {
-    // Don't run if:
-    // 1. No active order
-    // 2. Already processing
-    // 3. Already auto-completed this order
-    // 4. Order has no items
-    // 5. Order is already completed
-    // 6. No payment method
-    if (
-      !currentActiveOrder ||
-      isProcessingRef.current ||
-      hasAutoCompletedRef.current ||
-      !currentActiveOrder.items ||
-      currentActiveOrder.items.length === 0 ||
-      currentActiveOrder.isCompleted ||
-      !currentActiveOrder.paymentMethod
-    ) {
+    if (currentActiveOrder) {
+      const hasItems =
+        currentActiveOrder.items && currentActiveOrder.items.length > 0;
+      const hasPaymentMethod = currentActiveOrder.paymentMethod;
+      const isNotCompleted = !currentActiveOrder.isCompleted;
+      const isActive = currentActiveOrder.status === "active";
+
+      // Show complete button if order has items and payment method
+      setShowCompleteButton(
+        hasItems && hasPaymentMethod && isNotCompleted && isActive
+      );
+    } else {
+      setShowCompleteButton(false);
+    }
+  }, [currentActiveOrder]);
+
+  // ✅ Monitor for order completion trigger from Bill component (auto-completion)
+  useEffect(() => {
+    if (currentActiveOrder && showCompleteButton) {
+      // If order is ready for completion and auto-completion is enabled
+      // Check if this order is already pending completion
+      if (pendingCompletionRef.current !== currentActiveOrder.id) {
+        pendingCompletionRef.current = currentActiveOrder.id;
+
+        // Clear any existing timeout
+        if (completionTimeoutRef.current) {
+          clearTimeout(completionTimeoutRef.current);
+        }
+
+        // Auto-complete after a 2-second delay (give user time to review)
+        completionTimeoutRef.current = setTimeout(() => {
+          handleCompleteOrder();
+        }, 2000);
+      }
+    }
+
+    // Cleanup function
+    return () => {
+      if (completionTimeoutRef.current) {
+        clearTimeout(completionTimeoutRef.current);
+      }
+    };
+  }, [currentActiveOrder, showCompleteButton]);
+
+  // ✅ Manual function to complete order
+  const handleCompleteOrder = () => {
+    if (!currentActiveOrder || showCompletionLoading) return;
+
+    const hasItems =
+      currentActiveOrder.items && currentActiveOrder.items.length > 0;
+    const hasPaymentMethod = currentActiveOrder.paymentMethod;
+
+    if (!hasItems) {
+      alert("Please add items to the order before completing.");
       return;
     }
 
-    // Reset the ref if we have a different order
-    if (
-      hasAutoCompletedRef.current &&
-      hasAutoCompletedRef.current !== currentActiveOrder.id
-    ) {
-      hasAutoCompletedRef.current = false;
+    if (!hasPaymentMethod) {
+      alert("Please select a payment method before completing the order.");
+      return;
     }
 
-    // Check if order is ready for completion (has items AND payment method)
-    const isOrderReadyForCompletion =
-      currentActiveOrder.items.length > 0 && currentActiveOrder.paymentMethod;
+    setShowCompletionLoading(true);
 
-    if (isOrderReadyForCompletion && !currentActiveOrder.isCompleted) {
-      isProcessingRef.current = true;
-      hasAutoCompletedRef.current = currentActiveOrder.id;
-
-      // Dispatch completeOrder action
-      dispatch(
-        completeOrder({
-          orderId: currentActiveOrder.id,
-          paymentMethod: currentActiveOrder.paymentMethod,
-        })
-      );
-
-      // Reset processing flag after a delay
-      setTimeout(() => {
-        isProcessingRef.current = false;
-      }, 500);
+    // Clear any pending timeout
+    if (completionTimeoutRef.current) {
+      clearTimeout(completionTimeoutRef.current);
+      completionTimeoutRef.current = null;
     }
-  }, [currentActiveOrder, dispatch]);
 
-  // ✅ FIXED: Effect to auto-switch to next order after completion
+    // Dispatch completeOrder action
+    dispatch(
+      completeOrder({
+        orderId: currentActiveOrder.id,
+        paymentMethod: currentActiveOrder.paymentMethod,
+      })
+    );
+
+    // Reset loading state after a delay
+    setTimeout(() => {
+      setShowCompletionLoading(false);
+      pendingCompletionRef.current = null;
+    }, 1000);
+  };
+
+  // ✅ Handle when order completion is successful (invoice shows up)
   useEffect(() => {
-    // Only run if we have a recently completed order AND invoice is showing
     if (recentCompletedOrder && showInvoiceForOrder) {
-      const timeoutId = setTimeout(() => {
-        // Find remaining active orders (excluding the completed one)
+      // Successfully completed order, invoice is showing
+      console.log("Order completed, invoice showing:", recentCompletedOrder.id);
+
+      // Auto-switch to next active order after a delay
+      const switchTimeout = setTimeout(() => {
         const remainingActiveOrders = orders.filter(
           (order) =>
             order.status === "active" && order.id !== recentCompletedOrder.id
         );
 
         if (remainingActiveOrders.length > 0) {
-          // Switch to the first remaining active order
+          // Switch to the next active order
           dispatch(switchOrder(remainingActiveOrders[0].id));
         } else {
-          // If no active orders left, create a new one
+          // No active orders left, create a new one
           dispatch(createNewOrder());
         }
-      }, 300); // Small delay to ensure invoice is visible
+      }, 100);
 
-      return () => clearTimeout(timeoutId);
+      return () => clearTimeout(switchTimeout);
     }
   }, [recentCompletedOrder, showInvoiceForOrder, orders, dispatch]);
 
@@ -133,8 +173,7 @@ const Menu = () => {
     dispatch(clearRecentCompletedOrder());
 
     // Reset refs
-    hasAutoCompletedRef.current = false;
-    isProcessingRef.current = false;
+    pendingCompletionRef.current = null;
 
     // Check if we need to create a new order
     const remainingActiveOrders = orders.filter(
@@ -353,6 +392,29 @@ const Menu = () => {
     return formatCurrency(total);
   };
 
+  // Show loading indicator when completing order
+  if (showCompletionLoading && currentActiveOrder) {
+    return (
+      <section className="bg-white min-h-screen flex flex-col">
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
+            <p className="text-gray-600 font-medium">
+              Completing Order {currentActiveOrder.number}...
+            </p>
+            <p className="text-gray-400 text-sm mt-2">
+              Please wait while we process your order
+            </p>
+            <div className="mt-4 text-xs text-gray-500">
+              <p>Items: {currentActiveOrder.items?.length || 0}</p>
+              <p>Payment: {currentActiveOrder.paymentMethod || "Cash"}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section className="bg-white min-h-screen flex flex-col">
       {/* ✅ INVOICE MODAL - Automatically show when recentCompletedOrder exists */}
@@ -504,6 +566,24 @@ const Menu = () => {
                   <div className="flex-shrink-0">
                     <Bill orderId={activeOrderId} />
                   </div>
+
+                  {/* Complete Order Button - Fixed at bottom of sidebar */}
+                  {showCompleteButton && (
+                    <div className="p-3 border-t border-gray-300 bg-green-50">
+                      <button
+                        onClick={handleCompleteOrder}
+                        className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                      >
+                        <MdDoneAll size={20} />
+                        <span>
+                          Complete Order #{currentActiveOrder?.number}
+                        </span>
+                      </button>
+                      <p className="text-xs text-gray-500 text-center mt-1">
+                        Order will auto-complete in 2 seconds...
+                      </p>
+                    </div>
+                  )}
                 </div>
               </>
             );
