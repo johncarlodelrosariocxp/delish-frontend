@@ -19,8 +19,8 @@ const initialState = {
   ],
   activeOrderId: "order-1",
   completedOrders: [],
-  showInvoice: false, // Added for invoice visibility
-  recentCompletedOrder: null, // Added for recent completed order tracking
+  showInvoice: false,
+  recentCompletedOrder: null,
 };
 
 const orderSlice = createSlice({
@@ -56,7 +56,6 @@ const orderSlice = createSlice({
       }
     },
 
-    // Alias for switchOrder - sets the active order
     setActiveOrder: (state, action) => {
       const orderId = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
@@ -83,53 +82,26 @@ const orderSlice = createSlice({
       }
     },
 
-    // Clear current order (reset items and customer info)
-    clearCurrentOrder: (state, action) => {
+    // MODIFIED: Place order - immediately completes and shows invoice
+    placeOrder: (state, action) => {
       const orderId = action.payload || state.activeOrderId;
-      const order = state.orders.find((order) => order.id === orderId);
-
-      if (order) {
-        // Clear items from the current order
-        order.items = [];
-        // Reset customer information
-        order.customer = {
-          orderId: "",
-          customerName: "",
-          customerPhone: "",
-          guests: 0,
-          table: null,
-        };
-      }
-    },
-
-    // Mark order as "processing" when payment starts
-    processOrder: (state, action) => {
-      const orderId = action.payload;
       const orderIndex = state.orders.findIndex(
         (order) => order.id === orderId && order.status === "active"
       );
 
       if (orderIndex !== -1) {
-        state.orders[orderIndex].status = "processing";
-      }
-    },
+        // Get the order before modifying state
+        const order = state.orders[orderIndex];
 
-    // Mark order as completed when payment is successful
-    completeOrder: (state, action) => {
-      const orderId = action.payload;
-      const orderIndex = state.orders.findIndex(
-        (order) => order.id === orderId
-      );
-
-      if (orderIndex !== -1) {
+        // Create completed order with current timestamp
         const completedOrder = {
-          ...state.orders[orderIndex],
+          ...order,
           status: "completed",
           completedAt: new Date().toISOString(),
         };
 
         // Add to completed orders
-        state.completedOrders.unshift(completedOrder); // Add to beginning for newest first
+        state.completedOrders.unshift(completedOrder);
 
         // Set as recent completed order
         state.recentCompletedOrder = completedOrder;
@@ -145,7 +117,6 @@ const orderSlice = createSlice({
           if (nextActiveOrder) {
             state.activeOrderId = nextActiveOrder.id;
           } else if (state.orders.length > 0) {
-            // If no active orders, use the first one
             state.activeOrderId = state.orders[0].id;
           } else {
             state.activeOrderId = null;
@@ -153,20 +124,119 @@ const orderSlice = createSlice({
         } else {
           state.activeOrderId = null;
         }
+
+        // Automatically show invoice
+        state.showInvoice = true;
       }
     },
 
-    // Reset order status if payment fails
-    resetOrderStatus: (state, action) => {
+    // MODIFIED: Complete order with invoice display
+    completeOrder: (state, action) => {
       const orderId = action.payload;
       const orderIndex = state.orders.findIndex(
         (order) => order.id === orderId
       );
-      if (
-        orderIndex !== -1 &&
-        state.orders[orderIndex].status === "processing"
-      ) {
-        state.orders[orderIndex].status = "active";
+
+      if (orderIndex !== -1) {
+        const completedOrder = {
+          ...state.orders[orderIndex],
+          status: "completed",
+          completedAt: new Date().toISOString(),
+        };
+
+        // Add to completed orders
+        state.completedOrders.unshift(completedOrder);
+
+        // Set as recent completed order
+        state.recentCompletedOrder = completedOrder;
+
+        // Remove from active orders
+        state.orders.splice(orderIndex, 1);
+
+        // Set new active order if available
+        if (state.orders.length > 0) {
+          const nextActiveOrder = state.orders.find(
+            (order) => order.status === "active"
+          );
+          if (nextActiveOrder) {
+            state.activeOrderId = nextActiveOrder.id;
+          } else if (state.orders.length > 0) {
+            state.activeOrderId = state.orders[0].id;
+          } else {
+            state.activeOrderId = null;
+          }
+        } else {
+          state.activeOrderId = null;
+        }
+
+        // Automatically show invoice
+        state.showInvoice = true;
+      }
+    },
+
+    // Simplified - Direct complete and show invoice
+    completeAndInvoice: (state, action) => {
+      const orderId = action.payload || state.activeOrderId;
+      const order = state.orders.find((order) => order.id === orderId);
+
+      if (order) {
+        const completedOrder = {
+          ...order,
+          status: "completed",
+          completedAt: new Date().toISOString(),
+        };
+
+        // Move to completed orders
+        state.completedOrders.unshift(completedOrder);
+        state.recentCompletedOrder = completedOrder;
+
+        // Remove from active orders
+        state.orders = state.orders.filter((order) => order.id !== orderId);
+
+        // Set new active order
+        if (state.orders.length > 0) {
+          state.activeOrderId = state.orders[0].id;
+        } else {
+          // Create a new empty order
+          const newOrderNumber =
+            state.orders.length + state.completedOrders.length + 1;
+          const newOrder = {
+            id: `order-${newOrderNumber}`,
+            number: newOrderNumber,
+            items: [],
+            customer: {
+              orderId: `${Date.now()}`,
+              customerName: "",
+              customerPhone: "",
+              guests: 0,
+              table: null,
+            },
+            status: "active",
+            createdAt: new Date().toISOString(),
+          };
+          state.orders.push(newOrder);
+          state.activeOrderId = newOrder.id;
+        }
+
+        // Show invoice
+        state.showInvoice = true;
+      }
+    },
+
+    // Clear current order
+    clearCurrentOrder: (state, action) => {
+      const orderId = action.payload || state.activeOrderId;
+      const order = state.orders.find((order) => order.id === orderId);
+
+      if (order) {
+        order.items = [];
+        order.customer = {
+          orderId: "",
+          customerName: "",
+          customerPhone: "",
+          guests: 0,
+          table: null,
+        };
       }
     },
 
@@ -181,6 +251,7 @@ const orderSlice = createSlice({
     // Hide invoice
     hideInvoice: (state) => {
       state.showInvoice = false;
+      state.recentCompletedOrder = null;
     },
 
     // Clear recent completed order
@@ -188,13 +259,30 @@ const orderSlice = createSlice({
       state.recentCompletedOrder = null;
     },
 
-    // FIXED: addItemsToOrder - handle both price and pricePerQuantity
+    // Process order (for payment processing)
+    processOrder: (state, action) => {
+      const orderId = action.payload;
+      const order = state.orders.find((order) => order.id === orderId);
+      if (order && order.status === "active") {
+        order.status = "processing";
+      }
+    },
+
+    // Reset order status
+    resetOrderStatus: (state, action) => {
+      const orderId = action.payload;
+      const order = state.orders.find((order) => order.id === orderId);
+      if (order && order.status === "processing") {
+        order.status = "active";
+      }
+    },
+
+    // Items management (unchanged from your original)
     addItemsToOrder: (state, action) => {
       const { orderId, item } = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
 
       if (order && item) {
-        // Use either price or pricePerQuantity for comparison
         const itemPrice = item.price || item.pricePerQuantity || 0;
 
         const existingItemIndex = order.items.findIndex((existingItem) => {
@@ -204,15 +292,13 @@ const orderSlice = createSlice({
         });
 
         if (existingItemIndex !== -1) {
-          // If item exists, increment quantity
           order.items[existingItemIndex].quantity += item.quantity || 1;
         } else {
-          // Create new item with proper structure
           const newItem = {
             id: item.id || `item-${Date.now()}-${Math.random()}`,
             name: item.name || "Unknown Item",
-            price: item.price || item.pricePerQuantity || 0, // Handle both
-            pricePerQuantity: item.pricePerQuantity || item.price || 0, // Handle both
+            price: item.price || item.pricePerQuantity || 0,
+            pricePerQuantity: item.pricePerQuantity || item.price || 0,
             quantity: item.quantity || 1,
             isRedeemed: false,
             category: item.category || "general",
@@ -223,14 +309,12 @@ const orderSlice = createSlice({
       }
     },
 
-    // FIXED: addMultipleItemsToOrder - handle both price and pricePerQuantity
     addMultipleItemsToOrder: (state, action) => {
       const { orderId, items } = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
 
       if (order && Array.isArray(items)) {
         items.forEach((item) => {
-          // Use either price or pricePerQuantity for comparison
           const itemPrice = item.price || item.pricePerQuantity || 0;
 
           const existingItemIndex = order.items.findIndex((existingItem) => {
@@ -381,7 +465,6 @@ const orderSlice = createSlice({
       state.completedOrders = [];
     },
 
-    // Directly add item without checking for duplicates
     addItemDirectly: (state, action) => {
       const { orderId, item } = action.payload;
       const order = state.orders.find((order) => order.id === orderId);
@@ -411,6 +494,8 @@ export const {
   clearCurrentOrder,
   processOrder,
   completeOrder,
+  placeOrder, // NEW: Direct place order action
+  completeAndInvoice, // NEW: Combined complete and show invoice
   showInvoice,
   hideInvoice,
   clearRecentCompletedOrder,

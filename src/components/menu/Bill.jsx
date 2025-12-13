@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   removeItemFromOrder,
@@ -20,7 +20,7 @@ import { useNavigate } from "react-router-dom";
 // Import Invoice component
 import Invoice from "../../components/invoice/Invoice";
 
-const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
+const Bill = ({ orderId }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
 
@@ -75,17 +75,14 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
 
   // ✅ FIXED: Find current order and next order
   const findCurrentOrder = () => {
-    // If specific orderId is provided, use it
     if (orderId) {
       return orders.find((order) => order.id === orderId);
     }
 
-    // If there's an activeOrderId, use it
     if (activeOrderId) {
       return orders.find((order) => order.id === activeOrderId);
     }
 
-    // Otherwise find the first order that is not completed
     return orders.find(
       (order) =>
         !order.orderStatus ||
@@ -111,7 +108,6 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
         order.status === "in-progress"
     );
 
-    // Find the first order that's NOT the current one
     return pendingOrders.find((order) => order.id !== currentOrder?.id);
   };
 
@@ -178,9 +174,6 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
   // ✅ NEW: Track processed orders to prevent double switching
   const [processedOrders, setProcessedOrders] = useState(new Set());
 
-  // ✅ NEW: Ref for auto-printing
-  const printRef = useRef();
-
   // Safe number conversion helper
   const safeNumber = (value) => {
     if (value === undefined || value === null) return 0;
@@ -214,45 +207,186 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     return Object.values(combinedItems);
   };
 
-  // Check if item is a drink
+  // ✅ IMPROVED: Check if item is a drink with better detection
   const isDrinkItem = (item) => {
     if (!item) return false;
+
+    // Check category first
+    if (item.category) {
+      const category = item.category.toLowerCase().trim();
+      const drinkCategories = [
+        "drink",
+        "drinks",
+        "beverage",
+        "beverages",
+        "juice",
+        "soda",
+        "water",
+        "coffee",
+        "tea",
+        "milkshake",
+        "smoothie",
+        "softdrink",
+        "coke",
+        "cola",
+        "pepsi",
+        "lemonade",
+        "iced tea",
+      ];
+
+      if (drinkCategories.some((drinkCat) => category.includes(drinkCat))) {
+        return true;
+      }
+    }
+
+    // Check name more thoroughly
     const name = item.name ? item.name.toLowerCase() : "";
-    return (
-      item.category === "drink" ||
-      name.includes("drink") ||
-      name.includes("juice") ||
-      name.includes("soda") ||
-      name.includes("water") ||
-      name.includes("coffee") ||
-      name.includes("tea") ||
-      name.includes("milkshake") ||
-      name.includes("smoothie") ||
-      name.includes("softdrink") ||
-      name.includes("beverage")
-    );
+    const drinkKeywords = [
+      "drink",
+      "juice",
+      "soda",
+      "water",
+      "coffee",
+      "tea",
+      "milkshake",
+      "smoothie",
+      "softdrink",
+      "beverage",
+      "shake",
+      "coke",
+      "pepsi",
+      "cola",
+      "lemonade",
+      "iced",
+      "brewed", // For "Brewed Coffee"
+      "milk",
+      "cocoa",
+      "hot chocolate",
+      "latte",
+      "cappuccino",
+      "espresso",
+      "americano",
+      "frappe",
+      "bubble tea",
+      "iced tea",
+      "iced coffee",
+    ];
+
+    // Check if any drink keyword is in the name
+    return drinkKeywords.some((keyword) => name.includes(keyword));
   };
 
-  // Check if item is food
+  // ✅ IMPROVED: Check if item is food with better detection
   const isFoodItem = (item) => {
     if (!item) return false;
+
+    // Check category first
+    if (item.category) {
+      const category = item.category.toLowerCase().trim();
+      const foodCategories = [
+        "food",
+        "meal",
+        "main",
+        "appetizer",
+        "dessert",
+        "snack",
+        "breakfast",
+        "lunch",
+        "dinner",
+        "rice",
+        "chicken",
+        "beef",
+        "pork",
+        "fish",
+        "pasta",
+        "burger",
+        "sandwich",
+        "steak",
+        "pizza",
+        "salad",
+        "soup",
+        "fries",
+        "noodle",
+        "curry",
+        "taco",
+        "burrito",
+        "cake",
+        "pie",
+        "bread",
+        "roll",
+        "general", // Many items have "general" category
+      ];
+
+      if (foodCategories.some((foodCat) => category.includes(foodCat))) {
+        return true;
+      }
+    }
+
+    // Check name more thoroughly
     const name = item.name ? item.name.toLowerCase() : "";
-    return (
-      item.category === "food" ||
-      item.category === "meal" ||
-      name.includes("meal") ||
-      name.includes("food") ||
-      name.includes("rice") ||
-      name.includes("chicken") ||
-      name.includes("beef") ||
-      name.includes("pork") ||
-      name.includes("fish") ||
-      name.includes("pasta") ||
-      name.includes("burger") ||
-      name.includes("sandwich") ||
-      name.includes("steak") ||
-      name.includes("pizza")
-    );
+    const foodKeywords = [
+      "bangus", // For "Bangus Shanghai"
+      "embutido", // For "Embutido"
+      "shanghai", // For "Bangus Shanghai"
+      "meal",
+      "food",
+      "rice",
+      "chicken",
+      "beef",
+      "pork",
+      "fish",
+      "pasta",
+      "burger",
+      "sandwich",
+      "steak",
+      "pizza",
+      "salad",
+      "soup",
+      "fries",
+      "noodle",
+      "curry",
+      "taco",
+      "burrito",
+      "breakfast",
+      "lunch",
+      "dinner",
+      "appetizer",
+      "dessert",
+      "snack",
+      "cake",
+      "pie",
+      "bread",
+      "roll",
+      "egg",
+      "bacon",
+      "sausage",
+      "ham",
+      "cheese",
+      "butter",
+      "sauce",
+      "gravy",
+      "potato",
+      "vegetable",
+      "fruit",
+      "seafood",
+      "meat",
+      "nugget",
+      "wing",
+      "drumstick",
+      "fillet",
+      "cutlet",
+      "patty",
+      "ball",
+      "stick",
+      "finger",
+      "dumpling",
+      "spring roll",
+      "lumpia",
+      "siomai",
+    ];
+
+    // Check if any food keyword is in the name
+    return foodKeywords.some((keyword) => name.includes(keyword));
   };
 
   // Get unique key for an item
@@ -551,6 +685,34 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     setEmployeeDiscountApplied(false);
   };
 
+  // ✅ IMPROVED: Get all eligible items for PWD/Senior discount
+  const getEligibleItemsForDiscount = () => {
+    console.log("Checking eligible items from cart:", combinedCart);
+
+    const eligibleItems = combinedCart.filter((item) => {
+      if (!item) return false;
+
+      // Items that are already redeemed cannot be discounted
+      if (item.isRedeemed) return false;
+
+      const isDrink = isDrinkItem(item);
+      const isFood = isFoodItem(item);
+
+      console.log(
+        `Item: ${item.name}, isDrink: ${isDrink}, isFood: ${isFood}, category: ${item.category}`
+      );
+
+      // Only food and drink items are eligible
+      return isFood || isDrink;
+    });
+
+    console.log(
+      "Eligible items found:",
+      eligibleItems.map((item) => item.name)
+    );
+    return eligibleItems;
+  };
+
   // Toggle item selection in modal
   const toggleItemSelection = (item) => {
     if (!item) return;
@@ -561,32 +723,41 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     );
 
     if (isSelected) {
+      // Remove item if already selected
       setPwdSeniorDiscountItems(
         pwdSeniorDiscountItems.filter(
           (selected) => getItemKey(selected) !== itemKey
         )
       );
     } else {
-      const drinks = pwdSeniorDiscountItems.filter((item) => isDrinkItem(item));
-      const foods = pwdSeniorDiscountItems.filter((item) => isFoodItem(item));
+      // Check selection limits before adding
+      const selectedDrinks = pwdSeniorDiscountItems.filter((item) =>
+        isDrinkItem(item)
+      ).length;
+      const selectedFoods = pwdSeniorDiscountItems.filter((item) =>
+        isFoodItem(item)
+      ).length;
+      const isDrink = isDrinkItem(item);
+      const isFood = isFoodItem(item);
 
-      if (isDrinkItem(item)) {
-        if (drinks.length >= 1) {
-          enqueueSnackbar(
-            "Maximum 1 drink can be selected for PWD/Senior discount",
-            { variant: "warning" }
-          );
-          return;
-        }
-      } else if (isFoodItem(item)) {
-        if (foods.length >= 2) {
-          enqueueSnackbar(
-            "Maximum 2 food items can be selected for PWD/Senior discount",
-            { variant: "warning" }
-          );
-          return;
-        }
-      } else {
+      // Validate selection rules
+      if (isDrink && selectedDrinks >= 1) {
+        enqueueSnackbar(
+          "Maximum 1 drink can be selected for PWD/Senior discount",
+          { variant: "warning" }
+        );
+        return;
+      }
+
+      if (isFood && selectedFoods >= 2) {
+        enqueueSnackbar(
+          "Maximum 2 food items can be selected for PWD/Senior discount",
+          { variant: "warning" }
+        );
+        return;
+      }
+
+      if (!isDrink && !isFood) {
         enqueueSnackbar(
           "Only drinks and food items are eligible for PWD/Senior discount",
           { variant: "warning" }
@@ -602,6 +773,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
         return;
       }
 
+      // Add item to selection
       setPwdSeniorDiscountItems([...pwdSeniorDiscountItems, item]);
     }
   };
@@ -678,6 +850,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
   // Cancel selection
   const handleCancelPwdSeniorSelection = () => {
     setShowPwdSeniorSelection(false);
+    setPwdSeniorDiscountItems([]);
     setActiveCategory(null);
   };
 
@@ -728,27 +901,35 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
   // ✅ FIXED: Handle online payment selection
   const handleOnlinePaymentSelect = (method) => {
     setPaymentMethod(method);
-    setShowOnlineOptions(false);
+    setCashAmount(0);
     setMixedPayment({
       isMixed: false,
       cashAmount: 0,
-      onlineAmount: 0,
-      onlineMethod: null,
+      onlineAmount: totals.total,
+      onlineMethod: method,
     });
-    setCashAmount(0);
-    enqueueSnackbar(`Payment method set to ${method}`, { variant: "success" });
+    setShowOnlineOptions(false);
+    enqueueSnackbar(`Full payment via ${method}: ₱${totals.total.toFixed(2)}`, {
+      variant: "success",
+    });
   };
 
   // ✅ FIXED: Handle mixed payment selection
   const handleMixedPaymentSelect = () => {
-    // Pre-fill cash amount if already entered
     if (cashAmount > 0) {
-      setMixedPayment((prev) => ({
-        ...prev,
+      setMixedPayment({
+        isMixed: true,
         cashAmount: cashAmount,
         onlineAmount: Math.max(0, totals.total - cashAmount),
+        onlineMethod: null,
+      });
+    } else {
+      setMixedPayment({
         isMixed: true,
-      }));
+        cashAmount: 0,
+        onlineAmount: totals.total,
+        onlineMethod: null,
+      });
     }
     setShowMixedPaymentModal(true);
   };
@@ -759,7 +940,6 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     const onlineAmountNum = safeNumber(mixedPayment.onlineAmount);
     const totalPaid = cashAmountNum + onlineAmountNum;
 
-    // Allow partial payments but warn
     if (totalPaid < totals.total) {
       const remaining = totals.total - totalPaid;
       const confirm = window.confirm(
@@ -774,17 +954,22 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
       if (!confirm) return;
     }
 
-    // Set payment method and update cash amount
     setPaymentMethod("Mixed");
     setCashAmount(cashAmountNum);
     setShowMixedPaymentModal(false);
     setShowCashModal(false);
 
-    const message = `Mixed payment set: ₱${cashAmountNum.toFixed(2)} Cash${
-      mixedPayment.onlineMethod
-        ? ` + ₱${onlineAmountNum.toFixed(2)} ${mixedPayment.onlineMethod}`
-        : ""
-    }${totalPaid < totals.total ? ` (Partial Payment)` : ""}`;
+    let message = `Mixed payment: ₱${cashAmountNum.toFixed(2)} Cash`;
+    if (mixedPayment.onlineMethod) {
+      message += ` + ₱${onlineAmountNum.toFixed(2)} ${
+        mixedPayment.onlineMethod
+      }`;
+    }
+    if (totalPaid < totals.total) {
+      message += ` (Partial Payment - Balance: ₱${(
+        totals.total - totalPaid
+      ).toFixed(2)})`;
+    }
 
     enqueueSnackbar(message, { variant: "success" });
   };
@@ -815,7 +1000,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     return `ORD-${timestamp}-${randomSuffix}`;
   };
 
-  // ✅ FIXED: Prepare order data WITHOUT table field
+  // ✅ FIXED: Prepare order data with correct category values and always completed status
   const prepareOrderData = () => {
     // Determine payment details
     let paymentMethodValue = "Cash";
@@ -847,11 +1032,12 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
       isMixedPayment = true;
       onlinePaymentAmount = safeNumber(mixedPayment.onlineAmount);
       onlinePaymentMethod = mixedPayment.onlineMethod;
+      cashPaymentAmount = safeNumber(mixedPayment.cashAmount);
     }
 
-    // FIXED: Use lowercase enum values for status
-    const paymentStatusValue = isPartialPayment ? "partial" : "completed";
-    const orderStatusValue = isPartialPayment ? "pending" : "completed";
+    // ✅ FIXED: Always set status to "completed" after placing order
+    const paymentStatusValue = "completed"; // Always completed
+    const orderStatusValue = "completed"; // Always completed
 
     // Prepare bills data
     const bills = {
@@ -874,7 +1060,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
       amountPaid: Number(totalPaid.toFixed(2)),
     };
 
-    // Prepare items data
+    // Prepare items data - FIXED: Only use 'drink' or 'food' for category
     const items = cartData
       .map((item) => {
         if (!item) return null;
@@ -882,6 +1068,13 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
         const isPwdSeniorDiscounted = pwdSeniorDiscountItems.some(
           (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
         );
+
+        // ✅ FIXED: Determine category correctly - only 'drink' or 'food'
+        let category = "food"; // Default to food
+
+        if (isDrinkItem(item)) {
+          category = "drink";
+        }
 
         return {
           name: item.name || "Unknown Item",
@@ -891,13 +1084,12 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
           originalPrice: safeNumber(item.pricePerQuantity),
           isRedeemed: Boolean(item.isRedeemed),
           isPwdSeniorDiscounted: isPwdSeniorDiscounted,
-          category: isDrinkItem(item) ? "drink" : "food",
+          category: category, // ✅ Will only be 'drink' or 'food'
           id: item.id || Date.now().toString(),
         };
       })
       .filter((item) => item !== null);
-
-    // Prepare customer details - FIXED: Provide valid phone number or "Not provided"
+    // Prepare customer details
     const customerName =
       customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer";
 
@@ -920,6 +1112,19 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
 
     const orderIdValue = currentOrder?.id || `order-${Date.now()}`;
     const orderNumber = generateOrderNumber();
+
+    // ✅ FIXED: Prepare pwdSeniorSelectedItems with correct category
+    const pwdSeniorSelectedItems = pwdSeniorDiscountApplied
+      ? pwdSeniorDiscountItems.map((item) => {
+          const category = isDrinkItem(item) ? "drink" : "food";
+          return {
+            ...item,
+            category: category,
+            quantity: safeNumber(item.quantity),
+            pricePerQuantity: safeNumber(item.pricePerQuantity),
+          };
+        })
+      : [];
 
     return {
       customerDetails: {
@@ -946,16 +1151,13 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
           mixedPayment
         ),
       },
-      paymentStatus: paymentStatusValue, // FIXED: lowercase
-      orderStatus: orderStatusValue, // FIXED: lowercase
+      paymentStatus: paymentStatusValue, // ✅ Always "completed"
+      orderStatus: orderStatusValue, // ✅ Always "completed"
       pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
       pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
-      pwdSeniorSelectedItems: pwdSeniorDiscountApplied
-        ? pwdSeniorDiscountItems
-        : [],
+      pwdSeniorSelectedItems: pwdSeniorSelectedItems, // ✅ Fixed category values
       cashier: user?.name || "Admin",
       user: userId || "000000000000000000000001",
-      // REMOVED: tableId field to avoid backend error
       orderNumber: orderNumber,
       totalAmount: Number(totals.total.toFixed(2)),
       cashAmount: Number(cashPaymentAmount.toFixed(2)),
@@ -965,7 +1167,6 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
       isPartialPayment: isPartialPayment,
       remainingBalance: Number(remainingBalance.toFixed(2)),
       amountPaid: Number(totalPaid.toFixed(2)),
-      // FIXED: Added table field with null value to match schema
       table: null,
     };
   };
@@ -978,10 +1179,8 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     return method;
   };
 
-  // Generate invoice data for Redux and display
-  const generateInvoiceData = () => {
-    const orderData = prepareOrderData();
-
+  // Generate invoice data for display
+  const generateInvoiceData = (orderData, backendData) => {
     const invoiceItems = combinedCart
       .map((item) => {
         if (!item) return null;
@@ -1004,8 +1203,8 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
 
     return {
       ...orderData,
-      id: currentOrder?.id || orderData.orderId,
-      number: orderData.orderNumber,
+      id: backendData?._id || currentOrder?.id || orderData.orderId,
+      number: backendData?.orderNumber || orderData.orderNumber,
       items: invoiceItems,
       customer: {
         customerName: orderData.customerDetails.name,
@@ -1015,16 +1214,16 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
         ...orderData.bills,
         netSales: totals.netSales,
       },
-      orderStatus: orderData.orderStatus, // Use the already fixed status
+      orderStatus: orderData.orderStatus,
       orderDate: new Date().toISOString(),
       cashier: user?.name || "Admin",
-      orderNumber: orderData.orderNumber,
+      orderNumber: backendData?.orderNumber || orderData.orderNumber,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       paymentMethod: orderData.paymentDetails.paymentMethodDisplay,
       isPartialPayment: orderData.isPartialPayment,
       remainingBalance: orderData.remainingBalance,
-      table: null, // FIXED: Add table field
+      table: null,
     };
   };
 
@@ -1049,12 +1248,12 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     } else {
       // Partial cash payment - offer mixed payment
       const remaining = totals.total - cashAmountNum;
-      setMixedPayment((prev) => ({
-        ...prev,
+      setMixedPayment({
         cashAmount: cashAmountNum,
         onlineAmount: remaining,
+        onlineMethod: null,
         isMixed: true,
-      }));
+      });
       setShowMixedPaymentModal(true);
       setShowCashModal(false);
       enqueueSnackbar(
@@ -1069,7 +1268,10 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
   // ✅ FIXED: Order mutation
   const orderMutation = useMutation({
     mutationFn: (reqData) => {
-      console.log("📤 Sending order to backend:", reqData);
+      console.log(
+        "📤 Sending order to backend:",
+        JSON.stringify(reqData, null, 2)
+      );
       return addOrder(reqData);
     },
     onSuccess: async (res) => {
@@ -1081,22 +1283,22 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
 
       const { data } = res.data;
 
-      // Generate invoice data
-      const invoiceData = generateInvoiceData();
+      // Generate order data
+      const orderData = prepareOrderData();
 
       // Mark current order as processed
       if (currentOrder) {
         setProcessedOrders((prev) => new Set(prev).add(currentOrder.id));
 
-        console.log("✅ Completing order in Redux with invoice data");
+        console.log("✅ Completing order in Redux with order data");
         dispatch(
           completeOrder({
             orderId: currentOrder.id,
             orderData: {
-              ...invoiceData,
-              _id: data._id || invoiceData._id,
-              orderNumber: data.orderNumber || invoiceData.orderNumber,
-              bills: data.bills || invoiceData.bills,
+              ...orderData,
+              _id: data._id || orderData._id,
+              orderNumber: data.orderNumber || orderData.orderNumber,
+              bills: data.bills || orderData.bills,
             },
           })
         );
@@ -1111,20 +1313,10 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
 
       setIsProcessing(false);
 
-      // ✅ UPDATED: Show Invoice component with auto-print enabled
-      setInvoiceData({
-        ...invoiceData,
-        _id: data._id || invoiceData._id,
-        // Add missing fields that Invoice component expects
-        orderDate: invoiceData.orderDate || new Date().toISOString(),
-        cashier: user?.name || "Admin",
-      });
+      // ✅ FIXED: Generate invoice data and show Invoice component
+      const invoiceData = generateInvoiceData(orderData, data);
+      setInvoiceData(invoiceData);
       setShowInvoice(true);
-
-      // Call onInvoiceGenerated callback if provided
-      if (onInvoiceGenerated) {
-        onInvoiceGenerated(invoiceData);
-      }
     },
     onError: (error) => {
       console.error("❌ Order placement error:", error);
@@ -1268,7 +1460,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     setShowMixedPaymentModal(false);
     setActiveCategory(null);
     setIsProcessing(false);
-    setShowNextOrderConfirm(false); // Also reset this modal
+    setShowNextOrderConfirm(false);
 
     // Check if there's a next order
     if (nextOrder && !processedOrders.has(nextOrder.id)) {
@@ -1400,11 +1592,507 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     <>
       {/* ✅ ADDED: Invoice Component */}
       {showInvoice && invoiceData && (
-        <Invoice
-          orderInfo={invoiceData}
-          setShowInvoice={handleCloseInvoice}
-          disableAutoPrint={false} // Auto-print enabled for Bill orders
-        />
+        <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
+            <div className="relative">
+              <button
+                onClick={handleCloseInvoice}
+                className="absolute top-4 right-4 z-10 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
+              >
+                ✕
+              </button>
+              <Invoice
+                key={Date.now()}
+                orderInfo={invoiceData}
+                setShowInvoice={handleCloseInvoice}
+                disableAutoPrint={false}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ IMPROVED: PWD/Senior Selection Modal - RESPONSIVE VERSION */}
+      {showPwdSeniorSelection && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
+          <div className="bg-white rounded-lg w-full max-w-6xl h-[90vh] max-h-[90vh] flex flex-col shadow-xl overflow-hidden">
+            {/* Header */}
+            <div className="p-4 sm:p-6 border-b">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg sm:text-xl font-bold text-gray-900">
+                    Select Items for PWD/Senior Discount
+                  </h3>
+                  <p className="text-sm text-gray-600 mt-1">
+                    Maximum 3 items: 1 drink + 2 food
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
+                    <span className="font-bold">{combinedCart.length}</span>{" "}
+                    items in cart
+                  </div>
+                  <div className="px-3 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
+                    <span className="font-bold">
+                      {getEligibleItemsForDiscount().length}
+                    </span>{" "}
+                    eligible
+                  </div>
+                  <div className="px-3 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
+                    <span className="font-bold">
+                      {pwdSeniorDiscountItems.length}/3
+                    </span>{" "}
+                    selected
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
+              {/* Left Side - Form and Selection */}
+              <div className="lg:w-1/2 xl:w-2/5 p-4 sm:p-6 border-r overflow-y-auto">
+                {/* PWD/Senior Details Section */}
+                <div className="mb-6">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                    PWD/Senior Details
+                  </h4>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Holder Name *
+                      </label>
+                      <input
+                        type="text"
+                        name="name"
+                        value={pwdSeniorDetails.name}
+                        onChange={handlePwdSeniorDetailsChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                        placeholder="Enter full name"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        ID Number *
+                      </label>
+                      <input
+                        type="text"
+                        name="idNumber"
+                        value={pwdSeniorDetails.idNumber}
+                        onChange={handlePwdSeniorDetailsChange}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition-all"
+                        placeholder="Enter ID number"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      Type
+                    </label>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() =>
+                          setPwdSeniorDetails((prev) => ({
+                            ...prev,
+                            type: "PWD",
+                          }))
+                        }
+                        className={`flex-1 px-4 py-3 rounded-lg font-medium text-sm transition-all ${
+                          pwdSeniorDetails.type === "PWD"
+                            ? "bg-blue-600 text-white shadow-md"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        }`}
+                      >
+                        PWD
+                      </button>
+                      <button
+                        onClick={() =>
+                          setPwdSeniorDetails((prev) => ({
+                            ...prev,
+                            type: "Senior",
+                          }))
+                        }
+                        className={`flex-1 px-4 py-3 rounded-lg font-medium text-sm transition-all ${
+                          pwdSeniorDetails.type === "Senior"
+                            ? "bg-green-600 text-white shadow-md"
+                            : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                        }`}
+                      >
+                        Senior Citizen
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Selection Stats */}
+                <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-100">
+                  <h4 className="text-sm font-semibold text-gray-700 mb-3">
+                    Selection Summary
+                  </h4>
+                  <div className="grid grid-cols-3 gap-4 mb-4">
+                    <div className="text-center">
+                      <div className="w-12 h-12 bg-white border-2 border-blue-200 rounded-full flex items-center justify-center mx-auto mb-2">
+                        <span className="text-lg font-bold text-blue-600">
+                          {pwdSeniorDiscountItems.length}
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600">Selected Items</p>
+                      <p className="text-xs font-medium text-blue-700">
+                        Max: 3
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <div className="w-12 h-12 bg-white border-2 border-green-200 rounded-full flex items-center justify-center mx-auto mb-2">
+                        <span className="text-lg font-bold text-green-600">
+                          {
+                            pwdSeniorDiscountItems.filter((item) =>
+                              isDrinkItem(item)
+                            ).length
+                          }
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600">Drinks</p>
+                      <p className="text-xs font-medium text-green-700">
+                        Max: 1
+                      </p>
+                    </div>
+                    <div className="text-center">
+                      <div className="w-12 h-12 bg-white border-2 border-yellow-200 rounded-full flex items-center justify-center mx-auto mb-2">
+                        <span className="text-lg font-bold text-yellow-600">
+                          {
+                            pwdSeniorDiscountItems.filter((item) =>
+                              isFoodItem(item)
+                            ).length
+                          }
+                        </span>
+                      </div>
+                      <p className="text-xs text-gray-600">Food Items</p>
+                      <p className="text-xs font-medium text-yellow-700">
+                        Max: 2
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Selected Items List */}
+                  {pwdSeniorDiscountItems.length > 0 && (
+                    <div className="mt-4 pt-4 border-t border-blue-100">
+                      <h5 className="text-xs font-semibold text-gray-700 mb-2">
+                        Selected Items:
+                      </h5>
+                      <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                        {pwdSeniorDiscountItems.map((item, index) => (
+                          <div
+                            key={index}
+                            className="flex justify-between items-center bg-white p-2 rounded border border-gray-200"
+                          >
+                            <div className="flex items-center gap-2">
+                              <div
+                                className={`w-2 h-2 rounded-full ${
+                                  isDrinkItem(item)
+                                    ? "bg-blue-500"
+                                    : "bg-green-500"
+                                }`}
+                              ></div>
+                              <span className="text-xs text-gray-700 truncate max-w-[120px] sm:max-w-[150px]">
+                                {item.name} (×{item.quantity})
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-gray-900">
+                                ₱{calculateItemTotalPrice(item).toFixed(2)}
+                              </span>
+                              <span className="text-xs font-bold text-green-600">
+                                -₱
+                                {(
+                                  calculateItemTotalPrice(item) *
+                                  pwdSeniorDiscountRate
+                                ).toFixed(2)}
+                              </span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {pwdSeniorDiscountItems.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-green-200">
+                          <div className="flex justify-between items-center">
+                            <span className="text-sm font-bold text-green-800">
+                              Total Discount (20%):
+                            </span>
+                            <span className="text-lg font-bold text-green-800">
+                              -₱
+                              {(
+                                pwdSeniorDiscountItems.reduce(
+                                  (sum, item) =>
+                                    sum + calculateItemTotalPrice(item),
+                                  0
+                                ) * pwdSeniorDiscountRate
+                              ).toFixed(2)}
+                            </span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex flex-col sm:flex-row gap-3 mt-auto">
+                  <button
+                    onClick={handleCancelPwdSeniorSelection}
+                    className="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-medium text-sm hover:bg-gray-300 transition-all duration-200 hover:shadow-sm"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleApplyPwdSeniorSelection}
+                    className={`flex-1 px-4 py-3 rounded-lg font-medium text-sm transition-all duration-200 ${
+                      pwdSeniorDiscountItems.length > 0 &&
+                      pwdSeniorDetails.name.trim() &&
+                      pwdSeniorDetails.idNumber.trim()
+                        ? "bg-gradient-to-r from-green-500 to-emerald-600 text-white hover:from-green-600 hover:to-emerald-700 hover:shadow-lg transform hover:-translate-y-0.5"
+                        : "bg-gray-200 text-gray-400 cursor-not-allowed"
+                    }`}
+                    disabled={
+                      pwdSeniorDiscountItems.length === 0 ||
+                      !pwdSeniorDetails.name.trim() ||
+                      !pwdSeniorDetails.idNumber.trim()
+                    }
+                  >
+                    {pwdSeniorDiscountItems.length > 0 ? (
+                      <span className="flex items-center justify-center gap-2">
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M5 13l4 4L19 7"
+                          />
+                        </svg>
+                        Apply Discount
+                      </span>
+                    ) : (
+                      "Select Items"
+                    )}
+                  </button>
+                </div>
+              </div>
+
+              {/* Right Side - Items List */}
+              <div className="lg:w-1/2 xl:w-3/5 p-4 sm:p-6 overflow-hidden flex flex-col">
+                <div className="mb-4 flex justify-between items-center">
+                  <h4 className="text-sm font-semibold text-gray-700">
+                    Eligible Items ({getEligibleItemsForDiscount().length})
+                  </h4>
+                  <div className="flex gap-2">
+                    <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
+                      Drink
+                    </span>
+                    <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
+                      Food
+                    </span>
+                  </div>
+                </div>
+
+                {/* Items Grid - Responsive */}
+                <div className="flex-1 overflow-y-auto">
+                  {getEligibleItemsForDiscount().length > 0 ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
+                      {getEligibleItemsForDiscount().map((item, index) => {
+                        if (!item) return null;
+
+                        const isDrink = isDrinkItem(item);
+                        const isFood = isFoodItem(item);
+                        const isSelected = pwdSeniorDiscountItems.some(
+                          (selected) =>
+                            getItemKey(selected) === getItemKey(item)
+                        );
+
+                        // Check selection limits
+                        const selectedDrinks = pwdSeniorDiscountItems.filter(
+                          (item) => isDrinkItem(item)
+                        ).length;
+                        const selectedFoods = pwdSeniorDiscountItems.filter(
+                          (item) => isFoodItem(item)
+                        ).length;
+
+                        let canSelect = true;
+                        let limitReached = false;
+
+                        if (isSelected) {
+                          canSelect = true; // Can always unselect
+                        } else if (pwdSeniorDiscountItems.length >= 3) {
+                          canSelect = false;
+                          limitReached = true;
+                        } else if (isDrink && selectedDrinks >= 1) {
+                          canSelect = false;
+                          limitReached = true;
+                        } else if (isFood && selectedFoods >= 2) {
+                          canSelect = false;
+                          limitReached = true;
+                        }
+
+                        return (
+                          <div
+                            key={getUniqueKey(item, index)}
+                            className={`relative p-4 border rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
+                              isSelected
+                                ? "bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-sm"
+                                : !canSelect && !isSelected
+                                ? "bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed"
+                                : "bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300"
+                            }`}
+                            onClick={() =>
+                              canSelect && toggleItemSelection(item)
+                            }
+                          >
+                            {/* Selection Indicator */}
+                            <div className="absolute top-3 right-3">
+                              <div
+                                className={`w-6 h-6 border-2 rounded-full flex items-center justify-center ${
+                                  isSelected
+                                    ? "border-green-500 bg-green-500"
+                                    : "border-gray-300"
+                                } ${
+                                  !canSelect && !isSelected
+                                    ? "border-gray-200"
+                                    : ""
+                                }`}
+                              >
+                                {isSelected && (
+                                  <svg
+                                    className="w-3 h-3 text-white"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    viewBox="0 0 24 24"
+                                  >
+                                    <path
+                                      strokeLinecap="round"
+                                      strokeLinejoin="round"
+                                      strokeWidth="3"
+                                      d="M5 13l4 4L19 7"
+                                    />
+                                  </svg>
+                                )}
+                              </div>
+                              {limitReached && !isSelected && (
+                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-white"></div>
+                              )}
+                            </div>
+
+                            {/* Item Content */}
+                            <div className="pr-8">
+                              <div className="flex items-start justify-between mb-2">
+                                <h5 className="text-sm font-semibold text-gray-900 truncate pr-2">
+                                  {item.name}
+                                </h5>
+                                <span
+                                  className={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+                                    isDrink
+                                      ? "bg-blue-100 text-blue-800 border border-blue-200"
+                                      : "bg-green-100 text-green-800 border border-green-200"
+                                  }`}
+                                >
+                                  {isDrink ? "🍹 Drink" : "🍴 Food"}
+                                </span>
+                              </div>
+
+                              <div className="flex items-center justify-between mb-3">
+                                <div className="text-xs text-gray-500">
+                                  <span className="font-medium">
+                                    ₱
+                                    {safeNumber(item.pricePerQuantity).toFixed(
+                                      2
+                                    )}
+                                  </span>
+                                  <span className="mx-1">×</span>
+                                  <span className="font-bold">
+                                    {item.quantity}
+                                  </span>
+                                </div>
+                                <div className="text-sm font-bold text-gray-900">
+                                  ₱{calculateItemTotalPrice(item).toFixed(2)}
+                                </div>
+                              </div>
+
+                              {isSelected && (
+                                <div className="mt-2 pt-2 border-t border-green-200">
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-xs text-green-600 font-medium">
+                                      Discount (20%):
+                                    </span>
+                                    <span className="text-xs font-bold text-green-600">
+                                      -₱
+                                      {(
+                                        calculateItemTotalPrice(item) *
+                                        pwdSeniorDiscountRate
+                                      ).toFixed(2)}
+                                    </span>
+                                  </div>
+                                  <div className="flex justify-between items-center mt-1">
+                                    <span className="text-xs text-gray-600 font-medium">
+                                      Final Price:
+                                    </span>
+                                    <span className="text-sm font-bold text-green-700">
+                                      ₱{calculateItemTotal(item).toFixed(2)}
+                                    </span>
+                                  </div>
+                                </div>
+                              )}
+
+                              {!canSelect && !isSelected && limitReached && (
+                                <div className="mt-2 pt-2 border-t border-gray-200">
+                                  <p className="text-xs text-red-500 font-medium">
+                                    {isDrink
+                                      ? "Max 1 drink allowed"
+                                      : isFood
+                                      ? "Max 2 food items allowed"
+                                      : "Max 3 items allowed"}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center p-8">
+                      <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                        <svg
+                          className="w-10 h-10 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M6 18L18 6M6 6l12 12"
+                          />
+                        </svg>
+                      </div>
+                      <h5 className="text-gray-500 font-medium mb-2">
+                        No eligible items found
+                      </h5>
+                      <p className="text-gray-400 text-sm text-center max-w-md">
+                        Add food or drink items to cart first to apply
+                        PWD/Senior discount
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Next Order Confirmation Modal */}
@@ -2094,63 +2782,67 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
                 )}
             </div>
 
-            {/* 🎟 DISCOUNT & REDEMPTION BUTTONS */}
-            <div className="grid grid-cols-4 gap-2">
-              <button
-                onClick={handlePwdSeniorDiscount}
-                disabled={isProcessing}
-                className={`px-2 py-2 rounded-lg font-semibold text-xs ${
-                  pwdSeniorDiscountApplied
-                    ? "bg-green-500 text-white hover:bg-green-600"
-                    : "bg-green-100 text-green-700 hover:bg-green-200"
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                {pwdSeniorDiscountApplied ? "✓ PWD/SENIOR" : "PWD/SENIOR"}
-              </button>
-
-              <button
-                onClick={handleEmployeeDiscount}
-                disabled={isProcessing}
-                className={`px-2 py-2 rounded-lg font-semibold text-xs ${
-                  employeeDiscountApplied
-                    ? "bg-yellow-500 text-white hover:bg-yellow-600"
-                    : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                {employeeDiscountApplied
-                  ? "✓ Employee/Owner"
-                  : "Employee/Owner"}
-              </button>
-
-              <button
-                onClick={handleShareholderDiscount}
-                disabled={isProcessing}
-                className={`px-2 py-2 rounded-lg font-semibold text-xs ${
-                  shareholderDiscountApplied
-                    ? "bg-purple-500 text-white hover:bg-purple-600"
-                    : "bg-purple-100 text-purple-700 hover:bg-purple-200"
-                } disabled:opacity-50 disabled:cursor-not-allowed`}
-              >
-                {shareholderDiscountApplied ? "✓ VIP" : "VIP"}
-              </button>
-
-              {!hasRedeemedItem ? (
+            {/* 🎟 DISCOUNT & REDEMPTION BUTTONS - FIXED LAYOUT */}
+            <div className="grid grid-cols-2 gap-3">
+              {/* First Row */}
+              <div className="flex gap-2">
                 <button
-                  onClick={handleShowRedeemOptions}
-                  disabled={isProcessing || combinedCart.length === 0}
-                  className="px-2 py-2 rounded-lg font-semibold text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  Redeem
-                </button>
-              ) : (
-                <button
-                  onClick={handleRemoveRedemption}
+                  onClick={handlePwdSeniorDiscount}
                   disabled={isProcessing}
-                  className="px-2 py-2 rounded-lg font-semibold text-xs bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className={`flex-1 px-3 py-3 rounded-lg font-semibold text-xs ${
+                    pwdSeniorDiscountApplied
+                      ? "bg-green-500 text-white hover:bg-green-600"
+                      : "bg-green-100 text-green-700 hover:bg-green-200"
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
                 >
-                  Remove
+                  {pwdSeniorDiscountApplied ? "✓ PWD/SENIOR" : "PWD/SENIOR"}
                 </button>
-              )}
+
+                <button
+                  onClick={handleEmployeeDiscount}
+                  disabled={isProcessing}
+                  className={`flex-1 px-3 py-3 rounded-lg font-semibold text-xs ${
+                    employeeDiscountApplied
+                      ? "bg-yellow-500 text-white hover:bg-yellow-600"
+                      : "bg-yellow-100 text-yellow-700 hover:bg-yellow-200"
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {employeeDiscountApplied ? "✓ Employee" : "Employee"}
+                </button>
+              </div>
+
+              {/* Second Row */}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleShareholderDiscount}
+                  disabled={isProcessing}
+                  className={`flex-1 px-3 py-3 rounded-lg font-semibold text-xs ${
+                    shareholderDiscountApplied
+                      ? "bg-purple-500 text-white hover:bg-purple-600"
+                      : "bg-purple-100 text-purple-700 hover:bg-purple-200"
+                  } disabled:opacity-50 disabled:cursor-not-allowed`}
+                >
+                  {shareholderDiscountApplied ? "✓ VIP" : "VIP"}
+                </button>
+
+                {!hasRedeemedItem ? (
+                  <button
+                    onClick={handleShowRedeemOptions}
+                    disabled={isProcessing || combinedCart.length === 0}
+                    className="flex-1 px-3 py-3 rounded-lg font-semibold text-xs bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Redeem
+                  </button>
+                ) : (
+                  <button
+                    onClick={handleRemoveRedemption}
+                    disabled={isProcessing}
+                    className="flex-1 px-3 py-3 rounded-lg font-semibold text-xs bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Remove
+                  </button>
+                )}
+              </div>
             </div>
 
             {/* 💳 PAYMENT BUTTONS */}
@@ -2158,7 +2850,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
               <button
                 onClick={handleCashPayment}
                 disabled={isProcessing}
-                className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
+                className={`flex-1 px-3 py-3 rounded-lg font-semibold text-sm ${
                   paymentMethod === "Cash" || paymentMethod === "Mixed"
                     ? "bg-blue-600 text-white hover:bg-blue-700"
                     : "bg-gray-200 text-gray-600 hover:bg-gray-300"
@@ -2170,7 +2862,7 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
               <button
                 onClick={() => setShowOnlineOptions(true)}
                 disabled={isProcessing}
-                className={`flex-1 px-3 py-2 rounded-lg font-semibold text-xs ${
+                className={`flex-1 px-3 py-3 rounded-lg font-semibold text-sm ${
                   paymentMethod === "BDO" || paymentMethod === "GCASH"
                     ? "bg-blue-600 text-white hover:bg-blue-700"
                     : "bg-gray-200 text-gray-600 hover:bg-gray-300"
@@ -2219,5 +2911,37 @@ const Bill = ({ orderId, onInvoiceGenerated, onOrderCompleted }) => {
     </>
   );
 };
+
+// Add CSS animations
+const styles = `
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse-subtle {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.9; }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.animate-pulse-subtle {
+  animation: pulse-subtle 2s ease-in-out infinite;
+}
+
+.hover\\:scale-\\[1\\.01\\]:hover {
+  transform: scale(1.01);
+}
+`;
+
+// Add styles to document head
+if (typeof document !== "undefined") {
+  const styleSheet = document.createElement("style");
+  styleSheet.innerText = styles;
+  document.head.appendChild(styleSheet);
+}
 
 export default Bill;

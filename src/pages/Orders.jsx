@@ -17,9 +17,9 @@ import {
   FaChevronRight,
   FaSync,
   FaExclamationTriangle,
-  FaDownload, // Added download icon
-  FaFileCsv, // Added CSV icon
-  FaFileExcel, // Added Excel icon
+  FaFileExcel,
+  FaFileCsv,
+  FaDownload,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import {
@@ -62,14 +62,14 @@ const Orders = () => {
   const [isFetchingAll, setIsFetchingAll] = useState(false);
   const [allOrdersFetched, setAllOrdersFetched] = useState([]);
   const [isLoadingAll, setIsLoadingAll] = useState(false);
-  const [showDownloadOptions, setShowDownloadOptions] = useState(false); // Added for download modal
-  const [downloadFormat, setDownloadFormat] = useState("csv"); // Added for format selection
-  const [isDownloading, setIsDownloading] = useState(false); // Added for download state
+  const [showDownloadMenu, setShowDownloadMenu] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadFormat, setDownloadFormat] = useState("excel"); // 'excel' or 'csv'
 
   const scrollRef = useRef(null);
   const datePickerRef = useRef(null);
-  const downloadRef = useRef(null); // Added for download modal
   const observerRef = useRef(null);
+  const downloadMenuRef = useRef(null);
 
   const user = useSelector((state) => state.user);
   const navigate = useNavigate();
@@ -86,14 +86,24 @@ const Orders = () => {
       ) {
         setShowDatePicker(false);
       }
-      // Close download options when clicking outside
-      if (downloadRef.current && !downloadRef.current.contains(event.target)) {
-        setShowDownloadOptions(false);
+    };
+
+    // Close download menu when clicking outside
+    const handleDownloadMenuClickOutside = (event) => {
+      if (
+        downloadMenuRef.current &&
+        !downloadMenuRef.current.contains(event.target)
+      ) {
+        setShowDownloadMenu(false);
       }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handleDownloadMenuClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+      document.removeEventListener("mousedown", handleDownloadMenuClickOutside);
+    };
   }, []);
 
   // Function to fetch ALL orders from the database using existing APIs
@@ -830,6 +840,17 @@ const Orders = () => {
     });
   };
 
+  const formatDateForExport = (dateString) => {
+    if (!dateString) return "";
+    try {
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) return "";
+      return date.toISOString().split("T")[0]; // YYYY-MM-DD format
+    } catch (error) {
+      return "";
+    }
+  };
+
   const getItemsCount = (order) => {
     if (!order) return 0;
 
@@ -1047,240 +1068,192 @@ const Orders = () => {
     return "Select dates";
   };
 
-  // ========== DOWNLOAD FUNCTIONS ==========
+  // Function to prepare data for export
+  const prepareExportData = () => {
+    const dataToExport = filteredOrders.map((order) => {
+      const totalAmount = calculateTotalAmount(order);
+      const itemsCount = getItemsCount(order);
+      const discountType = getDiscountType(order);
+      const hasDisc = hasDiscount(order);
 
-  // Function to convert orders to CSV format
-  const convertToCSV = (ordersArray) => {
-    try {
-      const headers = [
-        "Order ID",
-        "Customer Name",
-        "Cashier",
-        "Order Date",
-        "Status",
-        "Items Count",
-        "Total Amount",
-        "Discount Type",
-        "Payment Method",
-        "Table No",
-        "Order Type",
-        "Items Details",
-      ];
-
-      const rows = ordersArray.map((order) => {
-        const itemsDetails =
-          order.items && Array.isArray(order.items)
-            ? order.items
-                .map(
-                  (item) =>
-                    `${item.name || item.productName}: ${
-                      item.quantity || 1
-                    } x ${formatCurrency(item.price || item.unitPrice || 0)}`
-                )
-                .join("; ")
-            : "";
-
-        return [
-          order._id || order.id || "N/A",
-          order.customerDetails?.name || order.customerName || "Unknown",
-          getUserDisplayName(order),
-          formatDate(order.createdAt || order.orderDate),
-          order.orderStatus || "completed",
-          getItemsCount(order),
-          formatCurrency(calculateTotalAmount(order)),
-          getDiscountType(order) || "None",
-          order.paymentMethod || "Cash",
-          order.table?.tableNo || "N/A",
-          order.table?.tableNo ? "Dine-in" : "Take-out",
-          itemsDetails,
-        ]
-          .map((field) => `"${String(field).replace(/"/g, '""')}"`)
-          .join(",");
-      });
-
-      return [headers.join(","), ...rows].join("\n");
-    } catch (error) {
-      console.error("Error converting to CSV:", error);
-      throw error;
-    }
-  };
-
-  // Function to convert orders to Excel (XLSX) format using HTML table
-  const convertToExcelHTML = (ordersArray) => {
-    try {
-      const headers = [
-        "Order ID",
-        "Customer Name",
-        "Cashier",
-        "Order Date",
-        "Status",
-        "Items Count",
-        "Total Amount",
-        "Discount Type",
-        "Payment Method",
-        "Table No",
-        "Order Type",
-        "Items Details",
-      ];
-
-      let html = `
-        <html xmlns:x="urn:schemas-microsoft-com:office:excel">
-        <head>
-          <meta charset="UTF-8">
-          <style>
-            table {
-              border-collapse: collapse;
-              width: 100%;
-            }
-            th {
-              background-color: #f2f2f2;
-              border: 1px solid #ddd;
-              padding: 8px;
-              font-weight: bold;
-              text-align: left;
-            }
-            td {
-              border: 1px solid #ddd;
-              padding: 8px;
-            }
-            tr:nth-child(even) {
-              background-color: #f9f9f9;
-            }
-          </style>
-        </head>
-        <body>
-          <table>
-            <tr>
-      `;
-
-      // Add headers
-      headers.forEach((header) => {
-        html += `<th>${header}</th>`;
-      });
-      html += `</tr>`;
-
-      // Add rows
-      ordersArray.forEach((order) => {
-        const itemsDetails =
-          order.items && Array.isArray(order.items)
-            ? order.items
-                .map(
-                  (item) =>
-                    `${item.name || item.productName}: ${
-                      item.quantity || 1
-                    } x ${formatCurrency(item.price || item.unitPrice || 0)}`
-                )
-                .join("; ")
-            : "";
-
-        html += `<tr>
-          <td>${order._id || order.id || "N/A"}</td>
-          <td>${
-            order.customerDetails?.name || order.customerName || "Unknown"
-          }</td>
-          <td>${getUserDisplayName(order)}</td>
-          <td>${formatDate(order.createdAt || order.orderDate)}</td>
-          <td>${order.orderStatus || "completed"}</td>
-          <td>${getItemsCount(order)}</td>
-          <td>${formatCurrency(calculateTotalAmount(order))}</td>
-          <td>${getDiscountType(order) || "None"}</td>
-          <td>${order.paymentMethod || "Cash"}</td>
-          <td>${order.table?.tableNo || "N/A"}</td>
-          <td>${order.table?.tableNo ? "Dine-in" : "Take-out"}</td>
-          <td>${itemsDetails}</td>
-        </tr>`;
-      });
-
-      html += `
-          </table>
-        </body>
-        </html>
-      `;
-
-      return html;
-    } catch (error) {
-      console.error("Error converting to Excel HTML:", error);
-      throw error;
-    }
-  };
-
-  // Main download function
-  const handleDownloadRecords = async () => {
-    if (filteredOrders.length === 0) {
-      enqueueSnackbar("No orders to download", { variant: "warning" });
-      return;
-    }
-
-    try {
-      setIsDownloading(true);
-      enqueueSnackbar(
-        `Preparing download of ${filteredOrders.length} orders...`,
-        {
-          variant: "info",
-        }
-      );
-
-      const ordersToDownload = filteredOrders;
-      const timestamp = new Date().toISOString().split("T")[0];
-      const filename = `orders_${timestamp}_${filteredOrders.length}_records`;
-
-      if (downloadFormat === "csv") {
-        // Download as CSV
-        const csvContent = convertToCSV(ordersToDownload);
-        const blob = new Blob([csvContent], {
-          type: "text/csv;charset=utf-8;",
-        });
-        const link = document.createElement("a");
-
-        if (link.download !== undefined) {
-          const url = URL.createObjectURL(blob);
-          link.setAttribute("href", url);
-          link.setAttribute("download", `${filename}.csv`);
-          link.style.visibility = "hidden";
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-        }
-
-        enqueueSnackbar(
-          `CSV file downloaded with ${filteredOrders.length} records`,
-          {
-            variant: "success",
-          }
-        );
-      } else if (downloadFormat === "excel") {
-        // Download as Excel (HTML table)
-        const excelContent = convertToExcelHTML(ordersToDownload);
-        const blob = new Blob([excelContent], {
-          type: "application/vnd.ms-excel",
-        });
-        const link = document.createElement("a");
-
-        if (link.download !== undefined) {
-          const url = URL.createObjectURL(blob);
-          link.setAttribute("href", url);
-          link.setAttribute("download", `${filename}.xls`);
-          link.style.visibility = "hidden";
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(url);
-        }
-
-        enqueueSnackbar(
-          `Excel file downloaded with ${filteredOrders.length} records`,
-          {
-            variant: "success",
-          }
-        );
+      // Get discount amount if available
+      let discountAmount = 0;
+      if (order.bills) {
+        discountAmount = order.bills.discount || 0;
+        if (order.bills.pwdSeniorDiscount)
+          discountAmount += order.bills.pwdSeniorDiscount;
+        if (order.bills.employeeDiscount)
+          discountAmount += order.bills.employeeDiscount;
+        if (order.bills.shareholderDiscount)
+          discountAmount += order.bills.shareholderDiscount;
+        if (order.bills.redemptionDiscount)
+          discountAmount += order.bills.redemptionDiscount;
+      } else if (order.discount) {
+        discountAmount = order.discount;
       }
 
-      // Close download options
-      setShowDownloadOptions(false);
+      // Calculate subtotal (amount before discount)
+      const subtotal = totalAmount + discountAmount;
+
+      return {
+        "Order ID": order._id?.slice(-8) || "N/A",
+        "Full Order ID": order._id || order.id || "N/A",
+        "Customer Name":
+          order.customerDetails?.name ||
+          order.customerName ||
+          "Unknown Customer",
+        "Cashier Name": getUserDisplayName(order),
+        "Order Date": formatDateForExport(
+          order.createdAt || order.orderDate || order.date
+        ),
+        "Order Time": new Date(
+          order.createdAt || order.orderDate || order.date
+        ).toLocaleTimeString(),
+        "Order Status": order.orderStatus || "completed",
+        "Table No": order.table?.tableNo || "N/A",
+        "Order Type": order.table?.tableNo ? "Dine In" : "Take Out",
+        Subtotal: subtotal.toFixed(2),
+        "Discount Type": discountType || "None",
+        "Discount Amount": discountAmount.toFixed(2),
+        "Total Amount": totalAmount.toFixed(2),
+        "Items Count": itemsCount,
+        "Payment Method": order.paymentMethod || order.paymentType || "Cash",
+        "Payment Status": order.paymentStatus || "Paid",
+        "Tax Amount": order.bills?.taxAmount || 0,
+        "Service Charge": order.bills?.serviceCharge || 0,
+        Notes: order.notes || "",
+        "Created At": formatDateForExport(order.createdAt),
+        "Updated At": formatDateForExport(order.updatedAt),
+      };
+    });
+
+    // Add summary row
+    const summaryRow = {
+      "Order ID": "SUMMARY",
+      "Full Order ID": "",
+      "Customer Name": "",
+      "Cashier Name": "",
+      "Order Date": "",
+      "Order Time": "",
+      "Order Status": "",
+      "Table No": "",
+      "Order Type": "",
+      Subtotal: filteredOrders
+        .reduce((sum, order) => {
+          const totalAmount = calculateTotalAmount(order);
+          const discountAmount = order.bills
+            ? (order.bills.discount || 0) +
+              (order.bills.pwdSeniorDiscount || 0) +
+              (order.bills.employeeDiscount || 0) +
+              (order.bills.shareholderDiscount || 0) +
+              (order.bills.redemptionDiscount || 0)
+            : order.discount || 0;
+          return sum + totalAmount + discountAmount;
+        }, 0)
+        .toFixed(2),
+      "Discount Type": "Total Discount",
+      "Discount Amount": filteredOrders
+        .reduce((sum, order) => {
+          if (order.bills) {
+            return (
+              sum +
+              (order.bills.discount || 0) +
+              (order.bills.pwdSeniorDiscount || 0) +
+              (order.bills.employeeDiscount || 0) +
+              (order.bills.shareholderDiscount || 0) +
+              (order.bills.redemptionDiscount || 0)
+            );
+          }
+          return sum + (order.discount || 0);
+        }, 0)
+        .toFixed(2),
+      "Total Amount": filteredOrders
+        .reduce((sum, order) => {
+          return sum + calculateTotalAmount(order);
+        }, 0)
+        .toFixed(2),
+      "Items Count": filteredOrders.reduce(
+        (sum, order) => sum + getItemsCount(order),
+        0
+      ),
+      "Payment Method": "",
+      "Payment Status": "",
+      "Tax Amount": filteredOrders
+        .reduce((sum, order) => sum + (order.bills?.taxAmount || 0), 0)
+        .toFixed(2),
+      "Service Charge": filteredOrders
+        .reduce((sum, order) => sum + (order.bills?.serviceCharge || 0), 0)
+        .toFixed(2),
+      Notes: `Total Orders: ${filteredOrders.length}`,
+      "Created At": "",
+      "Updated At": "",
+    };
+
+    return [...dataToExport, summaryRow];
+  };
+
+  // Function to export to CSV
+  const exportToCSV = () => {
+    try {
+      setIsDownloading(true);
+      const data = prepareExportData();
+
+      if (data.length === 0) {
+        enqueueSnackbar("No data to export", { variant: "warning" });
+        return;
+      }
+
+      // Define headers
+      const headers = Object.keys(data[0]);
+
+      // Create CSV content
+      let csvContent = headers.join(",") + "\n";
+
+      data.forEach((row) => {
+        const rowData = headers.map((header) => {
+          const cell = row[header];
+          // Wrap in quotes if contains comma, quotes, or newline
+          if (
+            typeof cell === "string" &&
+            (cell.includes(",") || cell.includes('"') || cell.includes("\n"))
+          ) {
+            return `"${cell.replace(/"/g, '""')}"`;
+          }
+          return cell;
+        });
+        csvContent += rowData.join(",") + "\n";
+      });
+
+      // Create blob and download
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+
+      // Generate filename with date range
+      const dateStr =
+        dateFilter === "custom" &&
+        customDateRange.startDate &&
+        customDateRange.endDate
+          ? `${formatDateForExport(
+              customDateRange.startDate
+            )}_to_${formatDateForExport(customDateRange.endDate)}`
+          : dateFilter;
+
+      link.download = `orders_${dateStr}_${
+        new Date().toISOString().split("T")[0]
+      }.csv`;
+      link.click();
+
+      URL.revokeObjectURL(url);
+      setShowDownloadMenu(false);
+
+      enqueueSnackbar(`Exported ${data.length - 1} orders to CSV`, {
+        variant: "success",
+      });
     } catch (error) {
-      console.error("Download error:", error);
-      enqueueSnackbar("Failed to download records. Please try again.", {
+      console.error("Error exporting to CSV:", error);
+      enqueueSnackbar("Failed to export data. Please try again.", {
         variant: "error",
       });
     } finally {
@@ -1288,10 +1261,87 @@ const Orders = () => {
     }
   };
 
-  // Function to select download format and start download
-  const handleSelectDownloadFormat = (format) => {
-    setDownloadFormat(format);
-    handleDownloadRecords();
+  // Function to export to Excel (using CSV with .xls extension for simplicity)
+  const exportToExcel = () => {
+    try {
+      setIsDownloading(true);
+      const data = prepareExportData();
+
+      if (data.length === 0) {
+        enqueueSnackbar("No data to export", { variant: "warning" });
+        return;
+      }
+
+      // Define headers
+      const headers = Object.keys(data[0]);
+
+      // Create CSV content (Excel can open CSV)
+      let csvContent = headers.join(",") + "\n";
+
+      data.forEach((row) => {
+        const rowData = headers.map((header) => {
+          const cell = row[header];
+          // Wrap in quotes if contains comma, quotes, or newline
+          if (
+            typeof cell === "string" &&
+            (cell.includes(",") || cell.includes('"') || cell.includes("\n"))
+          ) {
+            return `"${cell.replace(/"/g, '""')}"`;
+          }
+          return cell;
+        });
+        csvContent += rowData.join(",") + "\n";
+      });
+
+      // Create blob and download with .xls extension
+      const blob = new Blob([csvContent], { type: "application/vnd.ms-excel" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+
+      // Generate filename with date range
+      const dateStr =
+        dateFilter === "custom" &&
+        customDateRange.startDate &&
+        customDateRange.endDate
+          ? `${formatDateForExport(
+              customDateRange.startDate
+            )}_to_${formatDateForExport(customDateRange.endDate)}`
+          : dateFilter;
+
+      link.download = `orders_${dateStr}_${
+        new Date().toISOString().split("T")[0]
+      }.xls`;
+      link.click();
+
+      URL.revokeObjectURL(url);
+      setShowDownloadMenu(false);
+
+      enqueueSnackbar(`Exported ${data.length - 1} orders to Excel`, {
+        variant: "success",
+      });
+    } catch (error) {
+      console.error("Error exporting to Excel:", error);
+      enqueueSnackbar("Failed to export data. Please try again.", {
+        variant: "error",
+      });
+    } finally {
+      setIsDownloading(false);
+    }
+  };
+
+  // Handle download based on selected format
+  const handleDownload = () => {
+    if (filteredOrders.length === 0) {
+      enqueueSnackbar("No orders to export", { variant: "warning" });
+      return;
+    }
+
+    if (downloadFormat === "csv") {
+      exportToCSV();
+    } else {
+      exportToExcel();
+    }
   };
 
   const OrderCard = ({ order, onViewReceipt, onCancelOrder }) => {
@@ -1460,65 +1510,108 @@ const Orders = () => {
             </span>
           </div>
 
-          {/* Action Buttons */}
+          {/* Download and Fetch Buttons */}
           <div className="flex flex-wrap gap-2 md:gap-4 items-center">
-            {/* Download Button */}
-            <div className="relative" ref={downloadRef}>
+            {/* Download Button with Dropdown */}
+            <div className="relative" ref={downloadMenuRef}>
               <button
-                onClick={() => setShowDownloadOptions(!showDownloadOptions)}
+                onClick={() => setShowDownloadMenu(!showDownloadMenu)}
                 disabled={filteredOrders.length === 0 || isDownloading}
-                className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Download filtered orders"
+                className="bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Download orders data"
               >
                 {isDownloading ? (
                   <>
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                    Downloading...
+                    Exporting...
                   </>
                 ) : (
                   <>
                     <FaDownload className="text-sm" />
-                    Download Records ({filteredOrders.length})
+                    Download Data
                   </>
                 )}
               </button>
 
-              {/* Download Options Dropdown */}
-              {showDownloadOptions && (
-                <div className="absolute top-full right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 z-50 w-64 p-4">
-                  <h4 className="text-sm font-semibold text-gray-800 mb-3">
-                    Select Format
-                  </h4>
-                  <div className="space-y-2">
-                    <button
-                      onClick={() => handleSelectDownloadFormat("csv")}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <FaFileCsv className="text-green-600 text-lg" />
-                      <div className="text-left">
-                        <div className="font-medium">CSV Format</div>
-                        <div className="text-xs text-gray-500">
-                          Comma separated values (Excel compatible)
-                        </div>
-                      </div>
-                    </button>
-                    <button
-                      onClick={() => handleSelectDownloadFormat("excel")}
-                      className="w-full flex items-center gap-3 px-3 py-2.5 text-sm text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
-                    >
-                      <FaFileExcel className="text-green-600 text-lg" />
-                      <div className="text-left">
-                        <div className="font-medium">Excel Format</div>
-                        <div className="text-xs text-gray-500">
-                          Native Excel file (.xls)
-                        </div>
-                      </div>
-                    </button>
+              {/* Download Menu Dropdown */}
+              {showDownloadMenu && (
+                <div className="absolute top-full right-0 mt-2 bg-white rounded-lg shadow-xl border border-gray-200 z-40 w-64">
+                  <div className="p-3 border-b border-gray-200">
+                    <h4 className="font-semibold text-sm text-gray-700 mb-2">
+                      Export Options
+                    </h4>
+                    <p className="text-xs text-gray-500">
+                      Exporting {filteredOrders.length} orders
+                    </p>
                   </div>
-                  <div className="mt-4 pt-3 border-t border-gray-200">
-                    <div className="text-xs text-gray-500">
-                      Downloading {filteredOrders.length} filtered orders
+
+                  <div className="p-2">
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-700 mb-2">
+                        Format
+                      </label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setDownloadFormat("excel")}
+                          className={`flex-1 py-2 px-3 rounded text-xs font-medium flex items-center justify-center gap-2 ${
+                            downloadFormat === "excel"
+                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          }`}
+                        >
+                          <FaFileExcel className="text-green-600" />
+                          Excel (.xls)
+                        </button>
+                        <button
+                          onClick={() => setDownloadFormat("csv")}
+                          className={`flex-1 py-2 px-3 rounded text-xs font-medium flex items-center justify-center gap-2 ${
+                            downloadFormat === "csv"
+                              ? "bg-blue-50 text-blue-700 border border-blue-200"
+                              : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                          }`}
+                        >
+                          <FaFileCsv className="text-green-500" />
+                          CSV
+                        </button>
+                      </div>
                     </div>
+
+                    <div className="mb-3">
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        Date Range
+                      </label>
+                      <div className="text-xs text-gray-600 bg-gray-50 p-2 rounded">
+                        {dateFilter === "custom" &&
+                        customDateRange.startDate &&
+                        customDateRange.endDate
+                          ? `${formatDateShort(
+                              customDateRange.startDate
+                            )} - ${formatDateShort(customDateRange.endDate)}`
+                          : dateFilter.charAt(0).toUpperCase() +
+                            dateFilter.slice(1)}
+                      </div>
+                    </div>
+
+                    <button
+                      onClick={handleDownload}
+                      disabled={isDownloading}
+                      className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg font-medium text-sm flex items-center justify-center gap-2 transition-colors disabled:opacity-50"
+                    >
+                      {isDownloading ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                          Exporting...
+                        </>
+                      ) : (
+                        <>
+                          <FaDownload className="text-xs" />
+                          Export {downloadFormat === "excel"
+                            ? "Excel"
+                            : "CSV"}{" "}
+                          File
+                        </>
+                      )}
+                    </button>
                   </div>
                 </div>
               )}
@@ -1527,7 +1620,7 @@ const Orders = () => {
             <button
               onClick={handleFetchAllOrders}
               disabled={isFetchingAll || isLoadingAll}
-              className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+              className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
               title="Fetch ALL orders from database"
             >
               {isFetchingAll || isLoadingAll ? (
@@ -1861,13 +1954,15 @@ const Orders = () => {
                 </span>
               )}
             </div>
+
+            {/* Export Info */}
             {filteredOrders.length > 0 && (
               <button
-                onClick={() => setShowDownloadOptions(true)}
-                className="text-purple-600 hover:text-purple-800 text-xs font-medium flex items-center gap-1"
+                onClick={() => setShowDownloadMenu(true)}
+                className="text-green-600 hover:text-green-800 text-xs font-medium flex items-center gap-1"
               >
                 <FaDownload className="text-xs" />
-                Download {filteredOrders.length} filtered records
+                Export {filteredOrders.length} orders
               </button>
             )}
           </div>
@@ -1972,7 +2067,6 @@ const Orders = () => {
         </div>
       </div>
 
-      {/* Delete Order Modal */}
       {showDeleteModal && orderToDelete && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full shadow-xl">

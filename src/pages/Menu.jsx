@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import BottomNav from "../components/shared/BottomNav";
 import {
   MdRestaurantMenu,
@@ -11,7 +11,7 @@ import MenuContainer from "../components/menu/MenuContainer";
 import CustomerInfo from "../components/menu/CustomerInfo";
 import CartInfo from "../components/menu/CartInfo";
 import Bill from "../components/menu/Bill";
-import Invoice from "../components/invoice/Invoice"; // Import Invoice component
+import Invoice from "../components/invoice/Invoice";
 import { useSelector, useDispatch } from "react-redux";
 import {
   createNewOrder,
@@ -19,6 +19,7 @@ import {
   closeOrder,
   hideInvoice,
   clearRecentCompletedOrder,
+  completeOrder,
 } from "../redux/slices/orderSlice";
 
 const Menu = () => {
@@ -38,13 +39,113 @@ const Menu = () => {
   const [activeTab, setActiveTab] = useState("active");
   const [printingOrderId, setPrintingOrderId] = useState(null);
 
+  // Use refs to prevent infinite loops
+  const hasAutoCompletedRef = useRef(false);
+  const isProcessingRef = useRef(false);
+
   // Filter orders - only active and completed
   const activeOrders = orders.filter((order) => order.status === "active");
+
+  // Get the current active order
+  const currentActiveOrder = activeOrders.find(
+    (order) => order.id === activeOrderId
+  );
+
+  // ✅ FIXED: Effect to handle auto-completion ONLY when payment method is selected
+  useEffect(() => {
+    // Don't run if:
+    // 1. No active order
+    // 2. Already processing
+    // 3. Already auto-completed this order
+    // 4. Order has no items
+    // 5. Order is already completed
+    // 6. No payment method
+    if (
+      !currentActiveOrder ||
+      isProcessingRef.current ||
+      hasAutoCompletedRef.current ||
+      !currentActiveOrder.items ||
+      currentActiveOrder.items.length === 0 ||
+      currentActiveOrder.isCompleted ||
+      !currentActiveOrder.paymentMethod
+    ) {
+      return;
+    }
+
+    // Reset the ref if we have a different order
+    if (
+      hasAutoCompletedRef.current &&
+      hasAutoCompletedRef.current !== currentActiveOrder.id
+    ) {
+      hasAutoCompletedRef.current = false;
+    }
+
+    // Check if order is ready for completion (has items AND payment method)
+    const isOrderReadyForCompletion =
+      currentActiveOrder.items.length > 0 && currentActiveOrder.paymentMethod;
+
+    if (isOrderReadyForCompletion && !currentActiveOrder.isCompleted) {
+      isProcessingRef.current = true;
+      hasAutoCompletedRef.current = currentActiveOrder.id;
+
+      // Dispatch completeOrder action
+      dispatch(
+        completeOrder({
+          orderId: currentActiveOrder.id,
+          paymentMethod: currentActiveOrder.paymentMethod,
+        })
+      );
+
+      // Reset processing flag after a delay
+      setTimeout(() => {
+        isProcessingRef.current = false;
+      }, 500);
+    }
+  }, [currentActiveOrder, dispatch]);
+
+  // ✅ FIXED: Effect to auto-switch to next order after completion
+  useEffect(() => {
+    // Only run if we have a recently completed order AND invoice is showing
+    if (recentCompletedOrder && showInvoiceForOrder) {
+      const timeoutId = setTimeout(() => {
+        // Find remaining active orders (excluding the completed one)
+        const remainingActiveOrders = orders.filter(
+          (order) =>
+            order.status === "active" && order.id !== recentCompletedOrder.id
+        );
+
+        if (remainingActiveOrders.length > 0) {
+          // Switch to the first remaining active order
+          dispatch(switchOrder(remainingActiveOrders[0].id));
+        } else {
+          // If no active orders left, create a new one
+          dispatch(createNewOrder());
+        }
+      }, 300); // Small delay to ensure invoice is visible
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [recentCompletedOrder, showInvoiceForOrder, orders, dispatch]);
 
   // ✅ Handle invoice close
   const handleCloseInvoice = () => {
     dispatch(hideInvoice());
     dispatch(clearRecentCompletedOrder());
+
+    // Reset refs
+    hasAutoCompletedRef.current = false;
+    isProcessingRef.current = false;
+
+    // Check if we need to create a new order
+    const remainingActiveOrders = orders.filter(
+      (order) => order.status === "active"
+    );
+
+    if (remainingActiveOrders.length === 0) {
+      setTimeout(() => {
+        dispatch(createNewOrder());
+      }, 200);
+    }
   };
 
   const handleAddNewOrder = () => {
@@ -254,7 +355,7 @@ const Menu = () => {
 
   return (
     <section className="bg-white min-h-screen flex flex-col">
-      {/* ✅ INVOICE MODAL - Show when recentCompletedOrder exists */}
+      {/* ✅ INVOICE MODAL - Automatically show when recentCompletedOrder exists */}
       {showInvoiceForOrder && recentCompletedOrder && (
         <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
@@ -352,22 +453,23 @@ const Menu = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col md:flex-col lg:flex-row gap-3 p-3 pb-20 lg:pb-3">
         {activeTab === "active" ? (
-          // Always show the menu interface, even if no active orders
-          // Create a default order if none exists
+          // Always show the menu interface
           (() => {
             // If no active orders exist, create one automatically
             if (activeOrders.length === 0) {
-              // Dispatch createNewOrder but don't wait for it
-              setTimeout(() => {
-                dispatch(createNewOrder());
-              }, 0);
+              // Don't create automatically if we just closed invoice
+              if (!recentCompletedOrder) {
+                setTimeout(() => {
+                  dispatch(createNewOrder());
+                }, 0);
+              }
 
               // Show loading state briefly
               return (
                 <div className="flex-1 flex items-center justify-center">
                   <div className="text-center">
                     <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Creating new order...</p>
+                    <p className="text-gray-600">Loading order...</p>
                   </div>
                 </div>
               );
