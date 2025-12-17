@@ -41,10 +41,12 @@ const Menu = () => {
   const [printingOrderId, setPrintingOrderId] = useState(null);
   const [showCompletionLoading, setShowCompletionLoading] = useState(false);
   const [showCompleteButton, setShowCompleteButton] = useState(false);
+  const [isInitializing, setIsInitializing] = useState(true);
 
   // Use refs to track completion state
   const pendingCompletionRef = useRef(null);
   const completionTimeoutRef = useRef(null);
+  const initialLoadRef = useRef(true);
 
   // Filter orders - only active and completed
   const activeOrders = orders.filter((order) => order.status === "active");
@@ -53,6 +55,22 @@ const Menu = () => {
   const currentActiveOrder = activeOrders.find(
     (order) => order.id === activeOrderId
   );
+
+  // ✅ Initialize - create first order if no active orders
+  useEffect(() => {
+    const initializeOrders = () => {
+      if (activeOrders.length === 0 && !recentCompletedOrder) {
+        // Only create new order on initial load or when we're not showing invoice
+        if (initialLoadRef.current) {
+          dispatch(createNewOrder());
+          initialLoadRef.current = false;
+        }
+      }
+      setIsInitializing(false);
+    };
+
+    initializeOrders();
+  }, [activeOrders.length, recentCompletedOrder, dispatch]);
 
   // ✅ Check if order is ready for completion
   useEffect(() => {
@@ -515,29 +533,17 @@ const Menu = () => {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col md:flex-col lg:flex-row gap-3 p-3 pb-20 lg:pb-3">
         {activeTab === "active" ? (
-          // Always show the menu interface
-          (() => {
-            // If no active orders exist, create one automatically
-            if (activeOrders.length === 0) {
-              // Don't create automatically if we just closed invoice
-              if (!recentCompletedOrder) {
-                setTimeout(() => {
-                  dispatch(createNewOrder());
-                }, 0);
-              }
-
-              // Show loading state briefly
-              return (
-                <div className="flex-1 flex items-center justify-center">
-                  <div className="text-center">
-                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                    <p className="text-gray-600">Loading order...</p>
-                  </div>
+          <>
+            {isInitializing || activeOrders.length === 0 ? (
+              // Loading state while initializing or creating first order
+              <div className="flex-1 flex items-center justify-center">
+                <div className="text-center">
+                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                  <p className="text-gray-600">Loading order...</p>
                 </div>
-              );
-            }
-
-            return (
+              </div>
+            ) : (
+              // Main POS Interface
               <>
                 {/* Left Div - Menu Section */}
                 <div className="flex-1 lg:flex-[3] flex flex-col min-h-0 order-1">
@@ -586,8 +592,8 @@ const Menu = () => {
                   )}
                 </div>
               </>
-            );
-          })()
+            )}
+          </>
         ) : (
           /* Completed Orders View */
           <div className="flex-1 bg-white rounded-lg p-6">

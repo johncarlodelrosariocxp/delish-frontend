@@ -195,7 +195,9 @@ const Bill = ({ orderId }) => {
     cart.forEach((item) => {
       if (!item || !item.id) return;
 
-      const key = `${item.id}-${item.pricePerQuantity}-${item.isRedeemed}`;
+      const key = `${item.id}-${item.pricePerQuantity}-${item.isRedeemed}-${
+        item.tag || ""
+      }`;
       if (combinedItems[key]) {
         combinedItems[key].quantity += safeNumber(item.quantity);
         combinedItems[key].originalItems = [
@@ -214,11 +216,16 @@ const Bill = ({ orderId }) => {
     return Object.values(combinedItems);
   };
 
-  // ✅ IMPROVED: Check if item is a drink with better detection
+  // ✅ FIXED: Improved drink item detection with proper categories
   const isDrinkItem = (item) => {
     if (!item) return false;
 
-    // Check category first
+    // Check tag first (most reliable)
+    if (item.tag === "drink" || item.tag === "beverage") {
+      return true;
+    }
+
+    // Check category from database
     if (item.category) {
       const category = item.category.toLowerCase().trim();
       const drinkCategories = [
@@ -239,6 +246,25 @@ const Bill = ({ orderId }) => {
         "pepsi",
         "lemonade",
         "iced tea",
+        "hot coffee",
+        "iced coffee",
+        "frappe",
+        "cream",
+        "frappuccino",
+        "bubble tea",
+        "iced",
+        "brewed",
+        "milk",
+        "cocoa",
+        "hot chocolate",
+        "latte",
+        "cappuccino",
+        "espresso",
+        "americano",
+        "macchiato",
+        "mocha",
+        "choco",
+        "general",
       ];
 
       if (drinkCategories.some((drinkCat) => category.includes(drinkCat))) {
@@ -246,9 +272,12 @@ const Bill = ({ orderId }) => {
       }
     }
 
-    // Check name more thoroughly
+    // Check name for drink keywords - UPDATED with more specific keywords
     const name = item.name ? item.name.toLowerCase() : "";
     const drinkKeywords = [
+      "cream",
+      "frappe",
+      "frappuccino",
       "drink",
       "juice",
       "soda",
@@ -265,7 +294,7 @@ const Bill = ({ orderId }) => {
       "cola",
       "lemonade",
       "iced",
-      "brewed", // For "Brewed Coffee"
+      "brewed",
       "milk",
       "cocoa",
       "hot chocolate",
@@ -273,55 +302,132 @@ const Bill = ({ orderId }) => {
       "cappuccino",
       "espresso",
       "americano",
-      "frappe",
       "bubble tea",
       "iced tea",
       "iced coffee",
+      "macchiato",
+      "mocha",
+      "choco",
+      "matcha",
+      "ube",
+      "vanilla",
+      "caramel",
+      "hazelnut",
+      "biscoff",
+      "white mocha",
+      "oreo",
+      "chocolate",
+      "choco chip",
     ];
 
     // Check if any drink keyword is in the name
     return drinkKeywords.some((keyword) => name.includes(keyword));
   };
 
-  // ✅ IMPROVED: Check if item is food with better detection
+  // ✅ FIXED: Improved food item detection with proper categories
   const isFoodItem = (item) => {
     if (!item) return false;
 
-    // Check category first
+    // Check tag first (most reliable)
+    if (item.tag === "food") {
+      return true;
+    }
+
+    // Check category from database
     if (item.category) {
       const category = item.category.toLowerCase().trim();
       const foodCategories = [
         "food",
         "meal",
-        "main",
-        "appetizer",
-        "dessert",
-        "snack",
         "breakfast",
         "lunch",
         "dinner",
-        "rice",
-        "chicken",
-        "beef",
-        "pork",
-        "fish",
-        "pasta",
-        "burger",
-        "sandwich",
-        "steak",
-        "pizza",
-        "salad",
-        "soup",
-        "fries",
-        "noodle",
-        "curry",
-        "taco",
-        "burrito",
+        "appetizer",
+        "appetizers",
+        "main course",
+        "entree",
+        "dessert",
+        "desserts",
+        "snack",
+        "snacks",
         "cake",
+        "cakes",
         "pie",
+        "pies",
         "bread",
+        "breads",
         "roll",
-        "general", // Many items have "general" category
+        "rolls",
+        "egg",
+        "eggs",
+        "bacon",
+        "sausage",
+        "sausages",
+        "ham",
+        "cheese",
+        "butter",
+        "sauce",
+        "sauces",
+        "gravy",
+        "potato",
+        "potatoes",
+        "vegetable",
+        "vegetables",
+        "fruit",
+        "fruits",
+        "seafood",
+        "meat",
+        "meats",
+        "nugget",
+        "nuggets",
+        "wing",
+        "wings",
+        "drumstick",
+        "drumsticks",
+        "fillet",
+        "fillets",
+        "cutlet",
+        "cutlets",
+        "patty",
+        "patties",
+        "ball",
+        "balls",
+        "stick",
+        "sticks",
+        "finger",
+        "fingers",
+        "dumpling",
+        "dumplings",
+        "spring roll",
+        "spring rolls",
+        "lumpia",
+        "siomai",
+        "keto", // Keto items
+        "bento", // Bento meals
+        "tart", // Tarts
+        "cookie", // Cookies
+        "wedges", // Potato wedges
+        "nachos", // Nachos
+        "longganisa", // Filipino sausage
+        "tapa", // Beef tapa
+        "tocino", // Sweet pork
+        "spam", // Spam
+        "hungarian", // Hungarian sausage
+        "carbonara", // Pasta
+        "pesto", // Pasta
+        "omelette", // Egg dish
+        "spaghetti", // Pasta
+        "pasta", // Pasta
+        "noodle", // Noodles
+        "noodles",
+        "rice", // Rice dishes
+        "chicken", // Chicken dishes
+        "beef", // Beef dishes
+        "pork", // Pork dishes
+        "fish", // Fish dishes
+        "bangus", // Milkfish
+        "embutido", // Filipino embutido
+        "shanghai", // Spring rolls
       ];
 
       if (foodCategories.some((foodCat) => category.includes(foodCat))) {
@@ -329,14 +435,12 @@ const Bill = ({ orderId }) => {
       }
     }
 
-    // Check name more thoroughly
+    // Check name for food keywords - UPDATED with more specific keywords
     const name = item.name ? item.name.toLowerCase() : "";
     const foodKeywords = [
-      "bangus", // For "Bangus Shanghai"
-      "embutido", // For "Embutido"
-      "shanghai", // For "Bangus Shanghai"
-      "meal",
-      "food",
+      "bangus",
+      "embutido",
+      "shanghai",
       "rice",
       "chicken",
       "beef",
@@ -390,10 +494,47 @@ const Bill = ({ orderId }) => {
       "spring roll",
       "lumpia",
       "siomai",
+      "keto",
+      "bento",
+      "tart",
+      "cookie",
+      "wedges",
+      "nachos",
+      "longganisa",
+      "tapa",
+      "tocino",
+      "spam",
+      "hungarian",
+      "carbonara",
+      "pesto",
+      "omelette",
+      "carbonara",
+      "spaghetti",
+      "noodles",
+      "filipino",
+      "asian",
+      "western",
+      "meal",
+      "platter",
+      "combo",
+      "set",
+      "dish",
     ];
 
-    // Check if any food keyword is in the name
     return foodKeywords.some((keyword) => name.includes(keyword));
+  };
+
+  // Get item tag (food or drink)
+  const getItemTag = (item) => {
+    if (!item) return "food"; // Default to food
+
+    // Check if item has tag property
+    if (item.tag) {
+      return item.tag;
+    }
+
+    // Determine based on category/name
+    return isDrinkItem(item) ? "drink" : "food";
   };
 
   // Get unique key for an item
@@ -401,7 +542,7 @@ const Bill = ({ orderId }) => {
     if (!item) return "unknown";
     return `${item.id || "unknown"}-${item.pricePerQuantity || 0}-${
       item.isRedeemed || false
-    }`;
+    }-${getItemTag(item)}`;
   };
 
   // Calculate totals - UPDATED to include custom discount
@@ -616,7 +757,7 @@ const Bill = ({ orderId }) => {
     if (!item) return `item-${index}`;
     return `${item.id || "unknown"}-${index}-${item.quantity || 0}-${
       item.pricePerQuantity || 0
-    }-${item.isRedeemed || false}`;
+    }-${item.isRedeemed || false}-${getItemTag(item)}`;
   };
 
   // Quantity handlers
@@ -673,9 +814,9 @@ const Bill = ({ orderId }) => {
     } else if (drinkCount === 1) {
       info = "PWD/Senior Discount (20% – 1 drink)";
     } else if (foodCount === 2) {
-      info = "PWD/Senior Discount (20% – 2 food)";
+      info = "PWD/Senior Discount (20% – 2 food items)";
     } else if (foodCount === 1) {
-      info = "PWD/Senior Discount (20% – 1 food)";
+      info = "PWD/Senior Discount (20% – 1 food item)";
     }
 
     const discountAmount = totals.pwdSeniorDiscountAmount.toFixed(2);
@@ -815,7 +956,7 @@ const Bill = ({ orderId }) => {
     setCustomDiscountApplied(false); // Clear custom discount too
   };
 
-  // ✅ IMPROVED: Get all eligible items for PWD/Senior discount
+  // ✅ FIXED: Get all eligible items for PWD/Senior discount
   const getEligibleItemsForDiscount = () => {
     console.log("Checking eligible items from cart:", combinedCart);
 
@@ -829,7 +970,7 @@ const Bill = ({ orderId }) => {
       const isFood = isFoodItem(item);
 
       console.log(
-        `Item: ${item.name}, isDrink: ${isDrink}, isFood: ${isFood}, category: ${item.category}`
+        `Item: ${item.name}, isDrink: ${isDrink}, isFood: ${isFood}, category: ${item.category}, tag: ${item.tag}`
       );
 
       // Only food and drink items are eligible
@@ -841,6 +982,15 @@ const Bill = ({ orderId }) => {
       eligibleItems.map((item) => item.name)
     );
     return eligibleItems;
+  };
+
+  // ✅ FIXED: Get eligible items by type
+  const getEligibleItemsByType = () => {
+    const eligibleItems = getEligibleItemsForDiscount();
+    const drinks = eligibleItems.filter((item) => isDrinkItem(item));
+    const foods = eligibleItems.filter((item) => isFoodItem(item));
+
+    return { drinks, foods };
   };
 
   // Toggle item selection in modal
@@ -870,7 +1020,7 @@ const Bill = ({ orderId }) => {
       const isDrink = isDrinkItem(item);
       const isFood = isFoodItem(item);
 
-      // Validate selection rules
+      // ✅ FIXED: Strictly enforce 1 drink + 2 food rule
       if (isDrink && selectedDrinks >= 1) {
         enqueueSnackbar(
           "Maximum 1 drink can be selected for PWD/Senior discount",
@@ -887,17 +1037,18 @@ const Bill = ({ orderId }) => {
         return;
       }
 
-      if (!isDrink && !isFood) {
+      // Total items limit (1 drink + 2 food = 3 items max)
+      if (pwdSeniorDiscountItems.length >= 3) {
         enqueueSnackbar(
-          "Only drinks and food items are eligible for PWD/Senior discount",
+          "Maximum 3 items can be selected for PWD/Senior discount (1 drink + 2 food)",
           { variant: "warning" }
         );
         return;
       }
 
-      if (pwdSeniorDiscountItems.length >= 3) {
+      if (!isDrink && !isFood) {
         enqueueSnackbar(
-          "Maximum 3 items can be selected for PWD/Senior discount",
+          "Only drinks and food items are eligible for PWD/Senior discount",
           { variant: "warning" }
         );
         return;
@@ -915,6 +1066,30 @@ const Bill = ({ orderId }) => {
         variant: "warning",
       });
       return;
+    }
+
+    // ✅ FIXED: Check selection composition
+    const selectedDrinks = pwdSeniorDiscountItems.filter((item) =>
+      isDrinkItem(item)
+    ).length;
+    const selectedFoods = pwdSeniorDiscountItems.filter((item) =>
+      isFoodItem(item)
+    ).length;
+
+    // Check if we have at least 1 drink or 1 food item
+    if (selectedDrinks === 0 && selectedFoods === 0) {
+      enqueueSnackbar("Please select at least 1 food or drink item", {
+        variant: "warning",
+      });
+      return;
+    }
+
+    // Warn if not following 1 drink + 2 food pattern
+    if (selectedDrinks > 1 || selectedFoods > 2) {
+      enqueueSnackbar(
+        "For maximum discount, select 1 drink and 2 food items (total 3 items)",
+        { variant: "info" }
+      );
     }
 
     if (!pwdSeniorDetails.name.trim()) {
@@ -947,10 +1122,7 @@ const Bill = ({ orderId }) => {
     const drinks = pwdSeniorDiscountItems.filter((item) => isDrinkItem(item));
     const foods = pwdSeniorDiscountItems.filter((item) => isFoodItem(item));
 
-    let message = `PWD/Senior discount applied to ${
-      pwdSeniorDiscountItems.length
-    } item(s) (-₱${discountAmount.toFixed(2)})`;
-
+    let message = "";
     if (drinks.length === 1 && foods.length === 2) {
       message = `PWD/Senior discount applied to 1 drink and 2 food items (-₱${discountAmount.toFixed(
         2
@@ -971,6 +1143,10 @@ const Bill = ({ orderId }) => {
       message = `PWD/Senior discount applied to 1 food item (-₱${discountAmount.toFixed(
         2
       )})`;
+    } else {
+      message = `PWD/Senior discount applied to ${
+        pwdSeniorDiscountItems.length
+      } item(s) (-₱${discountAmount.toFixed(2)})`;
     }
 
     message += ` for ${pwdSeniorDetails.type}: ${pwdSeniorDetails.name}`;
@@ -1205,11 +1381,7 @@ const Bill = ({ orderId }) => {
         );
 
         // ✅ FIXED: Determine category correctly - only 'drink' or 'food'
-        let category = "food"; // Default to food
-
-        if (isDrinkItem(item)) {
-          category = "drink";
-        }
+        let category = getItemTag(item); // Use the tag: 'food' or 'drink'
 
         return {
           name: item.name || "Unknown Item",
@@ -1220,6 +1392,7 @@ const Bill = ({ orderId }) => {
           isRedeemed: Boolean(item.isRedeemed),
           isPwdSeniorDiscounted: isPwdSeniorDiscounted,
           category: category, // ✅ Will only be 'drink' or 'food'
+          tag: getItemTag(item), // ✅ Added tag field
           id: item.id || Date.now().toString(),
         };
       })
@@ -1251,12 +1424,13 @@ const Bill = ({ orderId }) => {
     // ✅ FIXED: Prepare pwdSeniorSelectedItems with correct category
     const pwdSeniorSelectedItems = pwdSeniorDiscountApplied
       ? pwdSeniorDiscountItems.map((item) => {
-          const category = isDrinkItem(item) ? "drink" : "food";
+          const category = getItemTag(item);
           return {
             ...item,
             category: category,
             quantity: safeNumber(item.quantity),
             pricePerQuantity: safeNumber(item.pricePerQuantity),
+            tag: getItemTag(item), // ✅ Added tag field
           };
         })
       : [];
@@ -1341,6 +1515,7 @@ const Bill = ({ orderId }) => {
           pricePerQuantity: safeNumber(item.pricePerQuantity),
           isFree: item.isRedeemed || false,
           isPwdSeniorDiscounted: isDiscounted,
+          tag: getItemTag(item), // ✅ Added tag field
         };
       })
       .filter((item) => item !== null);
@@ -1920,7 +2095,7 @@ const Bill = ({ orderId }) => {
         </div>
       )}
 
-      {/* ✅ IMPROVED: PWD/Senior Selection Modal - RESPONSIVE VERSION */}
+      {/* ✅ FIXED: PWD/Senior Selection Modal - Now separates drinks and food */}
       {showPwdSeniorSelection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
           <div className="bg-white rounded-lg w-full max-w-6xl h-[90vh] max-h-[90vh] flex flex-col shadow-xl overflow-hidden">
@@ -1932,7 +2107,8 @@ const Bill = ({ orderId }) => {
                     Select Items for PWD/Senior Discount
                   </h3>
                   <p className="text-sm text-gray-600 mt-1">
-                    Maximum 3 items: 1 drink + 2 food
+                    Select 1 drink + 2 food items (20% discount on selected
+                    items)
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -1956,7 +2132,7 @@ const Bill = ({ orderId }) => {
               </div>
             </div>
 
-            {/* Main Content */}
+            {/* Main Content - Fixed layout with tabs */}
             <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
               {/* Left Side - Form and Selection */}
               <div className="lg:w-1/2 xl:w-2/5 p-4 sm:p-6 border-r overflow-y-auto">
@@ -2192,210 +2368,254 @@ const Bill = ({ orderId }) => {
                 </div>
               </div>
 
-              {/* Right Side - Items List */}
+              {/* Right Side - Items List with Tabs */}
               <div className="lg:w-1/2 xl:w-3/5 p-4 sm:p-6 overflow-hidden flex flex-col">
-                <div className="mb-4 flex justify-between items-center">
-                  <h4 className="text-sm font-semibold text-gray-700">
-                    Eligible Items ({getEligibleItemsForDiscount().length})
-                  </h4>
-                  <div className="flex gap-2">
-                    <span className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded">
-                      Drink
-                    </span>
-                    <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded">
-                      Food
-                    </span>
+                {/* Tabs for Drinks and Food */}
+                <div className="mb-4">
+                  <div className="flex border-b border-gray-200">
+                    <button
+                      onClick={() => setActiveCategory("drinks")}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 ${
+                        activeCategory === "drinks" || activeCategory === null
+                          ? "border-blue-500 text-blue-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      Drinks
+                      <span className="ml-2 px-2 py-1 text-xs bg-blue-100 text-blue-800 rounded-full">
+                        {
+                          getEligibleItemsForDiscount().filter((item) =>
+                            isDrinkItem(item)
+                          ).length
+                        }
+                      </span>
+                    </button>
+                    <button
+                      onClick={() => setActiveCategory("food")}
+                      className={`px-4 py-2 text-sm font-medium border-b-2 ${
+                        activeCategory === "food"
+                          ? "border-green-500 text-green-600"
+                          : "border-transparent text-gray-500 hover:text-gray-700"
+                      }`}
+                    >
+                      Food Items
+                      <span className="ml-2 px-2 py-1 text-xs bg-green-100 text-green-800 rounded-full">
+                        {
+                          getEligibleItemsForDiscount().filter((item) =>
+                            isFoodItem(item)
+                          ).length
+                        }
+                      </span>
+                    </button>
                   </div>
                 </div>
 
-                {/* Items Grid - Responsive */}
+                {/* Items Grid - Filtered by active category */}
                 <div className="flex-1 overflow-y-auto">
-                  {getEligibleItemsForDiscount().length > 0 ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
-                      {getEligibleItemsForDiscount().map((item, index) => {
-                        if (!item) return null;
+                  {(() => {
+                    // Get items based on active category
+                    let itemsToShow = [];
+                    if (
+                      activeCategory === "drinks" ||
+                      activeCategory === null
+                    ) {
+                      itemsToShow = getEligibleItemsForDiscount().filter(
+                        (item) => isDrinkItem(item)
+                      );
+                    } else if (activeCategory === "food") {
+                      itemsToShow = getEligibleItemsForDiscount().filter(
+                        (item) => isFoodItem(item)
+                      );
+                    }
 
-                        const isDrink = isDrinkItem(item);
-                        const isFood = isFoodItem(item);
-                        const isSelected = pwdSeniorDiscountItems.some(
-                          (selected) =>
-                            getItemKey(selected) === getItemKey(item)
-                        );
+                    if (itemsToShow.length > 0) {
+                      return (
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3">
+                          {itemsToShow.map((item, index) => {
+                            if (!item) return null;
 
-                        // Check selection limits
-                        const selectedDrinks = pwdSeniorDiscountItems.filter(
-                          (item) => isDrinkItem(item)
-                        ).length;
-                        const selectedFoods = pwdSeniorDiscountItems.filter(
-                          (item) => isFoodItem(item)
-                        ).length;
+                            const isDrink = isDrinkItem(item);
+                            const isFood = isFoodItem(item);
+                            const isSelected = pwdSeniorDiscountItems.some(
+                              (selected) =>
+                                getItemKey(selected) === getItemKey(item)
+                            );
 
-                        let canSelect = true;
-                        let limitReached = false;
+                            // Check selection limits
+                            const selectedDrinks =
+                              pwdSeniorDiscountItems.filter((item) =>
+                                isDrinkItem(item)
+                              ).length;
+                            const selectedFoods = pwdSeniorDiscountItems.filter(
+                              (item) => isFoodItem(item)
+                            ).length;
 
-                        if (isSelected) {
-                          canSelect = true; // Can always unselect
-                        } else if (pwdSeniorDiscountItems.length >= 3) {
-                          canSelect = false;
-                          limitReached = true;
-                        } else if (isDrink && selectedDrinks >= 1) {
-                          canSelect = false;
-                          limitReached = true;
-                        } else if (isFood && selectedFoods >= 2) {
-                          canSelect = false;
-                          limitReached = true;
-                        }
+                            let canSelect = true;
+                            let limitReached = false;
 
-                        return (
-                          <div
-                            key={getUniqueKey(item, index)}
-                            className={`relative p-4 border rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
-                              isSelected
-                                ? "bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-sm"
-                                : !canSelect && !isSelected
-                                ? "bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed"
-                                : "bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300"
-                            }`}
-                            onClick={() =>
-                              canSelect && toggleItemSelection(item)
+                            if (isSelected) {
+                              canSelect = true; // Can always unselect
+                            } else if (pwdSeniorDiscountItems.length >= 3) {
+                              canSelect = false;
+                              limitReached = true;
+                            } else if (isDrink && selectedDrinks >= 1) {
+                              canSelect = false;
+                              limitReached = true;
+                            } else if (isFood && selectedFoods >= 2) {
+                              canSelect = false;
+                              limitReached = true;
                             }
-                          >
-                            {/* Selection Indicator */}
-                            <div className="absolute top-3 right-3">
+
+                            return (
                               <div
-                                className={`w-6 h-6 border-2 rounded-full flex items-center justify-center ${
+                                key={getUniqueKey(item, index)}
+                                className={`relative p-4 border rounded-lg cursor-pointer transition-all duration-200 hover:shadow-md ${
                                   isSelected
-                                    ? "border-green-500 bg-green-500"
-                                    : "border-gray-300"
-                                } ${
-                                  !canSelect && !isSelected
-                                    ? "border-gray-200"
-                                    : ""
+                                    ? "bg-gradient-to-r from-green-50 to-emerald-50 border-green-300 shadow-sm"
+                                    : !canSelect && !isSelected
+                                    ? "bg-gray-50 border-gray-200 opacity-60 cursor-not-allowed"
+                                    : "bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300"
                                 }`}
+                                onClick={() =>
+                                  canSelect && toggleItemSelection(item)
+                                }
                               >
-                                {isSelected && (
-                                  <svg
-                                    className="w-3 h-3 text-white"
-                                    fill="none"
-                                    stroke="currentColor"
-                                    viewBox="0 0 24 24"
+                                {/* Selection Indicator */}
+                                <div className="absolute top-3 right-3">
+                                  <div
+                                    className={`w-6 h-6 border-2 rounded-full flex items-center justify-center ${
+                                      isSelected
+                                        ? "border-green-500 bg-green-500"
+                                        : "border-gray-300"
+                                    } ${
+                                      !canSelect && !isSelected
+                                        ? "border-gray-200"
+                                        : ""
+                                    }`}
                                   >
-                                    <path
-                                      strokeLinecap="round"
-                                      strokeLinejoin="round"
-                                      strokeWidth="3"
-                                      d="M5 13l4 4L19 7"
-                                    />
-                                  </svg>
-                                )}
-                              </div>
-                              {limitReached && !isSelected && (
-                                <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-white"></div>
-                              )}
-                            </div>
-
-                            {/* Item Content */}
-                            <div className="pr-8">
-                              <div className="flex items-start justify-between mb-2">
-                                <h5 className="text-sm font-semibold text-gray-900 truncate pr-2">
-                                  {item.name}
-                                </h5>
-                                <span
-                                  className={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
-                                    isDrink
-                                      ? "bg-blue-100 text-blue-800 border border-blue-200"
-                                      : "bg-green-100 text-green-800 border border-green-200"
-                                  }`}
-                                >
-                                  {isDrink ? "🍹 Drink" : "🍴 Food"}
-                                </span>
-                              </div>
-
-                              <div className="flex items-center justify-between mb-3">
-                                <div className="text-xs text-gray-500">
-                                  <span className="font-medium">
-                                    ₱
-                                    {safeNumber(item.pricePerQuantity).toFixed(
-                                      2
+                                    {isSelected && (
+                                      <svg
+                                        className="w-3 h-3 text-white"
+                                        fill="none"
+                                        stroke="currentColor"
+                                        viewBox="0 0 24 24"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          strokeWidth="3"
+                                          d="M5 13l4 4L19 7"
+                                        />
+                                      </svg>
                                     )}
-                                  </span>
-                                  <span className="mx-1">×</span>
-                                  <span className="font-bold">
-                                    {item.quantity}
-                                  </span>
+                                  </div>
+                                  {limitReached && !isSelected && (
+                                    <div className="absolute -top-1 -right-1 w-3 h-3 bg-red-500 rounded-full border border-white"></div>
+                                  )}
                                 </div>
-                                <div className="text-sm font-bold text-gray-900">
-                                  ₱{calculateItemTotalPrice(item).toFixed(2)}
+
+                                {/* Item Content */}
+                                <div className="pr-8">
+                                  <div className="flex items-start justify-between mb-2">
+                                    <h5 className="text-sm font-semibold text-gray-900 truncate pr-2">
+                                      {item.name}
+                                    </h5>
+                                    <span
+                                      className={`text-xs px-2 py-1 rounded-full font-medium whitespace-nowrap ${
+                                        isDrink
+                                          ? "bg-blue-100 text-blue-800 border border-blue-200"
+                                          : "bg-green-100 text-green-800 border border-green-200"
+                                      }`}
+                                    >
+                                      {isDrink ? "🍹 Drink" : "🍴 Food"}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center justify-between mb-3">
+                                    <div className="text-xs text-gray-500">
+                                      <span className="font-medium">
+                                        ₱
+                                        {safeNumber(
+                                          item.pricePerQuantity
+                                        ).toFixed(2)}
+                                      </span>
+                                      <span className="mx-1">×</span>
+                                      <span className="font-bold">
+                                        {item.quantity}
+                                      </span>
+                                    </div>
+                                    <div className="text-sm font-bold text-gray-900">
+                                      ₱
+                                      {calculateItemTotalPrice(item).toFixed(2)}
+                                    </div>
+                                  </div>
+
+                                  {isSelected && (
+                                    <div className="mt-2 pt-2 border-t border-green-200">
+                                      <div className="flex justify-between items-center">
+                                        <span className="text-xs text-green-600 font-medium">
+                                          Discount (20%):
+                                        </span>
+                                        <span className="text-xs font-bold text-green-600">
+                                          -₱
+                                          {(
+                                            calculateItemTotalPrice(item) *
+                                            pwdSeniorDiscountRate
+                                          ).toFixed(2)}
+                                        </span>
+                                      </div>
+                                      <div className="flex justify-between items-center mt-1">
+                                        <span className="text-xs text-gray-600 font-medium">
+                                          Final Price:
+                                        </span>
+                                        <span className="text-sm font-bold text-green-700">
+                                          ₱{calculateItemTotal(item).toFixed(2)}
+                                        </span>
+                                      </div>
+                                    </div>
+                                  )}
+
+                                  {!canSelect &&
+                                    !isSelected &&
+                                    limitReached && (
+                                      <div className="mt-2 pt-2 border-t border-gray-200">
+                                        <p className="text-xs text-red-500 font-medium">
+                                          {isDrink
+                                            ? "Max 1 drink allowed"
+                                            : isFood
+                                            ? "Max 2 food items allowed"
+                                            : "Max 3 items allowed"}
+                                        </p>
+                                      </div>
+                                    )}
                                 </div>
                               </div>
-
-                              {isSelected && (
-                                <div className="mt-2 pt-2 border-t border-green-200">
-                                  <div className="flex justify-between items-center">
-                                    <span className="text-xs text-green-600 font-medium">
-                                      Discount (20%):
-                                    </span>
-                                    <span className="text-xs font-bold text-green-600">
-                                      -₱
-                                      {(
-                                        calculateItemTotalPrice(item) *
-                                        pwdSeniorDiscountRate
-                                      ).toFixed(2)}
-                                    </span>
-                                  </div>
-                                  <div className="flex justify-between items-center mt-1">
-                                    <span className="text-xs text-gray-600 font-medium">
-                                      Final Price:
-                                    </span>
-                                    <span className="text-sm font-bold text-green-700">
-                                      ₱{calculateItemTotal(item).toFixed(2)}
-                                    </span>
-                                  </div>
-                                </div>
-                              )}
-
-                              {!canSelect && !isSelected && limitReached && (
-                                <div className="mt-2 pt-2 border-t border-gray-200">
-                                  <p className="text-xs text-red-500 font-medium">
-                                    {isDrink
-                                      ? "Max 1 drink allowed"
-                                      : isFood
-                                      ? "Max 2 food items allowed"
-                                      : "Max 3 items allowed"}
-                                  </p>
-                                </div>
-                              )}
-                            </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    } else {
+                      return (
+                        <div className="h-full flex flex-col items-center justify-center p-8">
+                          <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                            {activeCategory === "drinks" ? (
+                              <span className="text-3xl">🍹</span>
+                            ) : (
+                              <span className="text-3xl">🍴</span>
+                            )}
                           </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center p-8">
-                      <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                        <svg
-                          className="w-10 h-10 text-gray-400"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M6 18L18 6M6 6l12 12"
-                          />
-                        </svg>
-                      </div>
-                      <h5 className="text-gray-500 font-medium mb-2">
-                        No eligible items found
-                      </h5>
-                      <p className="text-gray-400 text-sm text-center max-w-md">
-                        Add food or drink items to cart first to apply
-                        PWD/Senior discount
-                      </p>
-                    </div>
-                  )}
+                          <h5 className="text-gray-500 font-medium mb-2">
+                            No {activeCategory || "drinks"} items found
+                          </h5>
+                          <p className="text-gray-400 text-sm text-center max-w-md">
+                            {activeCategory === "drinks"
+                              ? "Add drink items to cart to apply discount"
+                              : "Add food items to cart to apply discount"}
+                          </p>
+                        </div>
+                      );
+                    }
+                  })()}
                 </div>
               </div>
             </div>
@@ -2804,7 +3024,7 @@ const Bill = ({ orderId }) => {
               </div>
             </div>
 
-            {/* 🛒 CART ITEMS */}
+            {/* 🛒 CART ITEMS - UPDATED WITH WHITE TAGS */}
             <div className="bg-white rounded-lg p-4 shadow-md max-h-64 overflow-y-auto">
               <h2 className="text-gray-900 text-sm font-semibold mb-2">
                 Cart Items (Order {currentOrder?.number})
@@ -2820,11 +3040,7 @@ const Bill = ({ orderId }) => {
                   );
                   const isDrink = isDrinkItem(item);
                   const isFood = isFoodItem(item);
-                  const itemType = isDrink
-                    ? "Drink"
-                    : isFood
-                    ? "Food"
-                    : "Other";
+                  const itemType = getItemTag(item); // Use the tag: 'food' or 'drink'
 
                   const originalTotal = calculateItemTotalPrice(item);
                   const displayedTotal = calculateItemTotal(item);
@@ -2856,8 +3072,15 @@ const Bill = ({ orderId }) => {
                               </span>
                             )}
                           </p>
-                          <span className="text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
-                            {itemType}
+                          {/* WHITE TAG FOR FOOD/DRINK */}
+                          <span
+                            className={`text-xs px-2 py-1 rounded-full font-medium ${
+                              itemType === "drink"
+                                ? "bg-white text-blue-600 border border-blue-200"
+                                : "bg-white text-green-600 border border-green-200"
+                            }`}
+                          >
+                            {itemType === "drink" ? "Drink" : "Food"}
                           </span>
                         </div>
                         <p className="text-gray-500 text-xs">

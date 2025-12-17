@@ -15,10 +15,16 @@ import {
   FaUsers,
   FaBox,
   FaSpinner,
+  FaTrash,
 } from "react-icons/fa";
 import { MdDoneAll, MdTrendingUp, MdInventory } from "react-icons/md";
 import { TbReportAnalytics } from "react-icons/tb";
-import { getOrders, updateOrderStatus, getAdminStats } from "../https";
+import {
+  getOrders,
+  updateOrderStatus,
+  getAdminStats,
+  deleteOrder,
+} from "../https";
 import MiniCard from "../components/home/MiniCard";
 
 const Home = () => {
@@ -28,6 +34,7 @@ const Home = () => {
   const [adminStats, setAdminStats] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [deletingOrderId, setDeletingOrderId] = useState(null);
 
   const [totalOrders, setTotalOrders] = useState(0);
   const [totalEarnings, setTotalEarnings] = useState(0);
@@ -153,6 +160,43 @@ const Home = () => {
       setAdminStats({});
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteOrder = async (orderId) => {
+    if (
+      !orderId ||
+      !window.confirm(
+        "Are you sure you want to delete this order? This action cannot be undone."
+      )
+    ) {
+      return;
+    }
+
+    try {
+      setDeletingOrderId(orderId);
+
+      // Call the delete API
+      const response = await deleteOrder(orderId);
+
+      if (response?.success) {
+        // Remove the deleted order from state
+        const updatedOrders = orders.filter((order) => order._id !== orderId);
+        setOrders(updatedOrders);
+
+        // Reapply filter to update filtered orders and metrics
+        applyFilter(updatedOrders, filterRange);
+
+        // Show success message
+        console.log("✅ Order deleted successfully");
+      } else {
+        throw new Error(response?.message || "Failed to delete order");
+      }
+    } catch (err) {
+      console.error("❌ Failed to delete order:", err);
+      alert(err.message || "Failed to delete order. Please try again.");
+    } finally {
+      setDeletingOrderId(null);
     }
   };
 
@@ -1017,6 +1061,8 @@ const Home = () => {
                   : `Showing ${filteredOrders.length} recent orders`
               }
               handleStatusChange={handleStatusChange}
+              handleDeleteOrder={handleDeleteOrder} // Pass delete handler
+              deletingOrderId={deletingOrderId} // Pass deleting state
               loading={loading}
               showStatusBadge={true}
               showDate={true}
@@ -1024,6 +1070,7 @@ const Home = () => {
               showItems={true}
               showTotal={true}
               showActions={isAdmin}
+              showDelete={isAdmin} // Show delete option for admin
               className="bg-transparent"
             />
           </div>

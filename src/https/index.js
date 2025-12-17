@@ -32,10 +32,14 @@ export const getPayments = () => axiosWrapper.get("/api/payment");
 export const getPaymentStats = () => axiosWrapper.get("/api/payment/stats");
 
 // =============================
-// ✅ ORDER ENDPOINTS
+// ✅ ORDER ENDPOINTS - UPDATED TO ACCEPT PARAMETERS
 // =============================
 export const addOrder = (data) => axiosWrapper.post("/api/order", data);
-export const getOrders = () => axiosWrapper.get("/api/order");
+
+// ✅ FIXED: Now accepts parameters like { limit: 5000 }
+export const getOrders = (params = {}) =>
+  axiosWrapper.get("/api/order", { params });
+
 export const getOrderById = (orderId) =>
   axiosWrapper.get(`/api/order/${orderId}`);
 export const updateOrderStatus = ({ orderId, orderStatus }) =>
@@ -45,10 +49,12 @@ export const deleteOrder = (orderId) =>
 export const getOrderStats = () => axiosWrapper.get("/api/order/stats");
 
 // =============================
-// ✅ ADMIN ENDPOINTS
+// ✅ ADMIN ENDPOINTS - UPDATED TO ACCEPT PARAMETERS
 // =============================
-export const getAdminOrders = () =>
-  axiosWrapper.get("/api/order/admin/all-orders");
+// ✅ FIXED: Now accepts parameters like { limit: 5000 }
+export const getAdminOrders = (params = {}) =>
+  axiosWrapper.get("/api/order/admin/all-orders", { params });
+
 export const getAdminStats = () =>
   axiosWrapper.get("/api/order/admin/all-stats");
 export const getAdminDashboardStats = () =>
