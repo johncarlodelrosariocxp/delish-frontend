@@ -1,4 +1,3 @@
-// Header.jsx - Complete working version
 import { useState, useEffect } from "react";
 import {
   FaUserCircle,
@@ -6,6 +5,8 @@ import {
   FaTimes,
   FaBox,
   FaTachometerAlt,
+  FaBluetooth,
+  FaBluetoothB,
 } from "react-icons/fa";
 import logo from "../../assets/images/delish.jpg";
 import { useDispatch, useSelector } from "react-redux";
@@ -14,12 +15,23 @@ import { useMutation } from "@tanstack/react-query";
 import { logout } from "../../https";
 import { removeUser } from "../../redux/slices/userSlice";
 import { useNavigate, useLocation } from "react-router-dom";
+import { useBluetooth } from "../../contexts/BluetoothContext"; // ADD THIS IMPORT
 
 const Header = () => {
   const userData = useSelector((state) => state.user);
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Bluetooth Context
+  const {
+    isConnected,
+    isConnecting,
+    printerName,
+    connectionStatus,
+    connectBluetooth,
+    disconnectBluetooth,
+  } = useBluetooth();
 
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
@@ -74,10 +86,26 @@ const Header = () => {
     setIsMobileMenuOpen(false);
   }, [location.pathname]);
 
-  // Check if user can access dashboard (Admin or specific roles)
+  // Check if user can access dashboard
   const canAccessDashboard = ["Admin", "Manager", "Supervisor"].includes(
     userData?.role
   );
+
+  // Handle Bluetooth connection
+  const handleBluetoothClick = () => {
+    if (isConnected) {
+      disconnectBluetooth();
+    } else {
+      connectBluetooth();
+    }
+  };
+
+  // Get Bluetooth status text
+  const getBluetoothStatusText = () => {
+    if (isConnected) return "Connected";
+    if (isConnecting) return "Connecting...";
+    return "Disconnected";
+  };
 
   return (
     <>
@@ -109,7 +137,32 @@ const Header = () => {
 
         {/* Desktop Navigation - Hidden on mobile */}
         <div className="hidden sm:flex items-center gap-4">
-          {/* Dashboard Button for Desktop - Conditionally shown */}
+          {/* Bluetooth Status */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleBluetoothClick}
+              disabled={isConnecting}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors text-sm ${
+                isConnected
+                  ? "bg-green-600 text-white hover:bg-green-700"
+                  : isConnecting
+                  ? "bg-yellow-500 text-white cursor-not-allowed"
+                  : "bg-blue-600 text-white hover:bg-blue-700"
+              }`}
+              title={
+                printerName
+                  ? `Connected to: ${printerName}`
+                  : "Connect to Bluetooth printer"
+              }
+            >
+              {isConnected ? <FaBluetoothB /> : <FaBluetooth />}
+              <span className="text-xs font-medium">
+                {getBluetoothStatusText()}
+              </span>
+            </button>
+          </div>
+
+          {/* Dashboard Button for Desktop */}
           {canAccessDashboard && (
             <button
               onClick={() => navigate("/dashboard")}
@@ -179,9 +232,47 @@ const Header = () => {
               </div>
             </div>
 
+            {/* Bluetooth Section */}
+            <div className="p-4 bg-gray-700 rounded-lg">
+              <h3 className="text-white font-medium mb-2">Bluetooth Printer</h3>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p
+                    className={`text-sm font-semibold ${
+                      isConnected
+                        ? "text-green-400"
+                        : isConnecting
+                        ? "text-yellow-400"
+                        : "text-gray-400"
+                    }`}
+                  >
+                    {getBluetoothStatusText()}
+                  </p>
+                  {printerName && (
+                    <p className="text-xs text-gray-300 mt-1 truncate">
+                      {printerName}
+                    </p>
+                  )}
+                </div>
+                <button
+                  onClick={handleBluetoothClick}
+                  disabled={isConnecting}
+                  className={`px-4 py-2 rounded-lg text-sm font-medium ${
+                    isConnected
+                      ? "bg-red-600 text-white hover:bg-red-700"
+                      : isConnecting
+                      ? "bg-yellow-500 text-white cursor-not-allowed"
+                      : "bg-blue-600 text-white hover:bg-blue-700"
+                  }`}
+                >
+                  {isConnected ? "Disconnect" : "Connect"}
+                </button>
+              </div>
+            </div>
+
             {/* Menu Items */}
             <div className="space-y-4">
-              {/* Dashboard Button for Mobile - Conditionally shown */}
+              {/* Dashboard Button for Mobile */}
               {canAccessDashboard && (
                 <div
                   onClick={() => {

@@ -169,9 +169,9 @@ const Bill = ({ orderId }) => {
     onlineMethod: null,
   });
   const [showMixedPaymentModal, setShowMixedPaymentModal] = useState(false);
-  const [activeCategory, setActiveCategory] = useState(null);
+  const [activeCategory, setActiveCategory] = useState("drinks"); // Start with drinks tab active
 
-  // ✅ ADDED: State for showing Invoice component
+  // ✅ FIXED: State for showing Invoice component
   const [showInvoice, setShowInvoice] = useState(false);
   const [invoiceData, setInvoiceData] = useState(null);
 
@@ -216,7 +216,7 @@ const Bill = ({ orderId }) => {
     return Object.values(combinedItems);
   };
 
-  // ✅ FIXED: Improved drink item detection with proper categories
+  // ✅ FIXED: Improved drink item detection - ONLY drinks
   const isDrinkItem = (item) => {
     if (!item) return false;
 
@@ -246,13 +246,10 @@ const Bill = ({ orderId }) => {
         "pepsi",
         "lemonade",
         "iced tea",
-        "hot coffee",
         "iced coffee",
         "frappe",
-        "cream",
         "frappuccino",
         "bubble tea",
-        "iced",
         "brewed",
         "milk",
         "cocoa",
@@ -264,7 +261,19 @@ const Bill = ({ orderId }) => {
         "macchiato",
         "mocha",
         "choco",
-        "general",
+        "matcha",
+        "ube",
+        "vanilla",
+        "caramel",
+        "hazelnut",
+        "biscoff",
+        "white mocha",
+        "oreo",
+        "chocolate",
+        "choco chip",
+        "general beverage",
+        "cold drink",
+        "hot drink",
       ];
 
       if (drinkCategories.some((drinkCat) => category.includes(drinkCat))) {
@@ -272,12 +281,45 @@ const Bill = ({ orderId }) => {
       }
     }
 
-    // Check name for drink keywords - UPDATED with more specific keywords
+    // Check name for drink keywords - ONLY drink-specific keywords
     const name = item.name ? item.name.toLowerCase() : "";
+
+    // First, check for food items that might be misclassified
+    const foodKeywordsInName = [
+      "cheesecake",
+      "cake",
+      "bread",
+      "cookie",
+      "bento",
+      "box",
+      "combo",
+      "rice",
+      "egg",
+      "bacon",
+      "sausage",
+      "tapa",
+      "tocino",
+      "longganisa",
+      "bangus",
+      "spam",
+      "embutido",
+      "hungarian",
+      "carbonara",
+      "pesto",
+      "tart",
+      "wedges",
+      "nachos",
+      "omelette",
+      "shanghai",
+    ];
+
+    // If it has any food keyword in the name, it's NOT a drink
+    if (foodKeywordsInName.some((keyword) => name.includes(keyword))) {
+      return false;
+    }
+
+    // Now check for drink-specific keywords
     const drinkKeywords = [
-      "cream",
-      "frappe",
-      "frappuccino",
       "drink",
       "juice",
       "soda",
@@ -293,7 +335,13 @@ const Bill = ({ orderId }) => {
       "pepsi",
       "cola",
       "lemonade",
-      "iced",
+      "iced tea",
+      "iced coffee",
+      "hot coffee",
+      "frappe",
+      "frappuccino",
+      "bubble tea",
+      "milk tea",
       "brewed",
       "milk",
       "cocoa",
@@ -302,12 +350,8 @@ const Bill = ({ orderId }) => {
       "cappuccino",
       "espresso",
       "americano",
-      "bubble tea",
-      "iced tea",
-      "iced coffee",
       "macchiato",
       "mocha",
-      "choco",
       "matcha",
       "ube",
       "vanilla",
@@ -317,14 +361,14 @@ const Bill = ({ orderId }) => {
       "white mocha",
       "oreo",
       "chocolate",
-      "choco chip",
+      "choco",
     ];
 
     // Check if any drink keyword is in the name
     return drinkKeywords.some((keyword) => name.includes(keyword));
   };
 
-  // ✅ FIXED: Improved food item detection with proper categories
+  // ✅ FIXED: Improved food item detection - ONLY food
   const isFoodItem = (item) => {
     if (!item) return false;
 
@@ -402,32 +446,13 @@ const Bill = ({ orderId }) => {
         "spring rolls",
         "lumpia",
         "siomai",
-        "keto", // Keto items
-        "bento", // Bento meals
-        "tart", // Tarts
-        "cookie", // Cookies
-        "wedges", // Potato wedges
-        "nachos", // Nachos
-        "longganisa", // Filipino sausage
-        "tapa", // Beef tapa
-        "tocino", // Sweet pork
-        "spam", // Spam
-        "hungarian", // Hungarian sausage
-        "carbonara", // Pasta
-        "pesto", // Pasta
-        "omelette", // Egg dish
-        "spaghetti", // Pasta
-        "pasta", // Pasta
-        "noodle", // Noodles
-        "noodles",
-        "rice", // Rice dishes
-        "chicken", // Chicken dishes
-        "beef", // Beef dishes
-        "pork", // Pork dishes
-        "fish", // Fish dishes
-        "bangus", // Milkfish
-        "embutido", // Filipino embutido
-        "shanghai", // Spring rolls
+        "keto",
+        "bento",
+        "tart",
+        "cookie",
+        "wedges",
+        "nachos",
+        "longganisa",
       ];
 
       if (foodCategories.some((foodCat) => category.includes(foodCat))) {
@@ -435,18 +460,98 @@ const Bill = ({ orderId }) => {
       }
     }
 
-    // Check name for food keywords - UPDATED with more specific keywords
+    // Check name for food keywords - ONLY food
     const name = item.name ? item.name.toLowerCase() : "";
+
+    // First, check for drink keywords in the name
+    const drinkKeywordsInName = [
+      "drink",
+      "juice",
+      "soda",
+      "water",
+      "coffee",
+      "tea",
+      "milkshake",
+      "smoothie",
+      "softdrink",
+      "beverage",
+      "shake",
+      "coke",
+      "pepsi",
+      "cola",
+      "lemonade",
+      "iced tea",
+      "iced coffee",
+      "hot coffee",
+      "frappe",
+      "frappuccino",
+      "bubble tea",
+      "milk tea",
+      "brewed",
+      "milk",
+      "cocoa",
+      "hot chocolate",
+      "latte",
+      "cappuccino",
+      "espresso",
+      "americano",
+      "macchiato",
+      "mocha",
+      "matcha",
+    ];
+
+    // If it has any drink keyword in the name, it's NOT food
+    if (drinkKeywordsInName.some((keyword) => name.includes(keyword))) {
+      return false;
+    }
+
+    // Now check for food keywords
     const foodKeywords = [
-      "bangus",
-      "embutido",
+      // Specific food items from your list
+      "omelette",
+      "pork shanghai",
       "shanghai",
+      "longganisa",
+      "longanisa",
+      "bangus shanghai",
+      "bangus",
+      "milkfish",
+      "spam",
+      "embutido",
+      "hungarian",
+      "sausage",
+      "tapa",
+      "beef tapa",
+      "pork tocino",
+      "tocino",
+      "bacon",
+      "keto pandesal",
+      "pandesal",
       "rice",
-      "chicken",
-      "beef",
-      "pork",
-      "fish",
-      "pasta",
+      "egg",
+      "eggs",
+      "carbonara",
+      "pesto",
+      "egg tart",
+      "tart",
+      "banana bread",
+      "bread",
+      "cookies",
+      "cookie",
+      "potato wedges",
+      "potato",
+      "wedges",
+      "nachos",
+      "cheesecake",
+      "regular cheesecake",
+      "keto cheesecake",
+      "bento combo",
+      "bento",
+      "mini box",
+      "box",
+      "mini cake",
+
+      // General food keywords
       "burger",
       "sandwich",
       "steak",
@@ -458,59 +563,6 @@ const Bill = ({ orderId }) => {
       "curry",
       "taco",
       "burrito",
-      "breakfast",
-      "lunch",
-      "dinner",
-      "appetizer",
-      "dessert",
-      "snack",
-      "cake",
-      "pie",
-      "bread",
-      "roll",
-      "egg",
-      "bacon",
-      "sausage",
-      "ham",
-      "cheese",
-      "butter",
-      "sauce",
-      "gravy",
-      "potato",
-      "vegetable",
-      "fruit",
-      "seafood",
-      "meat",
-      "nugget",
-      "wing",
-      "drumstick",
-      "fillet",
-      "cutlet",
-      "patty",
-      "ball",
-      "stick",
-      "finger",
-      "dumpling",
-      "spring roll",
-      "lumpia",
-      "siomai",
-      "keto",
-      "bento",
-      "tart",
-      "cookie",
-      "wedges",
-      "nachos",
-      "longganisa",
-      "tapa",
-      "tocino",
-      "spam",
-      "hungarian",
-      "carbonara",
-      "pesto",
-      "omelette",
-      "carbonara",
-      "spaghetti",
-      "noodles",
       "filipino",
       "asian",
       "western",
@@ -519,8 +571,51 @@ const Bill = ({ orderId }) => {
       "combo",
       "set",
       "dish",
+      "pasta",
+      "spaghetti",
+      "noodles",
+      "carbonara",
+      "pesto",
     ];
 
+    // Check for exact match first
+    const exactMatches = [
+      "omelette",
+      "pork shanghai",
+      "longganisa",
+      "bangus shanghai",
+      "spam",
+      "embutido",
+      "hungarian",
+      "tapa",
+      "pork tocino",
+      "bacon",
+      "keto pandesal",
+      "rice",
+      "egg",
+      "carbonara",
+      "pesto",
+      "egg tart",
+      "banana bread",
+      "cookies",
+      "potato wedges",
+      "nachos",
+      "regular cheesecake",
+      "keto cheesecake",
+      "bento combo",
+      "bento",
+      "mini box",
+      "mini cake",
+    ];
+
+    // Check for exact match
+    for (const exactName of exactMatches) {
+      if (name.includes(exactName)) {
+        return true;
+      }
+    }
+
+    // Check for partial matches
     return foodKeywords.some((keyword) => name.includes(keyword));
   };
 
@@ -534,7 +629,15 @@ const Bill = ({ orderId }) => {
     }
 
     // Determine based on category/name
-    return isDrinkItem(item) ? "drink" : "food";
+    const isDrink = isDrinkItem(item);
+    const isFood = isFoodItem(item);
+
+    // If it's both or neither, use default logic
+    if (isDrink && !isFood) return "drink";
+    if (isFood && !isDrink) return "food";
+
+    // Default to food if ambiguous
+    return "food";
   };
 
   // Get unique key for an item
@@ -956,10 +1059,8 @@ const Bill = ({ orderId }) => {
     setCustomDiscountApplied(false); // Clear custom discount too
   };
 
-  // ✅ FIXED: Get all eligible items for PWD/Senior discount
+  // ✅ FIXED: Get all eligible items for PWD/Senior discount - NOW PROPERLY SEPARATED
   const getEligibleItemsForDiscount = () => {
-    console.log("Checking eligible items from cart:", combinedCart);
-
     const eligibleItems = combinedCart.filter((item) => {
       if (!item) return false;
 
@@ -969,22 +1070,14 @@ const Bill = ({ orderId }) => {
       const isDrink = isDrinkItem(item);
       const isFood = isFoodItem(item);
 
-      console.log(
-        `Item: ${item.name}, isDrink: ${isDrink}, isFood: ${isFood}, category: ${item.category}, tag: ${item.tag}`
-      );
-
       // Only food and drink items are eligible
       return isFood || isDrink;
     });
 
-    console.log(
-      "Eligible items found:",
-      eligibleItems.map((item) => item.name)
-    );
     return eligibleItems;
   };
 
-  // ✅ FIXED: Get eligible items by type
+  // ✅ FIXED: Get eligible items by type - NOW PROPERLY SEPARATED
   const getEligibleItemsByType = () => {
     const eligibleItems = getEligibleItemsForDiscount();
     const drinks = eligibleItems.filter((item) => isDrinkItem(item));
@@ -1158,7 +1251,7 @@ const Bill = ({ orderId }) => {
   const handleCancelPwdSeniorSelection = () => {
     setShowPwdSeniorSelection(false);
     setPwdSeniorDiscountItems([]);
-    setActiveCategory(null);
+    setActiveCategory("drinks");
   };
 
   // Clear PWD/Senior discount
@@ -1397,6 +1490,7 @@ const Bill = ({ orderId }) => {
         };
       })
       .filter((item) => item !== null);
+
     // Prepare customer details
     const customerName =
       customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer";
@@ -1632,10 +1726,14 @@ const Bill = ({ orderId }) => {
 
       setIsProcessing(false);
 
-      // ✅ FIXED: Generate invoice data and show Invoice component
+      // ✅ FIXED: Generate invoice data and show Invoice component - This is the key fix
       const invoiceData = generateInvoiceData(orderData, data);
       setInvoiceData(invoiceData);
-      setShowInvoice(true);
+
+      // ✅ FIXED: Delay showing invoice to ensure state is updated
+      setTimeout(() => {
+        setShowInvoice(true);
+      }, 100);
     },
     onError: (error) => {
       console.error("❌ Order placement error:", error);
@@ -1783,7 +1881,7 @@ const Bill = ({ orderId }) => {
     });
     setShowMixedPaymentModal(false);
     setShowCustomDiscountModal(false); // ✅ Reset custom discount modal
-    setActiveCategory(null);
+    setActiveCategory("drinks");
     setIsProcessing(false);
     setShowNextOrderConfirm(false);
 
@@ -1837,6 +1935,16 @@ const Bill = ({ orderId }) => {
 
   // ✅ NEW: Pending orders counter
   const pendingOrderCount = pendingOrders.length;
+
+  // ✅ FIXED: Get items for active category
+  const getItemsForActiveCategory = () => {
+    if (activeCategory === "drinks") {
+      return getEligibleItemsForDiscount().filter((item) => isDrinkItem(item));
+    } else if (activeCategory === "food") {
+      return getEligibleItemsForDiscount().filter((item) => isFoodItem(item));
+    }
+    return [];
+  };
 
   // ✅ FIXED: Main render logic
   if (!currentOrder && !showInvoice) {
@@ -1915,6 +2023,30 @@ const Bill = ({ orderId }) => {
 
   return (
     <>
+      {/* ✅ FIXED: Invoice Component - Now properly pops up */}
+      {showInvoice && invoiceData && (
+        <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden animate-fadeIn">
+            <div className="relative">
+              <button
+                onClick={handleCloseInvoice}
+                className="absolute top-4 right-4 z-10 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-lg hover:shadow-xl"
+              >
+                ✕
+              </button>
+              <div className="max-h-[85vh] overflow-y-auto">
+                <Invoice
+                  key={Date.now()}
+                  orderInfo={invoiceData}
+                  setShowInvoice={handleCloseInvoice}
+                  disableAutoPrint={false}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ✅ ADDED: Custom Discount Modal */}
       {showCustomDiscountModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
@@ -2073,29 +2205,7 @@ const Bill = ({ orderId }) => {
         </div>
       )}
 
-      {/* ✅ ADDED: Invoice Component */}
-      {showInvoice && invoiceData && (
-        <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
-          <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-            <div className="relative">
-              <button
-                onClick={handleCloseInvoice}
-                className="absolute top-4 right-4 z-10 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-              >
-                ✕
-              </button>
-              <Invoice
-                key={Date.now()}
-                orderInfo={invoiceData}
-                setShowInvoice={handleCloseInvoice}
-                disableAutoPrint={false}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ✅ FIXED: PWD/Senior Selection Modal - Now separates drinks and food */}
+      {/* ✅ FIXED: PWD/Senior Selection Modal - Now properly separates drinks and food */}
       {showPwdSeniorSelection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
           <div className="bg-white rounded-lg w-full max-w-6xl h-[90vh] max-h-[90vh] flex flex-col shadow-xl overflow-hidden">
@@ -2113,14 +2223,10 @@ const Bill = ({ orderId }) => {
                 </div>
                 <div className="flex items-center gap-2">
                   <div className="px-3 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
-                    <span className="font-bold">{combinedCart.length}</span>{" "}
-                    items in cart
-                  </div>
-                  <div className="px-3 py-1 bg-green-100 text-green-800 text-xs font-medium rounded-full">
                     <span className="font-bold">
                       {getEligibleItemsForDiscount().length}
                     </span>{" "}
-                    eligible
+                    eligible items
                   </div>
                   <div className="px-3 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
                     <span className="font-bold">
@@ -2376,7 +2482,7 @@ const Bill = ({ orderId }) => {
                     <button
                       onClick={() => setActiveCategory("drinks")}
                       className={`px-4 py-2 text-sm font-medium border-b-2 ${
-                        activeCategory === "drinks" || activeCategory === null
+                        activeCategory === "drinks"
                           ? "border-blue-500 text-blue-600"
                           : "border-transparent text-gray-500 hover:text-gray-700"
                       }`}
@@ -2413,20 +2519,7 @@ const Bill = ({ orderId }) => {
                 {/* Items Grid - Filtered by active category */}
                 <div className="flex-1 overflow-y-auto">
                   {(() => {
-                    // Get items based on active category
-                    let itemsToShow = [];
-                    if (
-                      activeCategory === "drinks" ||
-                      activeCategory === null
-                    ) {
-                      itemsToShow = getEligibleItemsForDiscount().filter(
-                        (item) => isDrinkItem(item)
-                      );
-                    } else if (activeCategory === "food") {
-                      itemsToShow = getEligibleItemsForDiscount().filter(
-                        (item) => isFoodItem(item)
-                      );
-                    }
+                    const itemsToShow = getItemsForActiveCategory();
 
                     if (itemsToShow.length > 0) {
                       return (
@@ -2605,7 +2698,7 @@ const Bill = ({ orderId }) => {
                             )}
                           </div>
                           <h5 className="text-gray-500 font-medium mb-2">
-                            No {activeCategory || "drinks"} items found
+                            No {activeCategory} items found
                           </h5>
                           <p className="text-gray-400 text-sm text-center max-w-md">
                             {activeCategory === "drinks"

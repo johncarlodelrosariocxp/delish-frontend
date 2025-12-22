@@ -7,6 +7,7 @@ import {
   MdCheckCircle,
   MdPrint,
   MdDoneAll,
+  MdReceipt,
 } from "react-icons/md";
 import MenuContainer from "../components/menu/MenuContainer";
 import CustomerInfo from "../components/menu/CustomerInfo";
@@ -34,7 +35,7 @@ const Menu = () => {
     activeOrderId,
     completedOrders,
     recentCompletedOrder,
-    showInvoiceForOrder,
+    showInvoice,
   } = useSelector((state) => state.order);
 
   const [activeTab, setActiveTab] = useState("active");
@@ -42,11 +43,15 @@ const Menu = () => {
   const [showCompletionLoading, setShowCompletionLoading] = useState(false);
   const [showCompleteButton, setShowCompleteButton] = useState(false);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [manualCompleteClicked, setManualCompleteClicked] = useState(false);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [autoSwitchOrder, setAutoSwitchOrder] = useState(false);
 
   // Use refs to track completion state
   const pendingCompletionRef = useRef(null);
   const completionTimeoutRef = useRef(null);
   const initialLoadRef = useRef(true);
+  const invoiceClosedRef = useRef(false);
 
   // Filter orders - only active and completed
   const activeOrders = orders.filter((order) => order.status === "active");
@@ -59,8 +64,8 @@ const Menu = () => {
   // ✅ Initialize - create first order if no active orders
   useEffect(() => {
     const initializeOrders = () => {
-      if (activeOrders.length === 0 && !recentCompletedOrder) {
-        // Only create new order on initial load or when we're not showing invoice
+      if (activeOrders.length === 0) {
+        // Only create new order on initial load
         if (initialLoadRef.current) {
           dispatch(createNewOrder());
           initialLoadRef.current = false;
@@ -70,7 +75,7 @@ const Menu = () => {
     };
 
     initializeOrders();
-  }, [activeOrders.length, recentCompletedOrder, dispatch]);
+  }, [activeOrders.length, dispatch]);
 
   // ✅ Check if order is ready for completion
   useEffect(() => {
@@ -92,7 +97,7 @@ const Menu = () => {
 
   // ✅ Monitor for order completion trigger from Bill component (auto-completion)
   useEffect(() => {
-    if (currentActiveOrder && showCompleteButton) {
+    if (currentActiveOrder && showCompleteButton && !manualCompleteClicked) {
       // If order is ready for completion and auto-completion is enabled
       // Check if this order is already pending completion
       if (pendingCompletionRef.current !== currentActiveOrder.id) {
@@ -116,7 +121,41 @@ const Menu = () => {
         clearTimeout(completionTimeoutRef.current);
       }
     };
-  }, [currentActiveOrder, showCompleteButton]);
+  }, [currentActiveOrder, showCompleteButton, manualCompleteClicked]);
+
+  // ✅ Handle invoice state changes
+  useEffect(() => {
+    // Show invoice modal when there's a recent completed order
+    if (recentCompletedOrder && showInvoice) {
+      setShowInvoiceModal(true);
+      invoiceClosedRef.current = false;
+    } else {
+      setShowInvoiceModal(false);
+    }
+  }, [recentCompletedOrder, showInvoice]);
+
+  // ✅ Handle auto-switching to next order after completion
+  useEffect(() => {
+    if (autoSwitchOrder && activeOrders.length > 0) {
+      // Find the most recent active order (excluding the one that was just completed)
+      const remainingOrders = orders.filter(
+        (order) =>
+          order.status === "active" && order.id !== recentCompletedOrder?.id
+      );
+
+      if (remainingOrders.length > 0) {
+        // Switch to the first remaining active order
+        dispatch(switchOrder(remainingOrders[0].id));
+      } else {
+        // Create a new order if no active orders remain
+        setTimeout(() => {
+          dispatch(createNewOrder());
+        }, 300);
+      }
+
+      setAutoSwitchOrder(false);
+    }
+  }, [autoSwitchOrder, activeOrders, orders, dispatch, recentCompletedOrder]);
 
   // ✅ Manual function to complete order
   const handleCompleteOrder = () => {
@@ -136,6 +175,7 @@ const Menu = () => {
       return;
     }
 
+    setManualCompleteClicked(true);
     setShowCompletionLoading(true);
 
     // Clear any pending timeout
@@ -156,60 +196,54 @@ const Menu = () => {
     setTimeout(() => {
       setShowCompletionLoading(false);
       pendingCompletionRef.current = null;
+
+      // Set flag to auto-switch to next order
+      setAutoSwitchOrder(true);
     }, 1000);
   };
 
-  // ✅ Handle when order completion is successful (invoice shows up)
-  useEffect(() => {
-    if (recentCompletedOrder && showInvoiceForOrder) {
-      // Successfully completed order, invoice is showing
-      console.log("Order completed, invoice showing:", recentCompletedOrder.id);
-
-      // Auto-switch to next active order after a delay
-      const switchTimeout = setTimeout(() => {
-        const remainingActiveOrders = orders.filter(
-          (order) =>
-            order.status === "active" && order.id !== recentCompletedOrder.id
-        );
-
-        if (remainingActiveOrders.length > 0) {
-          // Switch to the next active order
-          dispatch(switchOrder(remainingActiveOrders[0].id));
-        } else {
-          // No active orders left, create a new one
-          dispatch(createNewOrder());
-        }
-      }, 100);
-
-      return () => clearTimeout(switchTimeout);
-    }
-  }, [recentCompletedOrder, showInvoiceForOrder, orders, dispatch]);
-
   // ✅ Handle invoice close
   const handleCloseInvoice = () => {
+    setShowInvoiceModal(false);
     dispatch(hideInvoice());
     dispatch(clearRecentCompletedOrder());
 
     // Reset refs
     pendingCompletionRef.current = null;
+    setManualCompleteClicked(false);
+    invoiceClosedRef.current = true;
 
-    // Check if we need to create a new order
+    // Check if we need to create a new order or switch to existing one
     const remainingActiveOrders = orders.filter(
       (order) => order.status === "active"
     );
 
     if (remainingActiveOrders.length === 0) {
+      // No active orders, create a new one
       setTimeout(() => {
         dispatch(createNewOrder());
+      }, 200);
+    } else {
+      // Switch to the first active order
+      setTimeout(() => {
+        dispatch(switchOrder(remainingActiveOrders[0].id));
       }, 200);
     }
   };
 
+  // ✅ Handle order completion from Bill component
+  const handleOrderCompletionFromBill = () => {
+    setManualCompleteClicked(true);
+    handleCompleteOrder();
+  };
+
+  // ✅ Handle adding new order and switching to it
   const handleAddNewOrder = () => {
     dispatch(createNewOrder());
     setActiveTab("active");
   };
 
+  // ✅ Handle switching to a specific order
   const handleSwitchOrder = (orderId) => {
     const order = orders.find((order) => order.id === orderId);
     if (order && order.status === "active") {
@@ -218,10 +252,23 @@ const Menu = () => {
     }
   };
 
+  // ✅ Handle closing an order
   const handleCloseOrder = (orderId, event) => {
     event.stopPropagation();
     if (activeOrders.length > 1) {
       dispatch(closeOrder(orderId));
+
+      // If we're closing the current active order, switch to another one
+      if (orderId === activeOrderId) {
+        const remainingOrders = activeOrders.filter(
+          (order) => order.id !== orderId
+        );
+        if (remainingOrders.length > 0) {
+          setTimeout(() => {
+            dispatch(switchOrder(remainingOrders[0].id));
+          }, 100);
+        }
+      }
     }
   };
 
@@ -250,7 +297,9 @@ const Menu = () => {
 
   // Print completed order receipt
   const handlePrintOrder = async (order, event) => {
-    event.stopPropagation();
+    if (event && event.stopPropagation) {
+      event.stopPropagation();
+    }
     setPrintingOrderId(order.id);
 
     try {
@@ -435,22 +484,54 @@ const Menu = () => {
 
   return (
     <section className="bg-white min-h-screen flex flex-col">
-      {/* ✅ INVOICE MODAL - Automatically show when recentCompletedOrder exists */}
-      {showInvoiceForOrder && recentCompletedOrder && (
-        <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
+      {/* ✅ INVOICE MODAL - Shows when order is completed */}
+      {showInvoiceModal && recentCompletedOrder && (
+        <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
             <div className="relative">
-              <button
-                onClick={handleCloseInvoice}
-                className="absolute top-4 right-4 z-10 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600"
-              >
-                ✕
-              </button>
-              <Invoice
-                key={Date.now()}
-                orderInfo={recentCompletedOrder}
-                setShowInvoice={handleCloseInvoice}
-              />
+              <div className="flex justify-between items-center p-4 border-b bg-gray-50">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-800">
+                    Order #{recentCompletedOrder.number} Invoice
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Customer:{" "}
+                    {recentCompletedOrder.customer?.customerName || "Walk-in"}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handlePrintOrder(recentCompletedOrder)}
+                    disabled={printingOrderId === recentCompletedOrder.id}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {printingOrderId === recentCompletedOrder.id ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        <span>Printing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <MdPrint size={20} />
+                        <span>Print Receipt</span>
+                      </>
+                    )}
+                  </button>
+                  <button
+                    onClick={handleCloseInvoice}
+                    className="w-10 h-10 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-lg"
+                  >
+                    ✕
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-[calc(90vh-80px)] overflow-y-auto">
+                <Invoice
+                  key={recentCompletedOrder.id}
+                  orderInfo={recentCompletedOrder}
+                  setShowInvoice={handleCloseInvoice}
+                />
+              </div>
             </div>
           </div>
         </div>
@@ -466,7 +547,10 @@ const Menu = () => {
               : "bg-gray-300 text-gray-600 hover:bg-gray-250"
           }`}
         >
-          Active Orders ({activeOrders.length})
+          <div className="flex items-center gap-2">
+            <MdRestaurantMenu size={18} />
+            <span>Active Orders ({activeOrders.length})</span>
+          </div>
         </button>
 
         <button
@@ -477,7 +561,10 @@ const Menu = () => {
               : "bg-gray-300 text-gray-600 hover:bg-gray-250"
           }`}
         >
-          Completed ({completedOrders.length})
+          <div className="flex items-center gap-2">
+            <MdCheckCircle size={18} />
+            <span>Completed ({completedOrders.length})</span>
+          </div>
         </button>
       </div>
 
@@ -497,7 +584,10 @@ const Menu = () => {
               onClick={() => handleSwitchOrder(order.id)}
             >
               <span className="text-sm font-medium whitespace-nowrap">
-                Order {order.number}
+                <div className="flex items-center gap-1">
+                  <MdReceipt size={14} />
+                  <span>Order {order.number}</span>
+                </div>
               </span>
               {order.items.length > 0 && (
                 <span className="bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center flex-shrink-0">
@@ -570,24 +660,44 @@ const Menu = () => {
 
                   {/* Bills - Fixed at bottom */}
                   <div className="flex-shrink-0">
-                    <Bill orderId={activeOrderId} />
+                    <Bill
+                      orderId={activeOrderId}
+                      onOrderComplete={handleOrderCompletionFromBill}
+                    />
                   </div>
 
                   {/* Complete Order Button - Fixed at bottom of sidebar */}
-                  {showCompleteButton && (
-                    <div className="p-3 border-t border-gray-300 bg-green-50">
+                  {showCompleteButton && !showInvoiceModal && (
+                    <div className="p-3 border-t border-gray-300 bg-gradient-to-r from-green-50 to-emerald-50">
+                      <div className="mb-2 text-center">
+                        <p className="text-sm text-gray-600 font-medium">
+                          Order #{currentActiveOrder?.number} Ready
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {manualCompleteClicked
+                            ? "Processing order..."
+                            : "Will auto-complete in 2 seconds..."}
+                        </p>
+                      </div>
                       <button
                         onClick={handleCompleteOrder}
-                        className="w-full bg-green-500 hover:bg-green-600 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-colors"
+                        disabled={
+                          showCompletionLoading || manualCompleteClicked
+                        }
+                        className="w-full bg-gradient-to-r from-green-500 to-emerald-600 hover:from-green-600 hover:to-emerald-700 text-white font-semibold py-3 px-4 rounded-lg flex items-center justify-center gap-2 transition-all shadow-md disabled:opacity-70 disabled:cursor-not-allowed"
                       >
-                        <MdDoneAll size={20} />
-                        <span>
-                          Complete Order #{currentActiveOrder?.number}
-                        </span>
+                        {showCompletionLoading ? (
+                          <>
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white"></div>
+                            <span>Processing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <MdDoneAll size={20} />
+                            <span>Complete Order Now</span>
+                          </>
+                        )}
                       </button>
-                      <p className="text-xs text-gray-500 text-center mt-1">
-                        Order will auto-complete in 2 seconds...
-                      </p>
                     </div>
                   )}
                 </div>
@@ -598,13 +708,35 @@ const Menu = () => {
           /* Completed Orders View */
           <div className="flex-1 bg-white rounded-lg p-6">
             <div className="flex justify-between items-center mb-6">
-              <h2 className="text-xl font-bold text-gray-900">
-                Completed Orders
-              </h2>
+              <div>
+                <h2 className="text-2xl font-bold text-gray-900">
+                  Order History
+                </h2>
+                <p className="text-gray-600 text-sm">
+                  View all completed orders and print receipts
+                </p>
+              </div>
               {completedOrders.length > 0 && (
-                <span className="bg-green-100 text-green-800 text-sm font-medium px-3 py-1 rounded-full">
-                  {completedOrders.length} orders
-                </span>
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      // Print all receipts
+                      completedOrders.forEach((order) => {
+                        setTimeout(() => {
+                          const receiptText = generateReceiptText(order);
+                          console.log(receiptText); // You can implement batch printing here
+                        }, 100);
+                      });
+                    }}
+                    className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 transition-colors"
+                  >
+                    <MdPrint size={18} />
+                    <span>Batch Print</span>
+                  </button>
+                  <span className="bg-green-100 text-green-800 text-sm font-medium px-3 py-1 rounded-full">
+                    {completedOrders.length} orders
+                  </span>
+                </div>
               )}
             </div>
 
@@ -617,27 +749,43 @@ const Menu = () => {
                 </p>
                 <button
                   onClick={() => setActiveTab("active")}
-                  className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors"
+                  className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 transition-colors flex items-center gap-2 mx-auto"
                 >
+                  <MdRestaurantMenu size={18} />
                   Go to Active Orders
                 </button>
               </div>
             ) : (
-              <div className="space-y-4 max-h-[calc(100vh-12rem)] overflow-y-auto">
+              <div className="space-y-4 max-h-[calc(100vh-12rem)] overflow-y-auto pr-2">
                 {completedOrders.map((order) => (
                   <div
                     key={order.id}
-                    className="bg-green-50 border border-green-200 rounded-lg p-4 hover:bg-green-100 transition-colors"
+                    className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 hover:from-green-100 hover:to-emerald-100 transition-all duration-200 shadow-sm hover:shadow-md"
                   >
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex-1">
-                        <h3 className="font-semibold text-green-800 text-lg">
-                          Order {order.number}
-                        </h3>
-                        <p className="text-green-700 font-medium">
-                          {order.customer?.customerName || "Walk-in Customer"}
-                        </p>
-                        <p className="text-green-600 text-sm mt-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <MdReceipt className="text-green-600" size={20} />
+                          <h3 className="font-bold text-green-900 text-lg">
+                            Order #{order.number}
+                          </h3>
+                          {order.bills?.total && (
+                            <span className="bg-green-600 text-white text-xs font-bold px-2 py-1 rounded-full">
+                              {formatCurrency(order.bills.total)}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-4 text-sm">
+                          <p className="text-green-800 font-medium">
+                            <span className="font-semibold">Customer:</span>{" "}
+                            {order.customer?.customerName || "Walk-in"}
+                          </p>
+                          <p className="text-green-700">
+                            <span className="font-semibold">Payment:</span>{" "}
+                            {order.paymentMethod || "Cash"}
+                          </p>
+                        </div>
+                        <p className="text-green-600 text-xs mt-1">
                           Completed:{" "}
                           {order.completedAt
                             ? formatDate(order.completedAt)
@@ -648,120 +796,179 @@ const Menu = () => {
                         <button
                           onClick={(e) => handlePrintOrder(order, e)}
                           disabled={printingOrderId === order.id}
-                          className="bg-blue-500 hover:bg-blue-600 text-white p-2 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                          className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white p-2 rounded-lg transition-all shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                           title="Print Receipt"
                         >
                           {printingOrderId === order.id ? (
                             <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
                           ) : (
-                            <MdPrint size={20} />
+                            <>
+                              <MdPrint size={18} />
+                              <span className="text-xs hidden sm:inline">
+                                Print
+                              </span>
+                            </>
                           )}
                         </button>
                         <MdCheckCircle className="text-green-500 text-2xl flex-shrink-0" />
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4 text-green-700 text-sm">
-                      <div>
-                        <p className="font-medium">Items</p>
-                        <p>{order.items?.length || 0} items</p>
-                      </div>
-                      <div>
-                        <p className="font-medium">Total Amount</p>
-                        <p className="font-bold">
-                          {calculateTotalAmount(order)}
-                        </p>
-                      </div>
-                      {order.paymentMethod && (
-                        <div className="col-span-2">
-                          <p className="font-medium">Payment Method</p>
-                          <p className="font-bold">{order.paymentMethod}</p>
+                    {/* Order Summary */}
+                    <div className="mt-4">
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-3">
+                        <div className="bg-white rounded p-3 border border-green-100">
+                          <p className="text-green-700 text-xs font-semibold uppercase mb-1">
+                            Items Count
+                          </p>
+                          <p className="text-green-900 font-bold text-lg">
+                            {order.items?.length || 0} items
+                          </p>
+                          <p className="text-green-600 text-xs">
+                            {order.items?.reduce(
+                              (total, item) => total + (item.quantity || 1),
+                              0
+                            ) || 0}{" "}
+                            total qty
+                          </p>
                         </div>
-                      )}
-                    </div>
 
-                    {order.items && order.items.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-green-200">
-                        <p className="text-green-600 text-sm font-medium mb-2">
-                          Items Ordered:
-                        </p>
-                        <div className="space-y-1">
-                          {order.items.slice(0, 3).map((item, index) => (
-                            <div
-                              key={index}
-                              className="flex justify-between text-green-700 text-xs"
-                            >
-                              <span>
-                                {item.quantity}x {item.name}
-                                {item.isRedeemed && (
-                                  <span className="ml-1 text-blue-600">
-                                    (Redeemed)
-                                  </span>
-                                )}
-                                {item.isPwdSssDiscounted && (
-                                  <span className="ml-1 text-green-600">
-                                    (PWD/SSS 20% off)
-                                  </span>
-                                )}
-                              </span>
-                              <span>{calculateItemTotal(item)}</span>
-                            </div>
-                          ))}
-                          {order.items.length > 3 && (
+                        <div className="bg-white rounded p-3 border border-green-100">
+                          <p className="text-green-700 text-xs font-semibold uppercase mb-1">
+                            Total Amount
+                          </p>
+                          <p className="text-green-900 font-bold text-lg">
+                            {calculateTotalAmount(order)}
+                          </p>
+                          {order.bills?.subtotal && (
                             <p className="text-green-600 text-xs">
-                              +{order.items.length - 3} more items
+                              Subtotal: {formatCurrency(order.bills.subtotal)}
                             </p>
                           )}
                         </div>
-                      </div>
-                    )}
 
-                    {/* Show discounts if available */}
-                    {order.bills && (
-                      <div className="mt-3 pt-3 border-t border-green-200">
-                        <p className="text-green-600 text-sm font-medium mb-2">
-                          Discounts Applied:
-                        </p>
-                        <div className="space-y-1 text-green-700 text-xs">
-                          {order.bills.pwdSssDiscount > 0 && (
-                            <div className="flex justify-between">
-                              <span>PWD/SSS Discount:</span>
-                              <span className="text-red-600">
-                                -{formatCurrency(order.bills.pwdSssDiscount)}
-                              </span>
-                            </div>
-                          )}
-                          {order.bills.redemptionDiscount > 0 && (
-                            <div className="flex justify-between">
-                              <span>Redemption Discount:</span>
-                              <span className="text-red-600">
-                                -
-                                {formatCurrency(order.bills.redemptionDiscount)}
-                              </span>
-                            </div>
-                          )}
-                          {order.bills.employeeDiscount > 0 && (
-                            <div className="flex justify-between">
-                              <span>Employee Discount:</span>
-                              <span className="text-red-600">
-                                -{formatCurrency(order.bills.employeeDiscount)}
-                              </span>
-                            </div>
-                          )}
-                          {order.bills.shareholderDiscount > 0 && (
-                            <div className="flex justify-between">
-                              <span>Shareholder Discount:</span>
-                              <span className="text-red-600">
-                                -
-                                {formatCurrency(
-                                  order.bills.shareholderDiscount
-                                )}
-                              </span>
-                            </div>
-                          )}
+                        <div className="bg-white rounded p-3 border border-green-100">
+                          <p className="text-green-700 text-xs font-semibold uppercase mb-1">
+                            Payment Method
+                          </p>
+                          <p className="text-green-900 font-bold text-lg">
+                            {order.paymentMethod || "Cash"}
+                          </p>
+                          <p className="text-green-600 text-xs">
+                            Status: COMPLETED
+                          </p>
                         </div>
                       </div>
-                    )}
+
+                      {/* Order Items Preview */}
+                      {order.items && order.items.length > 0 && (
+                        <div className="mt-3 pt-3 border-t border-green-200">
+                          <p className="text-green-600 text-sm font-semibold mb-2">
+                            Items Ordered:
+                          </p>
+                          <div className="space-y-2">
+                            {order.items.slice(0, 3).map((item, index) => (
+                              <div
+                                key={index}
+                                className="flex justify-between items-center bg-white rounded p-2 border border-green-100"
+                              >
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-green-900 font-medium">
+                                      {item.quantity}x {item.name}
+                                    </span>
+                                    {item.isRedeemed && (
+                                      <span className="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full">
+                                        Redeemed
+                                      </span>
+                                    )}
+                                    {item.isPwdSssDiscounted && (
+                                      <span className="bg-green-100 text-green-800 text-xs px-2 py-0.5 rounded-full">
+                                        PWD/SSS 20% off
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-green-600 text-xs">
+                                    Unit:{" "}
+                                    {formatCurrency(
+                                      item.pricePerQuantity || item.price || 0
+                                    )}
+                                  </p>
+                                </div>
+                                <span className="font-bold text-green-900">
+                                  {calculateItemTotal(item)}
+                                </span>
+                              </div>
+                            ))}
+                            {order.items.length > 3 && (
+                              <div className="text-center">
+                                <p className="text-green-600 text-sm">
+                                  +{order.items.length - 3} more items
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Discounts Summary */}
+                      {order.bills && (
+                        <div className="mt-3 pt-3 border-t border-green-200">
+                          <p className="text-green-600 text-sm font-semibold mb-2">
+                            Discounts Applied:
+                          </p>
+                          <div className="grid grid-cols-2 gap-2">
+                            {order.bills.pwdSssDiscount > 0 && (
+                              <div className="bg-red-50 border border-red-100 rounded p-2">
+                                <p className="text-red-700 text-xs font-semibold">
+                                  PWD/SSS Discount
+                                </p>
+                                <p className="text-red-900 font-bold">
+                                  -{formatCurrency(order.bills.pwdSssDiscount)}
+                                </p>
+                              </div>
+                            )}
+                            {order.bills.redemptionDiscount > 0 && (
+                              <div className="bg-blue-50 border border-blue-100 rounded p-2">
+                                <p className="text-blue-700 text-xs font-semibold">
+                                  Redemption
+                                </p>
+                                <p className="text-blue-900 font-bold">
+                                  -
+                                  {formatCurrency(
+                                    order.bills.redemptionDiscount
+                                  )}
+                                </p>
+                              </div>
+                            )}
+                            {order.bills.employeeDiscount > 0 && (
+                              <div className="bg-purple-50 border border-purple-100 rounded p-2">
+                                <p className="text-purple-700 text-xs font-semibold">
+                                  Employee
+                                </p>
+                                <p className="text-purple-900 font-bold">
+                                  -
+                                  {formatCurrency(order.bills.employeeDiscount)}
+                                </p>
+                              </div>
+                            )}
+                            {order.bills.shareholderDiscount > 0 && (
+                              <div className="bg-yellow-50 border border-yellow-100 rounded p-2">
+                                <p className="text-yellow-700 text-xs font-semibold">
+                                  Shareholder
+                                </p>
+                                <p className="text-yellow-900 font-bold">
+                                  -
+                                  {formatCurrency(
+                                    order.bills.shareholderDiscount
+                                  )}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -777,5 +984,24 @@ const Menu = () => {
     </section>
   );
 };
+
+// Add CSS animations
+const styles = `
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fadeIn {
+  animation: fadeIn 0.3s ease-out;
+}
+`;
+
+// Add styles to document head
+if (typeof document !== "undefined") {
+  const styleSheet = document.createElement("style");
+  styleSheet.innerText = styles;
+  document.head.appendChild(styleSheet);
+}
 
 export default Menu;

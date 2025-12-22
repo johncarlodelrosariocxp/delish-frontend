@@ -21,6 +21,7 @@ import useLoadData from "./hooks/useLoadData";
 import FullScreenLoader from "./components/shared/FullScreenLoader";
 import PropTypes from "prop-types";
 import { setUser } from "./redux/slices/userSlice";
+import { BluetoothProvider } from "./contexts/BluetoothContext";
 
 // Custom hook for landscape detection
 const useLandscape = () => {
@@ -629,9 +630,11 @@ function App() {
   }, []);
 
   return (
-    <Router>
-      <Layout />
-    </Router>
+    <BluetoothProvider>
+      <Router>
+        <Layout />
+      </Router>
+    </BluetoothProvider>
   );
 }
 
