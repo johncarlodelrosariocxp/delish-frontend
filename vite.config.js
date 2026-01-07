@@ -1,40 +1,23 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react-swc";
-import compression from "vite-plugin-compression";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 import { fileURLToPath } from "url";
-import { splitVendorChunkPlugin } from "vite";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 export default defineConfig({
+  base: "/", // ADD THIS LINE - CRITICAL FOR VERCEl
+
   plugins: [
     react({
       fastRefresh: true,
       removeDevtoolsInProd: true,
     }),
-    splitVendorChunkPlugin(),
-    compression({
-      algorithm: "gzip",
-      ext: ".gz",
-      threshold: 1024,
-      deleteOriginFile: false,
-    }),
-    compression({
-      algorithm: "brotliCompress",
-      ext: ".br",
-      threshold: 1024,
-    }),
     VitePWA({
-      registerType:
-        process.env.NODE_ENV === "production" ? "autoUpdate" : "prompt",
-
-      // Include all public assets
-      includeAssets: ["delish-logo.svg", "favicon.ico", "manifest.json"],
-
-      // Generate proper manifest
+      registerType: "autoUpdate",
+      includeAssets: ["delish-logo.svg"],
       manifest: {
         name: "Delish Restaurant POS",
         short_name: "Delish POS",
@@ -75,53 +58,15 @@ export default defineConfig({
           },
         ],
       },
-
       workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,svg,json,png,jpg,jpeg,gif,webp}"],
+        globPatterns: ["**/*.{js,css,html,svg,json}"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-        navigationPreload: false,
         cleanupOutdatedCaches: true,
-        skipWaiting: false,
-        clientsClaim: false,
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
-            handler: "CacheFirst",
-            options: {
-              cacheName: "google-fonts",
-              expiration: {
-                maxEntries: 4,
-                maxAgeSeconds: 365 * 24 * 60 * 60,
-              },
-            },
-          },
-          {
-            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
-            handler: "StaleWhileRevalidate",
-            options: {
-              cacheName: "images",
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 30 * 24 * 60 * 60,
-              },
-            },
-          },
-        ],
+        skipWaiting: true,
+        clientsClaim: true,
       },
-
       devOptions: {
         enabled: false,
-        type: "module",
-        navigateFallback: false,
-        suppressWarnings: true,
-      },
-
-      strategies: "generateSW",
-      includeManifestIcons: false,
-      disable: false,
-      minify: true,
-      injectManifest: {
-        injectionPoint: undefined,
       },
     }),
   ],
@@ -190,16 +135,6 @@ export default defineConfig({
     cssCodeSplit: true,
     cssMinify: true,
     reportCompressedSize: false,
-    modulePreload: {
-      polyfill: false,
-      resolveDependencies: (filename, deps, { hostId, hostType }) => {
-        if (filename.includes("vendor-react")) {
-          return deps;
-        }
-        return [];
-      },
-    },
-    // Copy public directory files to dist
     copyPublicDir: true,
   },
   optimizeDeps: {
