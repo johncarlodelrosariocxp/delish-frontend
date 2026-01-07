@@ -12,10 +12,12 @@ const __dirname = path.dirname(__filename);
 export default defineConfig({
   plugins: [
     react({
+      // Fix: Ensure proper JSX handling
+      jsxImportSource: "react",
       // Enable Fast Refresh for instant updates
-      fastRefresh: true,
+      fastRefresh: process.env.NODE_ENV === "development",
       // Remove React DevTools in production
-      removeDevtoolsInProd: true,
+      removeDevtoolsInProd: process.env.NODE_ENV === "production",
     }),
     splitVendorChunkPlugin(),
     compression({
@@ -63,6 +65,10 @@ export default defineConfig({
                 maxEntries: 4,
                 maxAgeSeconds: 365 * 24 * 60 * 60, // 365 days
               },
+              // Fix for Vary: Origin warning
+              matchOptions: {
+                ignoreVary: true,
+              },
             },
           },
           {
@@ -73,6 +79,21 @@ export default defineConfig({
               expiration: {
                 maxEntries: 100,
                 maxAgeSeconds: 30 * 24 * 60 * 60, // 30 days
+              },
+              // Fix for Vary: Origin warning
+              matchOptions: {
+                ignoreVary: true,
+              },
+            },
+          },
+          // Add for JS/CSS files to fix warnings
+          {
+            urlPattern: /\.(?:js|css|mjs)$/,
+            handler: "StaleWhileRevalidate",
+            options: {
+              cacheName: "static-resources",
+              matchOptions: {
+                ignoreVary: true,
               },
             },
           },
@@ -103,6 +124,17 @@ export default defineConfig({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      // Fix: Force single React instance to prevent Children error
+      react: path.resolve(__dirname, "node_modules/react"),
+      "react-dom": path.resolve(__dirname, "node_modules/react-dom"),
+      "react/jsx-runtime": path.resolve(
+        __dirname,
+        "node_modules/react/jsx-runtime"
+      ),
+      "react/jsx-dev-runtime": path.resolve(
+        __dirname,
+        "node_modules/react/jsx-dev-runtime"
+      ),
     },
   },
   server: {
@@ -124,28 +156,45 @@ export default defineConfig({
     target: "es2020",
     outDir: "dist",
     assetsDir: "assets",
-    sourcemap: false,
+    sourcemap: process.env.NODE_ENV === "development", // Enable in dev for debugging
     minify: "terser",
     terserOptions: {
       compress: {
-        drop_console: true,
-        drop_debugger: true,
-        pure_funcs: ["console.log", "console.debug"],
-        passes: 3,
+        drop_console: process.env.NODE_ENV === "production",
+        drop_debugger: process.env.NODE_ENV === "production",
+        pure_funcs:
+          process.env.NODE_ENV === "production"
+            ? ["console.log", "console.debug"]
+            : [],
+        passes: 2, // Reduced for faster builds
       },
     },
     rollupOptions: {
       output: {
         manualChunks: (id) => {
-          // Smart chunk splitting
+          // Smart chunk splitting - ensure React stays together
           if (id.includes("node_modules")) {
-            if (id.includes("react") || id.includes("react-dom")) {
+            // Group React core together
+            if (
+              id.includes("node_modules/react") ||
+              id.includes("node_modules/react-dom") ||
+              id.includes("node_modules/scheduler") ||
+              id.includes("react/jsx-runtime")
+            ) {
               return "vendor-react";
             }
             if (id.includes("@reduxjs") || id.includes("react-redux")) {
               return "vendor-redux";
             }
-            if (id.includes("@chakra-ui") || id.includes("framer-motion")) {
+            // Group Ant Design and its dependencies
+            if (
+              id.includes("antd") ||
+              id.includes("@ant-design") ||
+              id.includes("rc-")
+            ) {
+              return "vendor-antd";
+            }
+            if (id.includes("framer-motion")) {
               return "vendor-ui";
             }
             if (
@@ -158,14 +207,14 @@ export default defineConfig({
             return "vendor"; // Other dependencies
           }
         },
-        // Smaller chunk names
-        entryFileNames: "assets/[hash].js",
-        chunkFileNames: "assets/[hash].js",
-        assetFileNames: "assets/[hash].[ext]",
+        // Better naming for debugging
+        entryFileNames: "assets/[name].[hash].js",
+        chunkFileNames: "assets/[name].[hash].js",
+        assetFileNames: "assets/[name].[hash].[ext]",
       },
     },
     // Critical optimizations
-    chunkSizeWarningLimit: 500, // Smaller chunks
+    chunkSizeWarningLimit: 800, // Increased to avoid warnings
     cssCodeSplit: true,
     cssMinify: true,
     reportCompressedSize: false,
@@ -182,12 +231,26 @@ export default defineConfig({
     },
   },
   optimizeDeps: {
-    include: ["react", "react-dom", "react-dom/client"],
+    // Fix: Include all React runtime dependencies
+    include: [
+      "react",
+      "react-dom",
+      "react-dom/client",
+      "react/jsx-runtime",
+      "react/jsx-dev-runtime",
+    ],
     exclude: ["@vitejs/plugin-react-swc"],
-    force: process.env.NODE_ENV === "development",
+    force: false, // Don't force unless needed
   },
   esbuild: {
     // Drop debugger and console in production
     drop: process.env.NODE_ENV === "production" ? ["debugger", "console"] : [],
+    // Ensure proper JSX transformation
+    jsx: "automatic",
+    jsxDev: process.env.NODE_ENV === "development",
+  },
+  define: {
+    "process.env.NODE_ENV": JSON.stringify(process.env.NODE_ENV),
+    __VITE_PWA_ENABLED__: JSON.stringify(process.env.NODE_ENV === "production"),
   },
 });
