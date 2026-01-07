@@ -14,14 +14,14 @@ import PropTypes from "prop-types";
 import { setUser } from "./redux/slices/userSlice";
 import { BluetoothProvider } from "./contexts/BluetoothContext";
 
-// Lazy load pages
+// Lazy load pages - FIXED: Import from direct paths
 const Home = lazy(() => import("./pages/Home"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Orders = lazy(() => import("./pages/Orders"));
 const Tables = lazy(() => import("./pages/Tables"));
 const Menu = lazy(() => import("./pages/Menu"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
-const Inventory = lazy(() => import("./pages/Inventory"));
+const Inventory = lazy(() => import("./pages/inventory")); // lowercase 'i'
 
 // Cache
 const cache = new Map();
