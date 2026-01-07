@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   removeItemFromOrder,
@@ -17,21 +17,29 @@ import { enqueueSnackbar } from "notistack";
 import { useMutation } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 
-// Import Invoice component
-import Invoice from "../../components/invoice/Invoice";
+// Import Bluetooth Context for printing
+import { useBluetooth } from "../../contexts/BluetoothContext";
+import Invoice from "../invoice/Invoice";
 
 const Bill = ({ orderId }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
+  const { isConnected, printReceipt, thermalCommands } = useBluetooth();
+
+  // State for Invoice modal
+  const [showInvoice, setShowInvoice] = useState(false);
+  const [invoiceOrderData, setInvoiceOrderData] = useState(null);
+  const [disableAutoPrint, setDisableAutoPrint] = useState(false);
+  const [isProcessingOrder, setIsProcessingOrder] = useState(false);
 
   // Get order-specific data
   const orders = useSelector((state) => state.order.orders);
   const activeOrderId = useSelector((state) => state.order.activeOrderId);
 
-  // ✅ Get user data
+  // Get user data
   const userState = useSelector((state) => state.auth);
 
-  // ✅ Extract user with multiple fallbacks
+  // Extract user with multiple fallbacks
   const user = React.useMemo(() => {
     const possiblePaths = [
       userState?.user,
@@ -73,7 +81,7 @@ const Bill = ({ orderId }) => {
     };
   }, [userState]);
 
-  // ✅ FIXED: Find current order and next order
+  // Find current order and next order
   const findCurrentOrder = () => {
     if (orderId) {
       return orders.find((order) => order.id === orderId);
@@ -95,7 +103,7 @@ const Bill = ({ orderId }) => {
     );
   };
 
-  // ✅ Find the next pending order
+  // Find the next pending order
   const findNextPendingOrder = () => {
     const pendingOrders = orders.filter(
       (order) =>
@@ -111,7 +119,7 @@ const Bill = ({ orderId }) => {
     return pendingOrders.find((order) => order.id !== currentOrder?.id);
   };
 
-  // ✅ NEW: Get all pending orders in sequence
+  // Get all pending orders in sequence
   const getAllPendingOrders = () => {
     return orders.filter(
       (order) =>
@@ -140,10 +148,9 @@ const Bill = ({ orderId }) => {
   const [employeeDiscountApplied, setEmployeeDiscountApplied] = useState(false);
   const [shareholderDiscountApplied, setShareholderDiscountApplied] =
     useState(false);
-  // ✅ ADDED: Custom discount state
   const [customDiscountApplied, setCustomDiscountApplied] = useState(false);
   const [customDiscountAmount, setCustomDiscountAmount] = useState(0);
-  const [customDiscountType, setCustomDiscountType] = useState("percentage"); // 'percentage' or 'fixed'
+  const [customDiscountType, setCustomDiscountType] = useState("percentage");
   const [customDiscountValue, setCustomDiscountValue] = useState(0);
   const [showCustomDiscountModal, setShowCustomDiscountModal] = useState(false);
   const [customDiscountReason, setCustomDiscountReason] = useState("");
@@ -169,16 +176,8 @@ const Bill = ({ orderId }) => {
     onlineMethod: null,
   });
   const [showMixedPaymentModal, setShowMixedPaymentModal] = useState(false);
-  const [activeCategory, setActiveCategory] = useState("drinks"); // Start with drinks tab active
-
-  // ✅ FIXED: State for showing Invoice component
-  const [showInvoice, setShowInvoice] = useState(false);
-  const [invoiceData, setInvoiceData] = useState(null);
-
-  // ✅ FIXED: Added missing state declaration
+  const [activeCategory, setActiveCategory] = useState("drinks");
   const [showNextOrderConfirm, setShowNextOrderConfirm] = useState(false);
-
-  // ✅ NEW: Track processed orders to prevent double switching
   const [processedOrders, setProcessedOrders] = useState(new Set());
 
   // Safe number conversion helper
@@ -216,16 +215,14 @@ const Bill = ({ orderId }) => {
     return Object.values(combinedItems);
   };
 
-  // ✅ FIXED: Improved drink item detection - ONLY drinks
+  // Improved drink item detection
   const isDrinkItem = (item) => {
     if (!item) return false;
 
-    // Check tag first (most reliable)
     if (item.tag === "drink" || item.tag === "beverage") {
       return true;
     }
 
-    // Check category from database
     if (item.category) {
       const category = item.category.toLowerCase().trim();
       const drinkCategories = [
@@ -281,10 +278,7 @@ const Bill = ({ orderId }) => {
       }
     }
 
-    // Check name for drink keywords - ONLY drink-specific keywords
     const name = item.name ? item.name.toLowerCase() : "";
-
-    // First, check for food items that might be misclassified
     const foodKeywordsInName = [
       "cheesecake",
       "cake",
@@ -313,12 +307,10 @@ const Bill = ({ orderId }) => {
       "shanghai",
     ];
 
-    // If it has any food keyword in the name, it's NOT a drink
     if (foodKeywordsInName.some((keyword) => name.includes(keyword))) {
       return false;
     }
 
-    // Now check for drink-specific keywords
     const drinkKeywords = [
       "drink",
       "juice",
@@ -364,20 +356,17 @@ const Bill = ({ orderId }) => {
       "choco",
     ];
 
-    // Check if any drink keyword is in the name
     return drinkKeywords.some((keyword) => name.includes(keyword));
   };
 
-  // ✅ FIXED: Improved food item detection - ONLY food
+  // Improved food item detection
   const isFoodItem = (item) => {
     if (!item) return false;
 
-    // Check tag first (most reliable)
     if (item.tag === "food") {
       return true;
     }
 
-    // Check category from database
     if (item.category) {
       const category = item.category.toLowerCase().trim();
       const foodCategories = [
@@ -460,10 +449,7 @@ const Bill = ({ orderId }) => {
       }
     }
 
-    // Check name for food keywords - ONLY food
     const name = item.name ? item.name.toLowerCase() : "";
-
-    // First, check for drink keywords in the name
     const drinkKeywordsInName = [
       "drink",
       "juice",
@@ -500,14 +486,11 @@ const Bill = ({ orderId }) => {
       "matcha",
     ];
 
-    // If it has any drink keyword in the name, it's NOT food
     if (drinkKeywordsInName.some((keyword) => name.includes(keyword))) {
       return false;
     }
 
-    // Now check for food keywords
     const foodKeywords = [
-      // Specific food items from your list
       "omelette",
       "pork shanghai",
       "shanghai",
@@ -550,8 +533,6 @@ const Bill = ({ orderId }) => {
       "mini box",
       "box",
       "mini cake",
-
-      // General food keywords
       "burger",
       "sandwich",
       "steak",
@@ -578,7 +559,6 @@ const Bill = ({ orderId }) => {
       "pesto",
     ];
 
-    // Check for exact match first
     const exactMatches = [
       "omelette",
       "pork shanghai",
@@ -608,35 +588,23 @@ const Bill = ({ orderId }) => {
       "mini cake",
     ];
 
-    // Check for exact match
     for (const exactName of exactMatches) {
       if (name.includes(exactName)) {
         return true;
       }
     }
 
-    // Check for partial matches
     return foodKeywords.some((keyword) => name.includes(keyword));
   };
 
-  // Get item tag (food or drink)
+  // Get item tag
   const getItemTag = (item) => {
-    if (!item) return "food"; // Default to food
-
-    // Check if item has tag property
-    if (item.tag) {
-      return item.tag;
-    }
-
-    // Determine based on category/name
+    if (!item) return "food";
+    if (item.tag) return item.tag;
     const isDrink = isDrinkItem(item);
     const isFood = isFoodItem(item);
-
-    // If it's both or neither, use default logic
     if (isDrink && !isFood) return "drink";
     if (isFood && !isDrink) return "food";
-
-    // Default to food if ambiguous
     return "food";
   };
 
@@ -648,7 +616,7 @@ const Bill = ({ orderId }) => {
     }-${getItemTag(item)}`;
   };
 
-  // Calculate totals - UPDATED to include custom discount
+  // Calculate totals
   const calculateTotals = () => {
     try {
       const baseGrossTotal = cartData.reduce(
@@ -688,17 +656,14 @@ const Bill = ({ orderId }) => {
           : sum;
       }, 0);
 
-      // ✅ ADDED: Calculate custom discount amount
       let customDiscountAmount = 0;
       if (customDiscountApplied && customDiscountValue > 0) {
         if (customDiscountType === "percentage") {
-          // Apply percentage discount to subtotal after other discounts
           const subtotalBeforeCustom =
             baseGrossTotal - pwdSeniorDiscountAmount - redemptionAmount;
           customDiscountAmount =
             (subtotalBeforeCustom * customDiscountValue) / 100;
         } else {
-          // Fixed amount discount
           customDiscountAmount = customDiscountValue;
         }
       }
@@ -735,9 +700,8 @@ const Bill = ({ orderId }) => {
         employeeDiscountAmount +
         shareholderDiscountAmount +
         redemptionAmount +
-        customDiscountAmount; // ✅ Added custom discount to total
+        customDiscountAmount;
 
-      // Calculate change
       const cashAmountNum = safeNumber(cashAmount);
       const onlineAmountNum = safeNumber(mixedPayment.onlineAmount);
       const totalPaid = cashAmountNum + onlineAmountNum;
@@ -756,7 +720,7 @@ const Bill = ({ orderId }) => {
         redemptionAmount,
         employeeDiscountAmount,
         shareholderDiscountAmount,
-        customDiscountAmount, // ✅ Added custom discount
+        customDiscountAmount,
         netSales,
         vatAmount,
         total,
@@ -778,7 +742,7 @@ const Bill = ({ orderId }) => {
         redemptionAmount: 0,
         employeeDiscountAmount: 0,
         shareholderDiscountAmount: 0,
-        customDiscountAmount: 0, // ✅ Added custom discount
+        customDiscountAmount: 0,
         netSales: 0,
         vatAmount: 0,
         total: 0,
@@ -812,7 +776,6 @@ const Bill = ({ orderId }) => {
   // Calculate item total
   const calculateItemTotal = (item) => {
     if (!item) return 0;
-
     if (item.isRedeemed) return 0;
 
     const isDiscounted = pwdSeniorDiscountItems.some(
@@ -903,7 +866,6 @@ const Bill = ({ orderId }) => {
     const drinkCount = pwdSeniorDiscountItems.filter((item) =>
       isDrinkItem(item)
     ).length;
-
     const foodCount = pwdSeniorDiscountItems.filter((item) =>
       isFoodItem(item)
     ).length;
@@ -928,7 +890,7 @@ const Bill = ({ orderId }) => {
 
   const discountedItemsInfo = getDiscountedItemsInfo();
 
-  // ✅ ADDED: Handle custom discount
+  // Handle custom discount
   const handleCustomDiscount = () => {
     if (!customDiscountApplied) {
       setShowCustomDiscountModal(true);
@@ -942,7 +904,7 @@ const Bill = ({ orderId }) => {
     }
   };
 
-  // ✅ ADDED: Apply custom discount
+  // Apply custom discount
   const handleApplyCustomDiscount = () => {
     if (customDiscountValue <= 0) {
       enqueueSnackbar("Please enter a valid discount value", {
@@ -958,22 +920,18 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    // Calculate current subtotal for validation
     const subtotalAfterPwdSeniorAndRedemption =
       totals.baseGrossTotal -
       totals.pwdSeniorDiscountAmount -
       totals.redemptionAmount;
-
     let calculatedDiscount = 0;
 
     if (customDiscountType === "percentage") {
       calculatedDiscount =
         (subtotalAfterPwdSeniorAndRedemption * customDiscountValue) / 100;
     } else {
-      // Fixed amount
       calculatedDiscount = customDiscountValue;
 
-      // Check if fixed discount exceeds subtotal
       if (calculatedDiscount > subtotalAfterPwdSeniorAndRedemption) {
         enqueueSnackbar(
           `Fixed discount (₱${calculatedDiscount.toFixed(
@@ -996,7 +954,6 @@ const Bill = ({ orderId }) => {
     setCustomDiscountApplied(true);
     setShowCustomDiscountModal(false);
 
-    // Clear other discount types when applying custom discount
     setPwdSeniorDiscountApplied(false);
     setPwdSeniorDiscountItems([]);
     setEmployeeDiscountApplied(false);
@@ -1018,7 +975,7 @@ const Bill = ({ orderId }) => {
     );
   };
 
-  // ✅ ADDED: Cancel custom discount modal
+  // Cancel custom discount modal
   const handleCancelCustomDiscount = () => {
     setShowCustomDiscountModal(false);
     setCustomDiscountValue(0);
@@ -1036,7 +993,7 @@ const Bill = ({ orderId }) => {
       setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
       setEmployeeDiscountApplied(false);
       setShareholderDiscountApplied(false);
-      setCustomDiscountApplied(false); // Clear custom discount too
+      setCustomDiscountApplied(false);
       enqueueSnackbar("PWD/Senior discount removed", { variant: "info" });
     }
   };
@@ -1047,7 +1004,7 @@ const Bill = ({ orderId }) => {
     setPwdSeniorDiscountItems([]);
     setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
     setShareholderDiscountApplied(false);
-    setCustomDiscountApplied(false); // Clear custom discount too
+    setCustomDiscountApplied(false);
   };
 
   const handleShareholderDiscount = () => {
@@ -1056,33 +1013,27 @@ const Bill = ({ orderId }) => {
     setPwdSeniorDiscountItems([]);
     setPwdSeniorDetails({ name: "", idNumber: "", type: "PWD" });
     setEmployeeDiscountApplied(false);
-    setCustomDiscountApplied(false); // Clear custom discount too
+    setCustomDiscountApplied(false);
   };
 
-  // ✅ FIXED: Get all eligible items for PWD/Senior discount - NOW PROPERLY SEPARATED
+  // Get all eligible items for PWD/Senior discount
   const getEligibleItemsForDiscount = () => {
     const eligibleItems = combinedCart.filter((item) => {
       if (!item) return false;
-
-      // Items that are already redeemed cannot be discounted
       if (item.isRedeemed) return false;
-
       const isDrink = isDrinkItem(item);
       const isFood = isFoodItem(item);
-
-      // Only food and drink items are eligible
       return isFood || isDrink;
     });
 
     return eligibleItems;
   };
 
-  // ✅ FIXED: Get eligible items by type - NOW PROPERLY SEPARATED
+  // Get eligible items by type
   const getEligibleItemsByType = () => {
     const eligibleItems = getEligibleItemsForDiscount();
     const drinks = eligibleItems.filter((item) => isDrinkItem(item));
     const foods = eligibleItems.filter((item) => isFoodItem(item));
-
     return { drinks, foods };
   };
 
@@ -1096,14 +1047,12 @@ const Bill = ({ orderId }) => {
     );
 
     if (isSelected) {
-      // Remove item if already selected
       setPwdSeniorDiscountItems(
         pwdSeniorDiscountItems.filter(
           (selected) => getItemKey(selected) !== itemKey
         )
       );
     } else {
-      // Check selection limits before adding
       const selectedDrinks = pwdSeniorDiscountItems.filter((item) =>
         isDrinkItem(item)
       ).length;
@@ -1113,7 +1062,6 @@ const Bill = ({ orderId }) => {
       const isDrink = isDrinkItem(item);
       const isFood = isFoodItem(item);
 
-      // ✅ FIXED: Strictly enforce 1 drink + 2 food rule
       if (isDrink && selectedDrinks >= 1) {
         enqueueSnackbar(
           "Maximum 1 drink can be selected for PWD/Senior discount",
@@ -1130,7 +1078,6 @@ const Bill = ({ orderId }) => {
         return;
       }
 
-      // Total items limit (1 drink + 2 food = 3 items max)
       if (pwdSeniorDiscountItems.length >= 3) {
         enqueueSnackbar(
           "Maximum 3 items can be selected for PWD/Senior discount (1 drink + 2 food)",
@@ -1147,7 +1094,6 @@ const Bill = ({ orderId }) => {
         return;
       }
 
-      // Add item to selection
       setPwdSeniorDiscountItems([...pwdSeniorDiscountItems, item]);
     }
   };
@@ -1161,7 +1107,6 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    // ✅ FIXED: Check selection composition
     const selectedDrinks = pwdSeniorDiscountItems.filter((item) =>
       isDrinkItem(item)
     ).length;
@@ -1169,7 +1114,6 @@ const Bill = ({ orderId }) => {
       isFoodItem(item)
     ).length;
 
-    // Check if we have at least 1 drink or 1 food item
     if (selectedDrinks === 0 && selectedFoods === 0) {
       enqueueSnackbar("Please select at least 1 food or drink item", {
         variant: "warning",
@@ -1177,7 +1121,6 @@ const Bill = ({ orderId }) => {
       return;
     }
 
-    // Warn if not following 1 drink + 2 food pattern
     if (selectedDrinks > 1 || selectedFoods > 2) {
       enqueueSnackbar(
         "For maximum discount, select 1 drink and 2 food items (total 3 items)",
@@ -1202,14 +1145,13 @@ const Bill = ({ orderId }) => {
     setPwdSeniorDiscountApplied(true);
     setEmployeeDiscountApplied(false);
     setShareholderDiscountApplied(false);
-    setCustomDiscountApplied(false); // Clear custom discount too
+    setCustomDiscountApplied(false);
     setShowPwdSeniorSelection(false);
 
     const selectedValue = pwdSeniorDiscountItems.reduce(
       (sum, item) => sum + calculateItemTotalPrice(item),
       0
     );
-
     const discountAmount = selectedValue * pwdSeniorDiscountRate;
 
     const drinks = pwdSeniorDiscountItems.filter((item) => isDrinkItem(item));
@@ -1243,7 +1185,6 @@ const Bill = ({ orderId }) => {
     }
 
     message += ` for ${pwdSeniorDetails.type}: ${pwdSeniorDetails.name}`;
-
     enqueueSnackbar(message, { variant: "success" });
   };
 
@@ -1285,7 +1226,7 @@ const Bill = ({ orderId }) => {
     setCustomerPhone(e.target.value);
   };
 
-  // ✅ FIXED: Handle cash payment selection
+  // Handle cash payment selection
   const handleCashPayment = () => {
     setPaymentMethod("Cash");
     setCashAmount(0);
@@ -1298,7 +1239,7 @@ const Bill = ({ orderId }) => {
     setShowCashModal(true);
   };
 
-  // ✅ FIXED: Handle online payment selection
+  // Handle online payment selection
   const handleOnlinePaymentSelect = (method) => {
     setPaymentMethod(method);
     setCashAmount(0);
@@ -1314,7 +1255,7 @@ const Bill = ({ orderId }) => {
     });
   };
 
-  // ✅ FIXED: Handle mixed payment selection
+  // Handle mixed payment selection
   const handleMixedPaymentSelect = () => {
     if (cashAmount > 0) {
       setMixedPayment({
@@ -1334,7 +1275,7 @@ const Bill = ({ orderId }) => {
     setShowMixedPaymentModal(true);
   };
 
-  // ✅ FIXED: Handle mixed payment confirmation
+  // Handle mixed payment confirmation
   const handleMixedPaymentConfirm = () => {
     const cashAmountNum = safeNumber(mixedPayment.cashAmount);
     const onlineAmountNum = safeNumber(mixedPayment.onlineAmount);
@@ -1400,21 +1341,71 @@ const Bill = ({ orderId }) => {
     return `ORD-${timestamp}-${randomSuffix}`;
   };
 
-  // ✅ FIXED: Prepare order data with correct category values and always completed status
+  // Handle cash amount submission
+  const handleCashSubmit = () => {
+    const cashAmountNum = safeNumber(cashAmount);
+
+    if (cashAmountNum <= 0) {
+      enqueueSnackbar("Please enter a valid cash amount", { variant: "error" });
+      return;
+    }
+
+    if (cashAmountNum >= totals.total) {
+      setPaymentMethod("Cash");
+      setShowCashModal(false);
+      enqueueSnackbar(`Full cash payment: ₱${cashAmountNum.toFixed(2)}`, {
+        variant: "success",
+      });
+    } else {
+      const remaining = totals.total - cashAmountNum;
+      setMixedPayment({
+        cashAmount: cashAmountNum,
+        onlineAmount: remaining,
+        onlineMethod: null,
+        isMixed: true,
+      });
+      setShowMixedPaymentModal(true);
+      setShowCashModal(false);
+      enqueueSnackbar(
+        `Partial cash payment: ₱${cashAmountNum.toFixed(
+          2
+        )}. Please complete payment online.`,
+        { variant: "info" }
+      );
+    }
+  };
+
+  // Handle cancel in cash modal
+  const handleCancelCashModal = () => {
+    setShowCashModal(false);
+  };
+
+  // Handle redeem button click
+  const handleShowRedeemOptions = () => {
+    if (combinedCart.length === 0) {
+      enqueueSnackbar("Cart is empty!", { variant: "warning" });
+      return;
+    }
+    setShowRedeemOptions(true);
+  };
+
+  // Cancel redeem selection
+  const handleCancelRedeem = () => {
+    setShowRedeemOptions(false);
+  };
+
+  // Prepare order data with correct category values
   const prepareOrderData = () => {
-    // Determine payment details
     let paymentMethodValue = "Cash";
     let cashPaymentAmount = safeNumber(cashAmount);
     let onlinePaymentAmount = 0;
     let onlinePaymentMethod = null;
     let isMixedPayment = false;
 
-    // Calculate totals
     const totalPaid = cashPaymentAmount + onlinePaymentAmount;
     const isPartialPayment = totalPaid < totals.total;
     const remainingBalance = isPartialPayment ? totals.total - totalPaid : 0;
 
-    // Set payment method based on selection
     if (paymentMethod === "Cash") {
       paymentMethodValue = "Cash";
     } else if (paymentMethod === "BDO") {
@@ -1435,11 +1426,10 @@ const Bill = ({ orderId }) => {
       cashPaymentAmount = safeNumber(mixedPayment.cashAmount);
     }
 
-    // ✅ FIXED: Always set status to "completed" after placing order
-    const paymentStatusValue = "completed"; // Always completed
-    const orderStatusValue = "completed"; // Always completed
+    const paymentStatusValue = "completed";
+    const orderStatusValue = "completed";
 
-    // Prepare bills data - UPDATED to include custom discount
+    // Prepare bills data
     const bills = {
       total: Number(totals.baseGrossTotal.toFixed(2)),
       tax: Number(totals.vatAmount.toFixed(2)),
@@ -1450,10 +1440,10 @@ const Bill = ({ orderId }) => {
       employeeDiscount: Number(totals.employeeDiscountAmount.toFixed(2)),
       shareholderDiscount: Number(totals.shareholderDiscountAmount.toFixed(2)),
       redemptionDiscount: Number(totals.redemptionAmount.toFixed(2)),
-      customDiscount: Number(totals.customDiscountAmount.toFixed(2)), // ✅ Added custom discount
-      customDiscountType: customDiscountApplied ? customDiscountType : null, // ✅ Added custom discount type
-      customDiscountValue: customDiscountApplied ? customDiscountValue : 0, // ✅ Added custom discount value
-      customDiscountReason: customDiscountApplied ? customDiscountReason : null, // ✅ Added custom discount reason
+      customDiscount: Number(totals.customDiscountAmount.toFixed(2)),
+      customDiscountType: customDiscountApplied ? customDiscountType : null,
+      customDiscountValue: customDiscountApplied ? customDiscountValue : 0,
+      customDiscountReason: customDiscountApplied ? customDiscountReason : null,
       netSales: Number(totals.netSales.toFixed(2)),
       cashAmount: Number(cashPaymentAmount.toFixed(2)),
       onlineAmount: Number(onlinePaymentAmount.toFixed(2)),
@@ -1464,7 +1454,7 @@ const Bill = ({ orderId }) => {
       amountPaid: Number(totalPaid.toFixed(2)),
     };
 
-    // Prepare items data - FIXED: Only use 'drink' or 'food' for category
+    // Prepare items data
     const items = cartData
       .map((item) => {
         if (!item) return null;
@@ -1473,8 +1463,7 @@ const Bill = ({ orderId }) => {
           (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
         );
 
-        // ✅ FIXED: Determine category correctly - only 'drink' or 'food'
-        let category = getItemTag(item); // Use the tag: 'food' or 'drink'
+        let category = getItemTag(item);
 
         return {
           name: item.name || "Unknown Item",
@@ -1484,21 +1473,17 @@ const Bill = ({ orderId }) => {
           originalPrice: safeNumber(item.pricePerQuantity),
           isRedeemed: Boolean(item.isRedeemed),
           isPwdSeniorDiscounted: isPwdSeniorDiscounted,
-          category: category, // ✅ Will only be 'drink' or 'food'
-          tag: getItemTag(item), // ✅ Added tag field
+          category: category,
+          tag: getItemTag(item),
           id: item.id || Date.now().toString(),
         };
       })
       .filter((item) => item !== null);
 
-    // Prepare customer details
     const customerName =
       customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer";
-
-    // Use customer phone if provided, otherwise use "0000000000"
     const customerPhoneValue = customerPhone.trim() || "0000000000";
 
-    // Get user ID
     let userId = user?._id;
     if (!userId || userId === "000000000000000000000001") {
       try {
@@ -1515,7 +1500,6 @@ const Bill = ({ orderId }) => {
     const orderIdValue = currentOrder?.id || `order-${Date.now()}`;
     const orderNumber = generateOrderNumber();
 
-    // ✅ FIXED: Prepare pwdSeniorSelectedItems with correct category
     const pwdSeniorSelectedItems = pwdSeniorDiscountApplied
       ? pwdSeniorDiscountItems.map((item) => {
           const category = getItemTag(item);
@@ -1524,7 +1508,7 @@ const Bill = ({ orderId }) => {
             category: category,
             quantity: safeNumber(item.quantity),
             pricePerQuantity: safeNumber(item.pricePerQuantity),
-            tag: getItemTag(item), // ✅ Added tag field
+            tag: getItemTag(item),
           };
         })
       : [];
@@ -1554,12 +1538,12 @@ const Bill = ({ orderId }) => {
           mixedPayment
         ),
       },
-      paymentStatus: paymentStatusValue, // ✅ Always "completed"
-      orderStatus: orderStatusValue, // ✅ Always "completed"
+      paymentStatus: paymentStatusValue,
+      orderStatus: orderStatusValue,
       pwdSeniorDetails: pwdSeniorDiscountApplied ? pwdSeniorDetails : null,
       pwdSeniorDiscountApplied: pwdSeniorDiscountApplied,
-      pwdSeniorSelectedItems: pwdSeniorSelectedItems, // ✅ Fixed category values
-      customDiscountApplied: customDiscountApplied, // ✅ Added custom discount flag
+      pwdSeniorSelectedItems: pwdSeniorSelectedItems,
+      customDiscountApplied: customDiscountApplied,
       customDiscountDetails: customDiscountApplied
         ? {
             type: customDiscountType,
@@ -1567,7 +1551,7 @@ const Bill = ({ orderId }) => {
             amount: totals.customDiscountAmount,
             reason: customDiscountReason,
           }
-        : null, // ✅ Added custom discount details
+        : null,
       cashier: user?.name || "Admin",
       user: userId || "000000000000000000000001",
       orderNumber: orderNumber,
@@ -1580,6 +1564,7 @@ const Bill = ({ orderId }) => {
       remainingBalance: Number(remainingBalance.toFixed(2)),
       amountPaid: Number(totalPaid.toFixed(2)),
       table: null,
+      orderDate: new Date().toISOString(),
     };
   };
 
@@ -1591,94 +1576,7 @@ const Bill = ({ orderId }) => {
     return method;
   };
 
-  // Generate invoice data for display
-  const generateInvoiceData = (orderData, backendData) => {
-    const invoiceItems = combinedCart
-      .map((item) => {
-        if (!item) return null;
-
-        const isDiscounted = pwdSeniorDiscountItems.some(
-          (discountedItem) => getItemKey(discountedItem) === getItemKey(item)
-        );
-
-        return {
-          name: item.name,
-          quantity: item.quantity,
-          price: calculateItemTotal(item),
-          originalPrice: safeNumber(item.pricePerQuantity),
-          pricePerQuantity: safeNumber(item.pricePerQuantity),
-          isFree: item.isRedeemed || false,
-          isPwdSeniorDiscounted: isDiscounted,
-          tag: getItemTag(item), // ✅ Added tag field
-        };
-      })
-      .filter((item) => item !== null);
-
-    return {
-      ...orderData,
-      id: backendData?._id || currentOrder?.id || orderData.orderId,
-      number: backendData?.orderNumber || orderData.orderNumber,
-      items: invoiceItems,
-      customer: {
-        customerName: orderData.customerDetails.name,
-        ...currentOrder?.customer,
-      },
-      bills: {
-        ...orderData.bills,
-        netSales: totals.netSales,
-      },
-      orderStatus: orderData.orderStatus,
-      orderDate: new Date().toISOString(),
-      cashier: user?.name || "Admin",
-      orderNumber: backendData?.orderNumber || orderData.orderNumber,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      paymentMethod: orderData.paymentDetails.paymentMethodDisplay,
-      isPartialPayment: orderData.isPartialPayment,
-      remainingBalance: orderData.remainingBalance,
-      table: null,
-    };
-  };
-
-  // ✅ FIXED: Handle cash amount submission
-  const handleCashSubmit = () => {
-    const cashAmountNum = safeNumber(cashAmount);
-
-    if (cashAmountNum <= 0) {
-      enqueueSnackbar("Please enter a valid cash amount", {
-        variant: "error",
-      });
-      return;
-    }
-
-    if (cashAmountNum >= totals.total) {
-      // Full cash payment
-      setPaymentMethod("Cash");
-      setShowCashModal(false);
-      enqueueSnackbar(`Full cash payment: ₱${cashAmountNum.toFixed(2)}`, {
-        variant: "success",
-      });
-    } else {
-      // Partial cash payment - offer mixed payment
-      const remaining = totals.total - cashAmountNum;
-      setMixedPayment({
-        cashAmount: cashAmountNum,
-        onlineAmount: remaining,
-        onlineMethod: null,
-        isMixed: true,
-      });
-      setShowMixedPaymentModal(true);
-      setShowCashModal(false);
-      enqueueSnackbar(
-        `Partial cash payment: ₱${cashAmountNum.toFixed(
-          2
-        )}. Please complete payment online.`,
-        { variant: "info" }
-      );
-    }
-  };
-
-  // ✅ FIXED: Order mutation
+  // Order mutation - UPDATED for invoice pop-up
   const orderMutation = useMutation({
     mutationFn: (reqData) => {
       console.log(
@@ -1695,15 +1593,11 @@ const Bill = ({ orderId }) => {
       }
 
       const { data } = res.data;
-
-      // Generate order data
       const orderData = prepareOrderData();
 
       // Mark current order as processed
       if (currentOrder) {
         setProcessedOrders((prev) => new Set(prev).add(currentOrder.id));
-
-        console.log("✅ Completing order in Redux with order data");
         dispatch(
           completeOrder({
             orderId: currentOrder.id,
@@ -1720,17 +1614,40 @@ const Bill = ({ orderId }) => {
       // Clear current order
       dispatch(clearCurrentOrder());
 
-      enqueueSnackbar("Order placed successfully! Invoice is ready.", {
-        variant: "success",
-      });
+      enqueueSnackbar("Order placed successfully!", { variant: "success" });
 
       setIsProcessing(false);
+      setIsProcessingOrder(false);
 
-      // ✅ FIXED: Generate invoice data and show Invoice component - This is the key fix
-      const invoiceData = generateInvoiceData(orderData, data);
-      setInvoiceData(invoiceData);
+      // Automatically show invoice after successful order placement
+      const invoiceData = {
+        ...orderData,
+        _id: data._id || orderData._id,
+        orderNumber: data.orderNumber || orderData.orderNumber,
+        bills: data.bills || orderData.bills,
+        orderDate: new Date().toISOString(),
+        // Ensure these fields are included
+        customerDetails: orderData.customerDetails || {
+          name:
+            customerType === "walk-in"
+              ? "Walk-in Customer"
+              : "Take-out Customer",
+          phone: customerPhone || "0000000000",
+        },
+        paymentDetails: orderData.paymentDetails || {
+          paymentMethodDisplay: getPaymentMethodDisplay(
+            paymentMethod,
+            mixedPayment
+          ),
+        },
+      };
 
-      // ✅ FIXED: Delay showing invoice to ensure state is updated
+      // Set invoice data and show modal
+      setInvoiceOrderData(invoiceData);
+      setShowInvoice(true);
+      setDisableAutoPrint(false);
+
+      // Force a re-render to ensure modal shows
       setTimeout(() => {
         setShowInvoice(true);
       }, 100);
@@ -1745,6 +1662,7 @@ const Bill = ({ orderId }) => {
 
       enqueueSnackbar(errorMessage, { variant: "error" });
       setIsProcessing(false);
+      setIsProcessingOrder(false);
 
       // Reset order status on error
       if (currentOrder) {
@@ -1753,11 +1671,11 @@ const Bill = ({ orderId }) => {
     },
   });
 
-  // ✅ FIXED: Main handlePlaceOrder function
-  const handlePlaceOrder = async () => {
-    if (isProcessing) return;
+  // Combined order placement and invoice printing function
+  const handlePlaceOrderAndPrintInvoice = async () => {
+    if (isProcessing || isProcessingOrder) return;
 
-    console.log("Starting order placement...");
+    console.log("Starting order placement and invoice generation...");
 
     // Basic validation
     if (!paymentMethod) {
@@ -1812,6 +1730,7 @@ const Bill = ({ orderId }) => {
     }
 
     setIsProcessing(true);
+    setIsProcessingOrder(true);
 
     // MARK ORDER AS PROCESSING FIRST
     if (currentOrder) {
@@ -1826,35 +1745,46 @@ const Bill = ({ orderId }) => {
     orderMutation.mutate(orderData);
   };
 
-  // Handle cancel in cash modal
-  const handleCancelCashModal = () => {
-    setShowCashModal(false);
-  };
-
-  // Handle redeem button click
-  const handleShowRedeemOptions = () => {
-    if (combinedCart.length === 0) {
-      enqueueSnackbar("Cart is empty!", { variant: "warning" });
-      return;
+  // Handle go to next order directly
+  const handleGoToNextOrder = () => {
+    if (nextOrder && !processedOrders.has(nextOrder.id)) {
+      dispatch(setActiveOrder(nextOrder.id));
+      setShowNextOrderConfirm(false);
+      enqueueSnackbar(`Now working on Order ${nextOrder.number}`, {
+        variant: "info",
+      });
+    } else {
+      enqueueSnackbar("Next order is already processed", {
+        variant: "warning",
+      });
+      setShowNextOrderConfirm(false);
     }
-    setShowRedeemOptions(true);
   };
 
-  // Cancel redeem selection
-  const handleCancelRedeem = () => {
-    setShowRedeemOptions(false);
+  // Pending orders counter
+  const pendingOrderCount = pendingOrders.length;
+
+  // Get items for active category
+  const getItemsForActiveCategory = () => {
+    if (activeCategory === "drinks") {
+      return getEligibleItemsForDiscount().filter((item) => isDrinkItem(item));
+    } else if (activeCategory === "food") {
+      return getEligibleItemsForDiscount().filter((item) => isFoodItem(item));
+    }
+    return [];
   };
 
-  // ✅ FIXED: Handle invoice close - auto go to next order
-  const handleCloseInvoice = () => {
+  // Handle invoice modal close
+  const handleInvoiceClose = () => {
     setShowInvoice(false);
-    setInvoiceData(null);
+    setInvoiceOrderData(null);
+    setIsProcessingOrder(false);
 
     // Reset all states for next order
     setPwdSeniorDiscountApplied(false);
     setEmployeeDiscountApplied(false);
     setShareholderDiscountApplied(false);
-    setCustomDiscountApplied(false); // ✅ Reset custom discount
+    setCustomDiscountApplied(false);
     setCustomDiscountAmount(0);
     setCustomDiscountValue(0);
     setCustomDiscountReason("");
@@ -1880,7 +1810,7 @@ const Bill = ({ orderId }) => {
       onlineMethod: null,
     });
     setShowMixedPaymentModal(false);
-    setShowCustomDiscountModal(false); // ✅ Reset custom discount modal
+    setShowCustomDiscountModal(false);
     setActiveCategory("drinks");
     setIsProcessing(false);
     setShowNextOrderConfirm(false);
@@ -1909,44 +1839,12 @@ const Bill = ({ orderId }) => {
         // No next order - show empty state
         enqueueSnackbar(
           "No more pending orders. Start a new order from menu.",
-          {
-            variant: "info",
-          }
+          { variant: "info" }
         );
       }
     }
   };
 
-  // ✅ NEW: Handle go to next order directly
-  const handleGoToNextOrder = () => {
-    if (nextOrder && !processedOrders.has(nextOrder.id)) {
-      dispatch(setActiveOrder(nextOrder.id));
-      setShowNextOrderConfirm(false);
-      enqueueSnackbar(`Now working on Order ${nextOrder.number}`, {
-        variant: "info",
-      });
-    } else {
-      enqueueSnackbar("Next order is already processed", {
-        variant: "warning",
-      });
-      setShowNextOrderConfirm(false);
-    }
-  };
-
-  // ✅ NEW: Pending orders counter
-  const pendingOrderCount = pendingOrders.length;
-
-  // ✅ FIXED: Get items for active category
-  const getItemsForActiveCategory = () => {
-    if (activeCategory === "drinks") {
-      return getEligibleItemsForDiscount().filter((item) => isDrinkItem(item));
-    } else if (activeCategory === "food") {
-      return getEligibleItemsForDiscount().filter((item) => isFoodItem(item));
-    }
-    return [];
-  };
-
-  // ✅ FIXED: Main render logic
   if (!currentOrder && !showInvoice) {
     return (
       <div className="w-full h-screen overflow-y-auto bg-gray-100 px-4 py-6">
@@ -1984,14 +1882,11 @@ const Bill = ({ orderId }) => {
                 <div className="mb-6">
                   <button
                     onClick={() => {
-                      // Get the first pending order
                       const firstPendingOrder = pendingOrders[0];
                       dispatch(setActiveOrder(firstPendingOrder.id));
                       enqueueSnackbar(
                         `Now working on Order ${firstPendingOrder.number}`,
-                        {
-                          variant: "success",
-                        }
+                        { variant: "success" }
                       );
                     }}
                     className="px-6 py-3 bg-blue-600 text-white rounded-lg font-medium text-sm hover:bg-blue-700 transition-colors"
@@ -2023,38 +1918,155 @@ const Bill = ({ orderId }) => {
 
   return (
     <>
-      {/* ✅ FIXED: Invoice Component - Now properly pops up */}
-      {showInvoice && invoiceData && (
+      {/* Invoice Modal - Automatically shows after successful order placement - UPDATED */}
+      {showInvoice && invoiceOrderData && (
         <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden animate-fadeIn">
             <div className="relative">
-              <button
-                onClick={handleCloseInvoice}
-                className="absolute top-4 right-4 z-10 w-8 h-8 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-lg hover:shadow-xl"
-              >
-                ✕
-              </button>
-              <div className="max-h-[85vh] overflow-y-auto">
+              <div className="flex justify-between items-center p-4 border-b bg-gray-50">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-800">
+                    {invoiceOrderData.isTempOrder
+                      ? "Preview Invoice"
+                      : `Order #${invoiceOrderData.orderNumber} Invoice`}
+                  </h3>
+                  <p className="text-sm text-gray-600">
+                    Customer:{" "}
+                    {invoiceOrderData.customerDetails?.name || "Walk-in"}
+                  </p>
+                  <p className="text-sm text-gray-600">
+                    Date:{" "}
+                    {new Date(invoiceOrderData.orderDate).toLocaleDateString()}
+                  </p>
+                  {invoiceOrderData.isTempOrder && (
+                    <p className="text-xs text-yellow-600 font-medium mt-1">
+                      ⚠️ This is a preview invoice. Order will be saved when you
+                      click "Place Order & Print"
+                    </p>
+                  )}
+                </div>
+                <div className="flex items-center gap-3">
+                  {isConnected ? (
+                    <span className="text-xs bg-green-500 text-white px-2 py-1 rounded-full">
+                      Printer Connected
+                    </span>
+                  ) : (
+                    <span className="text-xs bg-red-500 text-white px-2 py-1 rounded-full">
+                      Printer Disconnected
+                    </span>
+                  )}
+                  <button
+                    onClick={handleInvoiceClose}
+                    className="w-10 h-10 bg-red-500 text-white rounded-full flex items-center justify-center hover:bg-red-600 transition-colors shadow-lg"
+                  >
+                    <svg
+                      className="w-6 h-6"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M6 18L18 6M6 6l12 12"
+                      />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="max-h-[calc(90vh-80px)] overflow-y-auto">
                 <Invoice
-                  key={Date.now()}
-                  orderInfo={invoiceData}
-                  setShowInvoice={handleCloseInvoice}
-                  disableAutoPrint={false}
+                  key={`${
+                    invoiceOrderData._id || invoiceOrderData.orderId
+                  }-${Date.now()}`}
+                  orderInfo={invoiceOrderData}
+                  setShowInvoice={handleInvoiceClose}
+                  disableAutoPrint={disableAutoPrint}
+                  autoPrint={!invoiceOrderData.isTempOrder} // Auto-print only for saved orders
                 />
+                {invoiceOrderData.isTempOrder && (
+                  <div className="p-4 border-t bg-blue-50">
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <button
+                        onClick={() => {
+                          setShowInvoice(false);
+                          enqueueSnackbar("Invoice preview closed", {
+                            variant: "info",
+                          });
+                        }}
+                        className="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold text-sm hover:bg-gray-300 transition-colors"
+                      >
+                        Close Preview
+                      </button>
+                      <button
+                        onClick={() => {
+                          setShowInvoice(false);
+                          handlePlaceOrderAndPrintInvoice();
+                        }}
+                        className="flex-1 px-4 py-3 bg-blue-600 text-white rounded-lg font-semibold text-sm hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                      >
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                          />
+                        </svg>
+                        Place Order & Print
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ✅ ADDED: Custom Discount Modal */}
+      {/* Processing Overlay */}
+      {isProcessingOrder && (
+        <div className="fixed inset-0 z-40 bg-black bg-opacity-50 flex items-center justify-center">
+          <div className="bg-white rounded-lg p-8 shadow-xl max-w-md w-full mx-4">
+            <div className="text-center">
+              <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+              <h3 className="text-xl font-bold text-gray-900 mb-2">
+                Processing Order
+              </h3>
+              <p className="text-gray-600 mb-4">
+                Please wait while we process your order...
+              </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-800">
+                  <span className="font-semibold">
+                    Order #{currentOrder?.number}
+                  </span>
+                </p>
+                <p className="text-sm text-blue-700">
+                  Total: ₱{totals.total.toFixed(2)}
+                </p>
+                <p className="text-xs text-blue-600 mt-1">
+                  Invoice will automatically appear after processing
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Custom Discount Modal */}
       {showCustomDiscountModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-md w-full">
             <h3 className="text-lg font-semibold mb-4 text-gray-900">
               Apply Custom Discount
             </h3>
-
             <div className="mb-4">
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Discount Type
@@ -2115,7 +2127,6 @@ const Bill = ({ orderId }) => {
                 placeholder="e.g., Staff discount, Promo, etc."
               />
 
-              {/* Preview */}
               <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg mb-4">
                 <h4 className="text-sm font-medium text-gray-700 mb-2">
                   Discount Preview
@@ -2205,11 +2216,10 @@ const Bill = ({ orderId }) => {
         </div>
       )}
 
-      {/* ✅ FIXED: PWD/Senior Selection Modal - Now properly separates drinks and food */}
+      {/* PWD/Senior Selection Modal */}
       {showPwdSeniorSelection && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2 sm:p-4">
           <div className="bg-white rounded-lg w-full max-w-6xl h-[90vh] max-h-[90vh] flex flex-col shadow-xl overflow-hidden">
-            {/* Header */}
             <div className="p-4 sm:p-6 border-b">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
@@ -2238,11 +2248,8 @@ const Bill = ({ orderId }) => {
               </div>
             </div>
 
-            {/* Main Content - Fixed layout with tabs */}
             <div className="flex-1 overflow-hidden flex flex-col lg:flex-row">
-              {/* Left Side - Form and Selection */}
               <div className="lg:w-1/2 xl:w-2/5 p-4 sm:p-6 border-r overflow-y-auto">
-                {/* PWD/Senior Details Section */}
                 <div className="mb-6">
                   <h4 className="text-sm font-semibold text-gray-700 mb-3">
                     PWD/Senior Details
@@ -2316,7 +2323,6 @@ const Bill = ({ orderId }) => {
                   </div>
                 </div>
 
-                {/* Selection Stats */}
                 <div className="mb-6 p-4 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border border-blue-100">
                   <h4 className="text-sm font-semibold text-gray-700 mb-3">
                     Selection Summary
@@ -2365,7 +2371,6 @@ const Bill = ({ orderId }) => {
                     </div>
                   </div>
 
-                  {/* Selected Items List */}
                   {pwdSeniorDiscountItems.length > 0 && (
                     <div className="mt-4 pt-4 border-t border-blue-100">
                       <h5 className="text-xs font-semibold text-gray-700 mb-2">
@@ -2427,7 +2432,6 @@ const Bill = ({ orderId }) => {
                   )}
                 </div>
 
-                {/* Action Buttons */}
                 <div className="flex flex-col sm:flex-row gap-3 mt-auto">
                   <button
                     onClick={handleCancelPwdSeniorSelection}
@@ -2474,9 +2478,7 @@ const Bill = ({ orderId }) => {
                 </div>
               </div>
 
-              {/* Right Side - Items List with Tabs */}
               <div className="lg:w-1/2 xl:w-3/5 p-4 sm:p-6 overflow-hidden flex flex-col">
-                {/* Tabs for Drinks and Food */}
                 <div className="mb-4">
                   <div className="flex border-b border-gray-200">
                     <button
@@ -2516,7 +2518,6 @@ const Bill = ({ orderId }) => {
                   </div>
                 </div>
 
-                {/* Items Grid - Filtered by active category */}
                 <div className="flex-1 overflow-y-auto">
                   {(() => {
                     const itemsToShow = getItemsForActiveCategory();
@@ -2534,7 +2535,6 @@ const Bill = ({ orderId }) => {
                                 getItemKey(selected) === getItemKey(item)
                             );
 
-                            // Check selection limits
                             const selectedDrinks =
                               pwdSeniorDiscountItems.filter((item) =>
                                 isDrinkItem(item)
@@ -2547,7 +2547,7 @@ const Bill = ({ orderId }) => {
                             let limitReached = false;
 
                             if (isSelected) {
-                              canSelect = true; // Can always unselect
+                              canSelect = true;
                             } else if (pwdSeniorDiscountItems.length >= 3) {
                               canSelect = false;
                               limitReached = true;
@@ -2573,7 +2573,6 @@ const Bill = ({ orderId }) => {
                                   canSelect && toggleItemSelection(item)
                                 }
                               >
-                                {/* Selection Indicator */}
                                 <div className="absolute top-3 right-3">
                                   <div
                                     className={`w-6 h-6 border-2 rounded-full flex items-center justify-center ${
@@ -2607,7 +2606,6 @@ const Bill = ({ orderId }) => {
                                   )}
                                 </div>
 
-                                {/* Item Content */}
                                 <div className="pr-8">
                                   <div className="flex items-start justify-between mb-2">
                                     <h5 className="text-sm font-semibold text-gray-900 truncate pr-2">
@@ -3073,7 +3071,7 @@ const Bill = ({ orderId }) => {
               </div>
             )}
 
-            {/* 🧾 CUSTOMER TYPE & PHONE */}
+            {/* Customer Type & Phone */}
             <div className="bg-white rounded-lg p-4 shadow-md">
               <h2 className="text-gray-900 text-sm font-semibold mb-3">
                 Customer Details
@@ -3117,7 +3115,7 @@ const Bill = ({ orderId }) => {
               </div>
             </div>
 
-            {/* 🛒 CART ITEMS - UPDATED WITH WHITE TAGS */}
+            {/* Cart Items */}
             <div className="bg-white rounded-lg p-4 shadow-md max-h-64 overflow-y-auto">
               <h2 className="text-gray-900 text-sm font-semibold mb-2">
                 Cart Items (Order {currentOrder?.number})
@@ -3133,7 +3131,7 @@ const Bill = ({ orderId }) => {
                   );
                   const isDrink = isDrinkItem(item);
                   const isFood = isFoodItem(item);
-                  const itemType = getItemTag(item); // Use the tag: 'food' or 'drink'
+                  const itemType = getItemTag(item);
 
                   const originalTotal = calculateItemTotalPrice(item);
                   const displayedTotal = calculateItemTotal(item);
@@ -3165,7 +3163,6 @@ const Bill = ({ orderId }) => {
                               </span>
                             )}
                           </p>
-                          {/* WHITE TAG FOR FOOD/DRINK */}
                           <span
                             className={`text-xs px-2 py-1 rounded-full font-medium ${
                               itemType === "drink"
@@ -3263,7 +3260,7 @@ const Bill = ({ orderId }) => {
               )}
             </div>
 
-            {/* 🧾 TOTALS */}
+            {/* Totals */}
             <div className="bg-white rounded-lg p-4 shadow-md space-y-2">
               <div className="flex justify-between items-center">
                 <p className="text-xs text-gray-500 font-medium">
@@ -3305,7 +3302,7 @@ const Bill = ({ orderId }) => {
                 </div>
               )}
 
-              {/* ✅ ADDED: Custom Discount Display */}
+              {/* Custom Discount Display */}
               {customDiscountApplied && totals.customDiscountAmount > 0 && (
                 <div className="flex justify-between items-center text-purple-600">
                   <div className="flex items-center">
@@ -3439,7 +3436,7 @@ const Bill = ({ orderId }) => {
                 )}
             </div>
 
-            {/* 🎟 DISCOUNT & REDEMPTION BUTTONS - UPDATED with Custom Discount */}
+            {/* Discount & Redemption Buttons */}
             <div className="grid grid-cols-2 gap-3">
               {/* First Row */}
               <div className="flex gap-2">
@@ -3488,7 +3485,6 @@ const Bill = ({ orderId }) => {
                   {shareholderDiscountApplied ? "✓ VIP" : "VIP"}
                 </button>
 
-                {/* ✅ ADDED: Custom Discount Button */}
                 <button
                   onClick={handleCustomDiscount}
                   disabled={isProcessing}
@@ -3502,7 +3498,7 @@ const Bill = ({ orderId }) => {
                 </button>
               </div>
 
-              {/* ✅ ADDED: Redemption Button Row */}
+              {/* Redemption Button Row */}
               <div className="col-span-2">
                 {!hasRedeemedItem ? (
                   <button
@@ -3524,7 +3520,7 @@ const Bill = ({ orderId }) => {
               </div>
             </div>
 
-            {/* 💳 PAYMENT BUTTONS */}
+            {/* Payment Buttons */}
             <div className="flex flex-col sm:flex-row gap-3">
               <button
                 onClick={handleCashPayment}
@@ -3555,23 +3551,39 @@ const Bill = ({ orderId }) => {
               </button>
             </div>
 
-            {/* 🧾 PLACE ORDER BUTTON */}
-            <div className="flex flex-col sm:flex-row gap-3 mt-6 mb-6 pb-8">
+            {/* Combined Place Order & Print Invoice Button */}
+            <div className="flex flex-col gap-3 mt-6 mb-6 pb-8">
               <button
-                onClick={handlePlaceOrder}
+                onClick={handlePlaceOrderAndPrintInvoice}
                 disabled={
-                  isProcessing || !paymentMethod || cartData.length === 0
+                  isProcessing ||
+                  isProcessingOrder ||
+                  !paymentMethod ||
+                  cartData.length === 0
                 }
                 className="w-full px-4 py-4 rounded-lg font-semibold text-sm bg-blue-600 text-white hover:bg-blue-700 disabled:bg-blue-300 disabled:cursor-not-allowed transition-colors flex items-center justify-center gap-2"
               >
-                {isProcessing ? (
+                {isProcessing || isProcessingOrder ? (
                   <>
                     <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                     Processing...
                   </>
                 ) : (
                   <>
-                    Place Order & Show Invoice
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
+                      />
+                    </svg>
+                    Place Order & Print Invoice
                     {totals.remainingBalance > 0 && (
                       <span className="text-xs bg-yellow-500 text-white px-2 py-1 rounded-full">
                         Partial
@@ -3590,37 +3602,5 @@ const Bill = ({ orderId }) => {
     </>
   );
 };
-
-// Add CSS animations
-const styles = `
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(5px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes pulse-subtle {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.9; }
-}
-
-.animate-fadeIn {
-  animation: fadeIn 0.3s ease-out;
-}
-
-.animate-pulse-subtle {
-  animation: pulse-subtle 2s ease-in-out infinite;
-}
-
-.hover\\:scale-\\[1\\.01\\]:hover {
-  transform: scale(1.01);
-}
-`;
-
-// Add styles to document head
-if (typeof document !== "undefined") {
-  const styleSheet = document.createElement("style");
-  styleSheet.innerText = styles;
-  document.head.appendChild(styleSheet);
-}
 
 export default Bill;

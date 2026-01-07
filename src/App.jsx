@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import {
   BrowserRouter as Router,
   Routes,
@@ -6,15 +6,6 @@ import {
   useLocation,
   Navigate,
 } from "react-router-dom";
-import {
-  Home,
-  Auth,
-  Orders,
-  Tables,
-  Menu,
-  Dashboard,
-  Inventory,
-} from "./pages";
 import Header from "./components/shared/Header";
 import { useSelector, useDispatch } from "react-redux";
 import useLoadData from "./hooks/useLoadData";
@@ -23,50 +14,26 @@ import PropTypes from "prop-types";
 import { setUser } from "./redux/slices/userSlice";
 import { BluetoothProvider } from "./contexts/BluetoothContext";
 
-// Custom hook for landscape detection
-const useLandscape = () => {
-  const [isLandscape, setIsLandscape] = useState(
-    window.innerWidth > window.innerHeight
-  );
+// Lazy load pages
+const Home = lazy(() => import("./pages/Home"));
+const Auth = lazy(() => import("./pages/Auth"));
+const Orders = lazy(() => import("./pages/Orders"));
+const Tables = lazy(() => import("./pages/Tables"));
+const Menu = lazy(() => import("./pages/Menu"));
+const Dashboard = lazy(() => import("./pages/Dashboard"));
+const Inventory = lazy(() => import("./pages/Inventory"));
 
-  useEffect(() => {
-    const handleResize = () => {
-      setIsLandscape(window.innerWidth > window.innerHeight);
-    };
+// Cache
+const cache = new Map();
 
-    window.addEventListener("resize", handleResize);
-    window.addEventListener("orientationchange", handleResize);
-
-    return () => {
-      window.removeEventListener("resize", handleResize);
-      window.removeEventListener("orientationchange", handleResize);
-    };
-  }, []);
-
-  return isLandscape;
-};
-
-// Debug component - remove after testing
-function DebugAuth() {
-  const user = useSelector((state) => state.user);
-  const token = localStorage.getItem("token");
-  console.log("🔍 AUTH DEBUG:", {
-    reduxIsAuth: user.isAuth,
-    reduxToken: user.token,
-    localStorageToken: token,
-    userData: user,
-  });
-  return null;
-}
-
-// Simple localStorage-based persistence functions
 const saveAppData = (key, data) => {
   try {
     const dataToStore = {
       data,
-      timestamp: new Date().toISOString(),
+      timestamp: Date.now(),
       version: "1.0",
     };
+    cache.set(key, dataToStore);
     localStorage.setItem(`delish_${key}`, JSON.stringify(dataToStore));
     return true;
   } catch (error) {
@@ -75,12 +42,22 @@ const saveAppData = (key, data) => {
   }
 };
 
-const loadAppData = (key, defaultValue = null) => {
+const loadAppData = (key, defaultValue = null, maxAge = 5 * 60 * 1000) => {
+  const cached = cache.get(key);
+  if (cached && Date.now() - cached.timestamp < maxAge) {
+    return cached.data;
+  }
+
   try {
     const storedData = localStorage.getItem(`delish_${key}`);
     if (!storedData) return defaultValue;
 
     const parsedData = JSON.parse(storedData);
+    if (maxAge && Date.now() - parsedData.timestamp > maxAge) {
+      return defaultValue;
+    }
+
+    cache.set(key, parsedData);
     return parsedData.data || defaultValue;
   } catch (error) {
     console.error("Error loading data:", error);
@@ -88,33 +65,11 @@ const loadAppData = (key, defaultValue = null) => {
   }
 };
 
-// Service Worker Registration
-const registerServiceWorker = async () => {
-  if ("serviceWorker" in navigator) {
-    try {
-      const registration = await navigator.serviceWorker.register("/sw.js", {
-        scope: "/",
-        updateViaCache: "none",
-      });
-
-      console.log("✅ Service Worker registered:", registration.scope);
-      return registration;
-    } catch (error) {
-      console.error("❌ Service Worker registration failed:", error);
-      return null;
-    }
-  }
-  return null;
-};
-
-// Install Prompt Component (Landscape Optimized)
 const InstallPrompt = () => {
   const [showPrompt, setShowPrompt] = useState(false);
   const [isStandalone, setIsStandalone] = useState(false);
-  const isLandscape = useLandscape();
 
   useEffect(() => {
-    // Check if already installed
     const checkIfStandalone = () => {
       const standalone =
         window.matchMedia("(display-mode: standalone)").matches ||
@@ -122,7 +77,6 @@ const InstallPrompt = () => {
       setIsStandalone(standalone);
 
       if (!standalone) {
-        // Check if user declined recently (24-hour cooldown)
         const declinedTime = localStorage.getItem("install_prompt_declined");
         if (declinedTime) {
           const hoursSinceDecline =
@@ -132,7 +86,6 @@ const InstallPrompt = () => {
           }
         }
 
-        // Show prompt after 10 seconds
         setTimeout(() => {
           setShowPrompt(true);
         }, 10000);
@@ -144,21 +97,19 @@ const InstallPrompt = () => {
 
   const handleInstallClick = () => {
     setShowPrompt(false);
-
-    // Show browser-specific instructions
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
     const isAndroid = /Android/.test(navigator.userAgent);
 
     let message = "";
     if (isIOS) {
       message =
-        'To install:\n1. Tap the Share button (square with arrow up)\n2. Scroll down and tap "Add to Home Screen"\n\nDelish POS works best in landscape mode!';
+        'To install:\n1. Tap the Share button (square with arrow up)\n2. Scroll down and tap "Add to Home Screen"';
     } else if (isAndroid) {
       message =
-        'To install:\n1. Tap the menu (⋮) in your browser\n2. Select "Install app" or "Add to Home Screen"\n\nDelish POS works best in landscape mode!';
+        'To install:\n1. Tap the menu (⋮) in your browser\n2. Select "Install app" or "Add to Home Screen"';
     } else {
       message =
-        "To install:\nClick the install icon (📱) in your browser address bar\n\nDelish POS works best in landscape mode!";
+        "To install:\nClick the install icon (📱) in your browser address bar";
     }
 
     alert(message);
@@ -169,7 +120,7 @@ const InstallPrompt = () => {
     localStorage.setItem("install_prompt_declined", Date.now());
   };
 
-  if (isStandalone || !showPrompt || !isLandscape) return null;
+  if (isStandalone || !showPrompt) return null;
 
   return (
     <div
@@ -235,47 +186,6 @@ const InstallPrompt = () => {
   );
 };
 
-// Landscape Warning Component
-const LandscapeWarning = () => {
-  const isLandscape = useLandscape();
-
-  if (isLandscape) return null;
-
-  return (
-    <div
-      style={{
-        position: "fixed",
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
-        backgroundColor: "#1f2937",
-        color: "white",
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        zIndex: 99999,
-        textAlign: "center",
-        padding: "20px",
-      }}
-    >
-      <div style={{ fontSize: "48px", marginBottom: "20px" }}>🔄</div>
-      <h1 style={{ fontSize: "24px", marginBottom: "10px" }}>
-        Rotate Your Device
-      </h1>
-      <p style={{ fontSize: "16px", marginBottom: "30px", maxWidth: "400px" }}>
-        Delish POS is optimized for landscape mode. Please rotate your device to
-        landscape orientation.
-      </p>
-      <p style={{ fontSize: "14px", color: "#9ca3af", marginTop: "20px" }}>
-        If rotation doesn't work automatically, try locking your screen
-        rotation.
-      </p>
-    </div>
-  );
-};
-
 function Layout() {
   const dispatch = useDispatch();
   const isLoading = useLoadData();
@@ -284,60 +194,18 @@ function Layout() {
   const user = useSelector((state) => state.user);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
-  const [autoSaveInterval, setAutoSaveInterval] = useState(null);
-  const isLandscape = useLandscape();
 
-  // ✅ Check both Redux state AND localStorage as fallback
   const isAuthenticated = user.isAuth || localStorage.getItem("token");
 
-  // Setup data persistence when authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      // Load saved data
       const savedState = loadAppData("app_state");
       if (savedState?.user && !user.isAuth) {
         dispatch(setUser(savedState.user));
       }
-
-      // Setup auto-save every 30 seconds
-      const interval = setInterval(() => {
-        if (hasUnsavedChanges) {
-          saveCurrentState();
-          setHasUnsavedChanges(false);
-        }
-      }, 30000);
-
-      setAutoSaveInterval(interval);
-
-      // Setup emergency save
-      const handleBeforeUnload = () => {
-        saveCurrentState();
-      };
-
-      const handleVisibilityChange = () => {
-        if (document.visibilityState === "hidden") {
-          saveCurrentState();
-        }
-      };
-
-      window.addEventListener("beforeunload", handleBeforeUnload);
-      document.addEventListener("visibilitychange", handleVisibilityChange);
-
-      // Register service worker for PWA
-      registerServiceWorker();
-
-      return () => {
-        clearInterval(interval);
-        window.removeEventListener("beforeunload", handleBeforeUnload);
-        document.removeEventListener(
-          "visibilitychange",
-          handleVisibilityChange
-        );
-      };
     }
-  }, [isAuthenticated, hasUnsavedChanges, user.isAuth, dispatch]);
+  }, [isAuthenticated, user.isAuth, dispatch]);
 
-  // Handle online/offline status
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
     const handleOffline = () => setIsOffline(true);
@@ -351,28 +219,102 @@ function Layout() {
     };
   }, []);
 
-  // Listen for save events from index.html
+  if (isLoading) return <FullScreenLoader />;
+
+  return (
+    <>
+      {isOffline && (
+        <div
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            backgroundColor: "#EF4444",
+            color: "white",
+            textAlign: "center",
+            padding: "6px",
+            fontSize: "13px",
+            zIndex: 9999,
+            fontWeight: "bold",
+          }}
+        >
+          ⚠️ Offline
+        </div>
+      )}
+      <InstallPrompt />
+      {!hideHeaderRoutes.includes(location.pathname) && isAuthenticated && (
+        <Header />
+      )}
+      <Suspense fallback={<FullScreenLoader />}>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <ProtectedRoutes>
+                <Home />
+              </ProtectedRoutes>
+            }
+          />
+          <Route
+            path="/auth"
+            element={isAuthenticated ? <Navigate to="/" replace /> : <Auth />}
+          />
+          <Route
+            path="/orders"
+            element={
+              <ProtectedRoutes>
+                <Orders />
+              </ProtectedRoutes>
+            }
+          />
+          <Route
+            path="/tables"
+            element={
+              <ProtectedRoutes>
+                <Tables />
+              </ProtectedRoutes>
+            }
+          />
+          <Route
+            path="/menu"
+            element={
+              <ProtectedRoutes>
+                <Menu />
+              </ProtectedRoutes>
+            }
+          />
+          <Route
+            path="/dashboard"
+            element={
+              <ProtectedRoutes>
+                <Dashboard />
+              </ProtectedRoutes>
+            }
+          />
+          <Route
+            path="/inventory"
+            element={
+              <ProtectedRoutes>
+                <Inventory />
+              </ProtectedRoutes>
+            }
+          />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </>
+  );
+}
+
+function ProtectedRoutes({ children }) {
+  const user = useSelector((state) => state.user);
+  const dispatch = useDispatch();
+
+  const isAuthenticated = user.isAuth || localStorage.getItem("token");
+
   useEffect(() => {
-    const handleSaveState = () => {
-      saveCurrentState();
-    };
-
-    const handleLoadState = (event) => {
-      loadStateFromStorage(event.detail);
-    };
-
-    window.addEventListener("saveAppState", handleSaveState);
-    window.addEventListener("loadAppState", handleLoadState);
-
-    return () => {
-      window.removeEventListener("saveAppState", handleSaveState);
-      window.removeEventListener("loadAppState", handleLoadState);
-    };
-  }, []);
-
-  const loadStateFromStorage = (savedData) => {
-    if (savedData && !user.isAuth) {
-      // Try to restore user session from localStorage
+    if (!user.isAuth && localStorage.getItem("token")) {
       const token = localStorage.getItem("token");
       const userData = localStorage.getItem("user");
 
@@ -386,247 +328,39 @@ function Layout() {
               isAuth: true,
             })
           );
-          console.log("🔐 Restored user session from localStorage");
         } catch (error) {
-          console.error("Error parsing saved user data:", error);
-        }
-      }
-    }
-  };
-
-  const getCurrentState = () => {
-    // Get all Redux state
-    const state = {
-      user: user,
-      timestamp: new Date().toISOString(),
-      // Add other state slices here as needed
-    };
-    return state;
-  };
-
-  const saveCurrentState = () => {
-    if (!isAuthenticated) return;
-
-    const currentState = getCurrentState();
-
-    saveAppData("app_state", currentState);
-    localStorage.setItem("delish_pos_state", JSON.stringify(currentState));
-
-    // Dispatch event to clear unsaved changes flag
-    window.dispatchEvent(new CustomEvent("dataSaved"));
-
-    console.log("💾 App state saved");
-  };
-
-  // Mark data as changed (call this whenever user modifies data)
-  const markDataChanged = () => {
-    setHasUnsavedChanges(true);
-    window.markDataChanged?.();
-
-    // Debounced save after 2 seconds of inactivity
-    setTimeout(() => {
-      if (hasUnsavedChanges) {
-        saveCurrentState();
-        setHasUnsavedChanges(false);
-      }
-    }, 2000);
-  };
-
-  if (isLoading) return <FullScreenLoader />;
-
-  return (
-    <>
-      <DebugAuth /> {/* Remove this line after debugging */}
-      {/* Landscape Warning */}
-      <LandscapeWarning />
-      {/* Only show app content in landscape mode */}
-      {isLandscape && (
-        <>
-          {/* Offline Indicator */}
-          {isOffline && (
-            <div
-              style={{
-                position: "fixed",
-                top: 0,
-                left: 0,
-                right: 0,
-                backgroundColor: "#EF4444",
-                color: "white",
-                textAlign: "center",
-                padding: "8px",
-                fontSize: "14px",
-                zIndex: 9999,
-                fontWeight: "bold",
-              }}
-            >
-              ⚠️ You are offline. Some features may be limited.
-            </div>
-          )}
-
-          {/* Auto-save Indicator */}
-          {hasUnsavedChanges && (
-            <div
-              style={{
-                position: "fixed",
-                bottom: 10,
-                left: 10,
-                backgroundColor: "#F59E0B",
-                color: "white",
-                padding: "5px 10px",
-                borderRadius: "5px",
-                fontSize: "12px",
-                zIndex: 9998,
-              }}
-            >
-              ⚡ Auto-saving...
-            </div>
-          )}
-
-          {/* Install Prompt for Mobile */}
-          <InstallPrompt />
-
-          {/* Header - only show in landscape and when authenticated */}
-          {!hideHeaderRoutes.includes(location.pathname) && isAuthenticated && (
-            <Header />
-          )}
-
-          <Routes>
-            <Route
-              path="/"
-              element={
-                <ProtectedRoutes>
-                  <Home markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route
-              path="/auth"
-              element={isAuthenticated ? <Navigate to="/" replace /> : <Auth />}
-            />
-            <Route
-              path="/orders"
-              element={
-                <ProtectedRoutes>
-                  <Orders markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route
-              path="/tables"
-              element={
-                <ProtectedRoutes>
-                  <Tables markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route
-              path="/menu"
-              element={
-                <ProtectedRoutes>
-                  <Menu markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route
-              path="/dashboard"
-              element={
-                <ProtectedRoutes>
-                  <Dashboard markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route
-              path="/inventory"
-              element={
-                <ProtectedRoutes>
-                  <Inventory markDataChanged={markDataChanged} />
-                </ProtectedRoutes>
-              }
-            />
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </>
-      )}
-    </>
-  );
-}
-
-function ProtectedRoutes({ children, markDataChanged }) {
-  const user = useSelector((state) => state.user);
-  const dispatch = useDispatch();
-  const isLandscape = useLandscape();
-
-  // ✅ Check both Redux state AND localStorage as fallback
-  const isAuthenticated = user.isAuth || localStorage.getItem("token");
-
-  // Attempt to restore session from localStorage if Redux doesn't have it
-  useEffect(() => {
-    if (!user.isAuth && localStorage.getItem("token")) {
-      const userData = localStorage.getItem("user");
-      if (userData) {
-        try {
-          const parsedUser = JSON.parse(userData);
-          dispatch(
-            setUser({
-              ...parsedUser,
-              token: localStorage.getItem("token"),
-              isAuth: true,
-            })
-          );
-          console.log("🔄 Restored user session from localStorage");
-        } catch (error) {
-          console.error("Error parsing user data from localStorage:", error);
+          console.error("Error parsing user data:", error);
         }
       }
     }
   }, [user.isAuth, dispatch]);
 
-  // Don't show anything if not in landscape
-  if (!isLandscape) {
-    return null;
-  }
-
   if (!isAuthenticated) {
     return <Navigate to="/auth" replace />;
   }
 
-  // Clone children and pass markDataChanged prop
-  const childrenWithProps = React.Children.map(children, (child) => {
-    if (React.isValidElement(child)) {
-      return React.cloneElement(child, { markDataChanged });
-    }
-    return child;
-  });
-
-  return childrenWithProps;
+  return children;
 }
 
 ProtectedRoutes.propTypes = {
   children: PropTypes.node.isRequired,
-  markDataChanged: PropTypes.func,
 };
 
 function App() {
-  // Clear app data on logout
   useEffect(() => {
     const handleLogout = () => {
-      // Clear all delish app data
       Object.keys(localStorage).forEach((key) => {
         if (key.startsWith("delish_")) {
           localStorage.removeItem(key);
         }
       });
-      localStorage.removeItem("delish_pos_state");
       localStorage.removeItem("token");
       localStorage.removeItem("user");
+      cache.clear();
     };
 
-    // Listen for logout events
     window.addEventListener("userLogout", handleLogout);
-
-    return () => {
-      window.removeEventListener("userLogout", handleLogout);
-    };
+    return () => window.removeEventListener("userLogout", handleLogout);
   }, []);
 
   return (

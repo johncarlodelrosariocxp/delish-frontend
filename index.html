@@ -5,28 +5,26 @@
     <link rel="icon" type="image/svg+xml" href="/delish-logo.svg" />
     <link rel="manifest" href="/manifest.json" />
 
-    <!-- Force landscape orientation -->
+    <!-- Responsive viewport - allow all orientations -->
     <meta
       name="viewport"
-      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+      content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=0.1, viewport-fit=cover"
     />
 
-    <!-- Force landscape on mobile -->
-    <meta name="screen-orientation" content="landscape" />
-    <meta name="full-screen" content="yes" />
-    <meta name="browsermode" content="application" />
+    <!-- Allow all orientations -->
+    <meta name="screen-orientation" content="any" />
 
     <!-- Standard mobile web app capability -->
     <meta name="mobile-web-app-capable" content="yes" />
 
-    <!-- Apple landscape settings -->
+    <!-- Apple settings - allow all orientations -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta
       name="apple-mobile-web-app-status-bar-style"
       content="black-translucent"
     />
     <meta name="apple-mobile-web-app-title" content="Delish POS" />
-    <meta name="apple-mobile-web-app-orientations" content="landscape" />
+    <meta name="apple-mobile-web-app-orientations" content="all" />
     <link rel="apple-touch-icon" href="/delish-logo.svg" />
 
     <!-- PWA Meta Tags -->
@@ -39,67 +37,8 @@
 
     <title>Delish POS</title>
 
-    <!-- Landscape Optimization Scripts -->
+    <!-- Responsive Design Scripts -->
     <script>
-      // Force landscape orientation
-      function lockLandscapeOrientation() {
-        if (screen.orientation && screen.orientation.lock) {
-          screen.orientation.lock("landscape").catch(function (error) {
-            console.log("Orientation lock failed: ", error);
-          });
-        } else if (screen.lockOrientation) {
-          screen.lockOrientation("landscape");
-        } else if (screen.mozLockOrientation) {
-          screen.mozLockOrientation("landscape");
-        } else if (screen.msLockOrientation) {
-          screen.msLockOrientation("landscape");
-        }
-      }
-
-      // Check if in portrait and show warning
-      function checkOrientation() {
-        const isPortrait = window.innerHeight > window.innerWidth;
-        if (isPortrait) {
-          document.body.classList.add("portrait-mode");
-          document.body.classList.remove("landscape-mode");
-
-          // Try to lock to landscape
-          lockLandscapeOrientation();
-        } else {
-          document.body.classList.add("landscape-mode");
-          document.body.classList.remove("portrait-mode");
-        }
-      }
-
-      // Rotate screen for portrait devices
-      function rotateForPortrait() {
-        const isPortrait = window.innerHeight > window.innerWidth;
-        const root = document.getElementById("root");
-
-        if (isPortrait && root) {
-          // Calculate rotation
-          const angle = -90;
-          const width = window.innerHeight;
-          const height = window.innerWidth;
-
-          root.style.transform = `rotate(${angle}deg)`;
-          root.style.transformOrigin = "top left";
-          root.style.width = `${width}px`;
-          root.style.height = `${height}px`;
-          root.style.position = "absolute";
-          root.style.top = `${width}px`;
-          root.style.left = "0";
-        } else if (root) {
-          // Reset for landscape
-          root.style.transform = "none";
-          root.style.width = "100%";
-          root.style.height = "100vh";
-          root.style.position = "relative";
-          root.style.top = "0";
-          root.style.left = "0";
-        }
-      }
-
       // Service Worker Registration
       if ("serviceWorker" in navigator) {
         window.addEventListener("load", function () {
@@ -172,9 +111,6 @@
       window.addEventListener("appinstalled", function () {
         console.log("App installed");
         localStorage.setItem("app_installed", "true");
-
-        // Force landscape on installed app
-        setTimeout(lockLandscapeOrientation, 500);
       });
 
       // Detect PWA mode
@@ -199,10 +135,6 @@
 
       // Initialize
       window.addEventListener("DOMContentLoaded", function () {
-        // Check orientation
-        checkOrientation();
-        rotateForPortrait();
-
         // Load saved data
         const savedState = localStorage.getItem("delish_pos_state");
         if (savedState) {
@@ -213,29 +145,15 @@
           );
         }
 
-        // Force landscape in PWA mode
+        // Add PWA class if running as standalone
         if (isRunningAsPWA()) {
           document.body.classList.add("pwa-standalone");
-          lockLandscapeOrientation();
         }
-      });
-
-      // Handle resize and orientation changes
-      window.addEventListener("resize", function () {
-        checkOrientation();
-        rotateForPortrait();
-      });
-
-      window.addEventListener("orientationchange", function () {
-        setTimeout(function () {
-          checkOrientation();
-          rotateForPortrait();
-        }, 100);
       });
     </script>
 
     <style>
-      /* Base styles for landscape */
+      /* Base responsive styles */
       * {
         margin: 0;
         padding: 0;
@@ -249,105 +167,46 @@
       html,
       body {
         width: 100%;
-        height: 100%;
-        overflow: hidden;
+        min-height: 100vh;
+        overflow-x: hidden;
         background: #f3f4f6;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Segoe UI", Helvetica, Arial, sans-serif;
       }
 
       #root {
         width: 100%;
-        height: 100vh;
-        overflow: auto;
+        min-height: 100vh;
+        overflow-x: hidden;
       }
 
       /* Allow text selection in inputs */
       input,
-      textarea {
+      textarea,
+      [contenteditable="true"] {
         -webkit-user-select: text;
         user-select: text;
       }
 
-      /* Portrait mode warning */
+      /* Better touch targets for mobile */
+      button,
+      [role="button"],
+      .touch-target {
+        min-height: 44px;
+        min-width: 44px;
+        touch-action: manipulation;
+      }
+
+      /* Remove any portrait mode warnings */
       body.portrait-mode #root::before {
-        content: "🔄 Please rotate your device to landscape mode";
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: #1f2937;
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-size: 24px;
-        text-align: center;
-        padding: 20px;
-        z-index: 999999;
-      }
-
-      /* Auto-rotate for portrait mode */
-      @media (orientation: portrait) {
-        html,
-        body,
-        #root {
-          transform: rotate(-90deg);
-          transform-origin: left top;
-          width: 100vh;
-          height: 100vw;
-          position: absolute;
-          top: 100%;
-          left: 0;
-          overflow: hidden;
-        }
-
-        #root {
-          overflow: auto;
-        }
-      }
-
-      /* Landscape optimizations */
-      @media (orientation: landscape) {
-        body {
-          min-height: 100vh;
-        }
-
-        /* Optimize tables for landscape */
-        table {
-          width: 100%;
-          font-size: 14px;
-        }
-
-        /* Better scroll for landscape */
-        * {
-          scrollbar-width: thin;
-          scrollbar-color: #2563eb #f1f1f1;
-        }
-
-        /* Landscape-specific layouts */
-        .landscape-layout {
-          display: flex;
-          height: 100vh;
-        }
-
-        .sidebar {
-          width: 250px;
-          height: 100vh;
-          overflow-y: auto;
-        }
-
-        .main-content {
-          flex: 1;
-          height: 100vh;
-          overflow-y: auto;
-        }
+        display: none !important;
       }
 
       /* Network indicators */
       body.offline::after {
         content: "⚠️ Offline";
         position: fixed;
-        top: 10px;
+        top: env(safe-area-inset-top, 10px);
         right: 10px;
         background: #ef4444;
         color: white;
@@ -360,7 +219,7 @@
       body.online::after {
         content: "✓ Online";
         position: fixed;
-        top: 10px;
+        top: env(safe-area-inset-top, 10px);
         right: 10px;
         background: #10b981;
         color: white;
@@ -368,13 +227,6 @@
         border-radius: 5px;
         font-size: 12px;
         z-index: 9999;
-      }
-
-      /* Better touch targets */
-      button,
-      [role="button"] {
-        min-height: 44px;
-        min-width: 44px;
       }
 
       /* PWA standalone adjustments */
@@ -385,60 +237,86 @@
         padding-right: env(safe-area-inset-right);
       }
 
-      /* Install button */
-      #pwa-install-button {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        padding: 12px 24px;
-        background: linear-gradient(135deg, #2563eb, #1d4ed8);
-        color: white;
-        border: none;
-        border-radius: 25px;
-        cursor: pointer;
-        font-weight: bold;
-        box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
-        z-index: 10000;
-        font-size: 14px;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-          sans-serif;
+      /* Mobile bottom navigation safe area */
+      .bottom-nav-safe {
+        padding-bottom: env(safe-area-inset-bottom, 20px);
       }
 
-      body.pwa-standalone #pwa-install-button {
-        display: none;
+      /* Responsive table styles */
+      .responsive-table {
+        width: 100%;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
       }
 
-      /* Animation for install button */
-      @keyframes pulse {
-        0% {
-          transform: scale(1);
-          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+      .responsive-table table {
+        min-width: 600px;
+      }
+
+      /* Mobile-first responsive design */
+      @media (max-width: 768px) {
+        html {
+          font-size: 14px;
         }
-        50% {
-          transform: scale(1.05);
-          box-shadow: 0 6px 16px rgba(37, 99, 235, 0.4);
+
+        /* Mobile-optimized styles */
+        .mobile-optimized {
+          padding: 12px !important;
         }
-        100% {
-          transform: scale(1);
-          box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+
+        .mobile-full-width {
+          width: 100% !important;
+        }
+
+        .mobile-stack {
+          flex-direction: column !important;
+        }
+
+        .mobile-stack > * {
+          width: 100% !important;
+          margin-bottom: 12px !important;
+        }
+
+        /* Mobile touch targets */
+        .mobile-touch-target {
+          padding: 16px !important;
+          font-size: 16px !important;
         }
       }
 
-      .pulse {
-        animation: pulse 2s infinite;
+      /* Tablet styles */
+      @media (min-width: 769px) and (max-width: 1024px) {
+        html {
+          font-size: 15px;
+        }
       }
 
-      /* Auto-save indicator */
-      .auto-saving {
-        position: fixed;
-        bottom: 10px;
-        left: 10px;
-        background: #f59e0b;
-        color: white;
-        padding: 5px 10px;
-        border-radius: 5px;
-        font-size: 12px;
-        z-index: 9998;
+      /* Desktop styles */
+      @media (min-width: 1025px) {
+        html {
+          font-size: 16px;
+        }
+      }
+
+      /* Portrait-specific optimizations */
+      @media (orientation: portrait) {
+        /* Portrait mode specific styles */
+        .portrait-optimized {
+          padding: 16px !important;
+        }
+
+        /* Ensure full height in portrait */
+        .portrait-full-height {
+          min-height: 100vh !important;
+        }
+      }
+
+      /* Landscape-specific optimizations */
+      @media (orientation: landscape) {
+        /* Landscape mode specific styles */
+        .landscape-optimized {
+          padding: 20px !important;
+        }
       }
     </style>
   </head>

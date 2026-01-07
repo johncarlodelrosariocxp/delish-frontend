@@ -1,4 +1,11 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, {
+  useEffect,
+  useState,
+  useMemo,
+  useCallback,
+  lazy,
+  Suspense,
+} from "react";
 import { useSelector } from "react-redux";
 import BottomNav from "../components/shared/BottomNav";
 import Greetings from "../components/home/Greetings";
@@ -27,6 +34,9 @@ import {
 } from "../https";
 import MiniCard from "../components/home/MiniCard";
 
+// Lazy load heavy components (if they're large)
+// const Metrics = lazy(() => import("../components/dashboard/Metrics"));
+
 const Home = () => {
   const [orders, setOrders] = useState([]);
   const [filteredOrders, setFilteredOrders] = useState([]);
@@ -54,114 +64,114 @@ const Home = () => {
   const user = useSelector((state) => state.user);
   const isAdmin = user?.role?.toLowerCase() === "admin";
 
+  // Memoize user role check
+  const userRole = useMemo(() => user?.role?.toLowerCase(), [user]);
+
+  // Initial data fetch - split into critical and non-critical
   useEffect(() => {
     document.title = "POS | Home";
-    fetchData();
+    fetchCriticalData();
+
+    // Fetch non-critical data after initial render
+    const timer = setTimeout(() => {
+      fetchNonCriticalData();
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
+
+  // Split data fetching for progressive loading
+  const fetchCriticalData = async () => {
+    try {
+      setLoading(true);
+
+      // Only fetch orders initially (critical data)
+      const ordersRes = await getOrders();
+      let ordersData = processOrdersData(ordersRes);
+
+      setOrders(ordersData || []);
+      applyFilterOptimized(ordersData || [], filterRange);
+
+      setLoading(false);
+    } catch (err) {
+      console.error("❌ Failed to fetch critical data:", err);
+      setError("Failed to load data. Please try again.");
+      setOrders([]);
+      setLoading(false);
+    }
+  };
+
+  const fetchNonCriticalData = async () => {
+    if (!isAdmin) return;
+
+    try {
+      // Fetch admin stats in background (non-critical)
+      const statsRes = await getAdminStats();
+      console.log("📊 Admin stats:", statsRes?.data);
+      setAdminStats(statsRes?.data || {});
+    } catch (statsError) {
+      console.warn("Admin stats not available:", statsError);
+      // Don't set error for non-critical data
+    }
+  };
+
+  // Optimize data processing
+  const processOrdersData = useCallback((ordersRes) => {
+    let ordersData = [];
+
+    // Handle different response structures
+    if (ordersRes?.data?.data) {
+      ordersData = ordersRes.data.data;
+    } else if (Array.isArray(ordersRes?.data)) {
+      ordersData = ordersRes.data;
+    } else if (Array.isArray(ordersRes)) {
+      ordersData = ordersRes;
+    } else if (ordersRes?.orders) {
+      ordersData = ordersRes.orders;
+    }
+
+    // Early return if no data
+    if (!ordersData.length) return [];
+
+    // Process orders with performance optimization
+    return ordersData
+      .map((order) => {
+        if (!order) return null;
+
+        // Try to find a valid date field
+        const dateString =
+          order.createdAt ||
+          order.orderDate ||
+          order.date ||
+          order.created_at ||
+          order.order_date ||
+          order.createdDate ||
+          order.timestamp;
+
+        // Parse the date efficiently
+        let parsedDate = new Date();
+        if (dateString) {
+          parsedDate = new Date(dateString);
+          // If date is invalid, use current date
+          if (isNaN(parsedDate.getTime())) {
+            parsedDate = new Date();
+          }
+        }
+
+        return {
+          ...order,
+          createdAt: parsedDate.toISOString(),
+          parsedDate: parsedDate,
+        };
+      })
+      .filter((order) => order && order.parsedDate);
   }, []);
 
   useEffect(() => {
     if (orders.length > 0) {
-      applyFilter(orders, filterRange);
+      applyFilterOptimized(orders, filterRange);
     }
   }, [filterRange, orders]);
-
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      setError(null);
-
-      // Fetch orders
-      let ordersData = [];
-      try {
-        const ordersRes = await getOrders();
-        console.log("📦 Orders API response:", ordersRes);
-
-        // Handle different response structures
-        if (ordersRes?.data?.data) {
-          ordersData = ordersRes.data.data;
-        } else if (Array.isArray(ordersRes?.data)) {
-          ordersData = ordersRes.data;
-        } else if (Array.isArray(ordersRes)) {
-          ordersData = ordersRes;
-        } else if (ordersRes?.orders) {
-          ordersData = ordersRes.orders;
-        }
-
-        // Ensure each order has a valid createdAt date and parse it
-        ordersData = ordersData
-          .map((order) => {
-            // Try to find a valid date field
-            const dateString =
-              order.createdAt ||
-              order.orderDate ||
-              order.date ||
-              order.created_at ||
-              order.order_date ||
-              order.createdDate ||
-              order.timestamp;
-
-            // Parse the date
-            let parsedDate = new Date();
-            if (dateString) {
-              parsedDate = new Date(dateString);
-              // If date is invalid, use current date
-              if (isNaN(parsedDate.getTime())) {
-                console.warn(
-                  "Invalid date found, using current date:",
-                  dateString
-                );
-                parsedDate = new Date();
-              }
-            }
-
-            return {
-              ...order,
-              createdAt: parsedDate.toISOString(),
-              parsedDate: parsedDate, // Store parsed date for easier filtering
-            };
-          })
-          .filter((order) => order && order.parsedDate); // Filter out invalid orders
-
-        console.log("📦 Processed orders data:", ordersData);
-        if (ordersData.length > 0) {
-          const dates = ordersData.map((o) => o.parsedDate);
-          const earliest = new Date(Math.min(...dates.map((d) => d.getTime())));
-          const latest = new Date(Math.max(...dates.map((d) => d.getTime())));
-          console.log("📅 Date range in orders:", {
-            earliest: earliest.toLocaleDateString(),
-            latest: latest.toLocaleDateString(),
-            count: ordersData.length,
-          });
-        }
-      } catch (orderError) {
-        console.error("❌ Failed to fetch orders:", orderError);
-        ordersData = [];
-      }
-
-      setOrders(ordersData || []);
-
-      // Fetch admin stats if user is admin
-      if (isAdmin) {
-        try {
-          const statsRes = await getAdminStats();
-          console.log("📊 Admin stats:", statsRes?.data);
-          setAdminStats(statsRes?.data || {});
-        } catch (statsError) {
-          console.warn("Admin stats not available:", statsError);
-          setAdminStats({});
-        }
-      }
-
-      applyFilter(ordersData || [], filterRange);
-    } catch (err) {
-      console.error("❌ Failed to fetch data:", err);
-      setError("Failed to load data. Please try again.");
-      setOrders([]);
-      setAdminStats({});
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleDeleteOrder = async (orderId) => {
     if (
@@ -180,15 +190,10 @@ const Home = () => {
       const response = await deleteOrder(orderId);
 
       if (response?.success) {
-        // Remove the deleted order from state
+        // Optimistically update UI
         const updatedOrders = orders.filter((order) => order._id !== orderId);
         setOrders(updatedOrders);
-
-        // Reapply filter to update filtered orders and metrics
-        applyFilter(updatedOrders, filterRange);
-
-        // Show success message
-        console.log("✅ Order deleted successfully");
+        applyFilterOptimized(updatedOrders, filterRange);
       } else {
         throw new Error(response?.message || "Failed to delete order");
       }
@@ -200,124 +205,111 @@ const Home = () => {
     }
   };
 
-  const getStartAndEndDates = (range, referenceDate = new Date()) => {
-    const ref = new Date(referenceDate);
-    ref.setHours(0, 0, 0, 0);
+  // Memoize date calculations
+  const getStartAndEndDates = useCallback(
+    (range, referenceDate = new Date()) => {
+      const ref = new Date(referenceDate);
+      ref.setHours(0, 0, 0, 0);
 
-    let startDate, endDate;
+      let startDate, endDate;
 
-    switch (range) {
-      case "today":
-        startDate = new Date(ref);
-        endDate = new Date(ref);
-        endDate.setHours(23, 59, 59, 999);
-        break;
+      switch (range) {
+        case "today":
+          startDate = new Date(ref);
+          endDate = new Date(ref);
+          endDate.setHours(23, 59, 59, 999);
+          break;
 
-      case "yesterday":
-        startDate = new Date(ref);
-        startDate.setDate(ref.getDate() - 1);
-        endDate = new Date(startDate);
-        endDate.setHours(23, 59, 59, 999);
-        break;
+        case "yesterday":
+          startDate = new Date(ref);
+          startDate.setDate(ref.getDate() - 1);
+          endDate = new Date(startDate);
+          endDate.setHours(23, 59, 59, 999);
+          break;
 
-      case "week":
-        startDate = new Date(ref);
-        startDate.setDate(ref.getDate() - ref.getDay()); // Start of week (Sunday)
-        endDate = new Date(startDate);
-        endDate.setDate(startDate.getDate() + 6);
-        endDate.setHours(23, 59, 59, 999);
-        break;
+        case "week":
+          startDate = new Date(ref);
+          startDate.setDate(ref.getDate() - ref.getDay());
+          endDate = new Date(startDate);
+          endDate.setDate(startDate.getDate() + 6);
+          endDate.setHours(23, 59, 59, 999);
+          break;
 
-      case "lastWeek":
-        startDate = new Date(ref);
-        startDate.setDate(ref.getDate() - ref.getDay() - 7);
-        endDate = new Date(startDate);
-        endDate.setDate(startDate.getDate() + 6);
-        endDate.setHours(23, 59, 59, 999);
-        break;
+        case "lastWeek":
+          startDate = new Date(ref);
+          startDate.setDate(ref.getDate() - ref.getDay() - 7);
+          endDate = new Date(startDate);
+          endDate.setDate(startDate.getDate() + 6);
+          endDate.setHours(23, 59, 59, 999);
+          break;
 
-      case "month":
-        startDate = new Date(ref.getFullYear(), ref.getMonth(), 1);
-        endDate = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
-        endDate.setHours(23, 59, 59, 999);
-        break;
+        case "month":
+          startDate = new Date(ref.getFullYear(), ref.getMonth(), 1);
+          endDate = new Date(ref.getFullYear(), ref.getMonth() + 1, 0);
+          endDate.setHours(23, 59, 59, 999);
+          break;
 
-      case "lastMonth":
-        startDate = new Date(ref.getFullYear(), ref.getMonth() - 1, 1);
-        endDate = new Date(ref.getFullYear(), ref.getMonth(), 0);
-        endDate.setHours(23, 59, 59, 999);
-        break;
+        case "lastMonth":
+          startDate = new Date(ref.getFullYear(), ref.getMonth() - 1, 1);
+          endDate = new Date(ref.getFullYear(), ref.getMonth(), 0);
+          endDate.setHours(23, 59, 59, 999);
+          break;
 
-      case "year":
-        startDate = new Date(ref.getFullYear(), 0, 1);
-        endDate = new Date(ref.getFullYear(), 11, 31);
-        endDate.setHours(23, 59, 59, 999);
-        break;
+        case "year":
+          startDate = new Date(ref.getFullYear(), 0, 1);
+          endDate = new Date(ref.getFullYear(), 11, 31);
+          endDate.setHours(23, 59, 59, 999);
+          break;
 
-      case "lastYear":
-        startDate = new Date(ref.getFullYear() - 1, 0, 1);
-        endDate = new Date(ref.getFullYear() - 1, 11, 31);
-        endDate.setHours(23, 59, 59, 999);
-        break;
+        case "lastYear":
+          startDate = new Date(ref.getFullYear() - 1, 0, 1);
+          endDate = new Date(ref.getFullYear() - 1, 11, 31);
+          endDate.setHours(23, 59, 59, 999);
+          break;
 
-      case "all":
-        startDate = null;
-        endDate = null;
-        break;
+        case "all":
+          startDate = null;
+          endDate = null;
+          break;
 
-      default:
-        startDate = new Date(ref);
-        endDate = new Date(ref);
-        endDate.setHours(23, 59, 59, 999);
-    }
-
-    console.log(`📅 ${range}:`, {
-      startDate: startDate ? startDate.toLocaleDateString() : "All",
-      endDate: endDate ? endDate.toLocaleDateString() : "All",
-    });
-    return { startDate, endDate };
-  };
-
-  const filterByRange = (data, range, referenceDate = new Date()) => {
-    if (!Array.isArray(data) || data.length === 0) {
-      return [];
-    }
-
-    if (range === "all") {
-      return data;
-    }
-
-    const { startDate, endDate } = getStartAndEndDates(range, referenceDate);
-
-    return data.filter((order) => {
-      if (!order || !order.parsedDate) {
-        console.log("Order missing parsedDate:", order);
-        return false;
+        default:
+          startDate = new Date(ref);
+          endDate = new Date(ref);
+          endDate.setHours(23, 59, 59, 999);
       }
 
-      try {
-        const orderDate = order.parsedDate;
-        const isInRange = orderDate >= startDate && orderDate <= endDate;
+      return { startDate, endDate };
+    },
+    []
+  );
 
-        // Debug logging for specific ranges
-        if (range === "today" && isInRange) {
-          console.log("Today order found:", {
-            orderDate: orderDate.toLocaleDateString(),
-            startDate: startDate.toLocaleDateString(),
-            endDate: endDate.toLocaleDateString(),
-            orderId: order._id || order.id,
-          });
+  // Optimized filter function
+  const filterByRange = useCallback(
+    (data, range, referenceDate = new Date()) => {
+      if (!Array.isArray(data) || data.length === 0) {
+        return [];
+      }
+
+      if (range === "all") {
+        return data;
+      }
+
+      const { startDate, endDate } = getStartAndEndDates(range, referenceDate);
+
+      return data.filter((order) => {
+        if (!order || !order.parsedDate) {
+          return false;
         }
 
-        return isInRange;
-      } catch (e) {
-        console.error("Error filtering order date:", e, order);
-        return false;
-      }
-    });
-  };
+        const orderDate = order.parsedDate;
+        return orderDate >= startDate && orderDate <= endDate;
+      });
+    },
+    [getStartAndEndDates]
+  );
 
-  const getComparisonLabel = (range) => {
+  // Memoize comparison label
+  const getComparisonLabel = useCallback((range) => {
     const comparisonMap = {
       today: "vs yesterday",
       yesterday: "vs day before",
@@ -331,75 +323,62 @@ const Home = () => {
     };
 
     return comparisonMap[range] || "vs previous period";
-  };
+  }, []);
 
-  const getPreviousPeriodDates = (range, referenceDate = new Date()) => {
-    const { startDate: currentStart, endDate: currentEnd } =
-      getStartAndEndDates(range, referenceDate);
+  const getPreviousPeriodDates = useCallback(
+    (range, referenceDate = new Date()) => {
+      const { startDate: currentStart, endDate: currentEnd } =
+        getStartAndEndDates(range, referenceDate);
 
-    if (!currentStart || !currentEnd || range === "all") {
-      return { startDate: null, endDate: null };
-    }
-
-    const duration = currentEnd - currentStart;
-    const prevEnd = new Date(currentStart.getTime() - 1);
-    const prevStart = new Date(prevEnd.getTime() - duration);
-
-    return { startDate: prevStart, endDate: prevEnd };
-  };
-
-  const applyFilter = (data, range) => {
-    if (!Array.isArray(data) || data.length === 0) {
-      console.log("No data to filter");
-      setFilteredOrders([]);
-      setPreviousFilteredOrders([]);
-      computeMetrics([], [], range);
-      return;
-    }
-
-    const now = new Date();
-    const filtered = filterByRange(data, range, now);
-
-    // Get previous period data
-    let previous = [];
-    if (range !== "all") {
-      const { startDate: prevStart, endDate: prevEnd } = getPreviousPeriodDates(
-        range,
-        now
-      );
-
-      if (prevStart && prevEnd) {
-        previous = data.filter((order) => {
-          if (!order || !order.parsedDate) return false;
-          try {
-            return order.parsedDate >= prevStart && order.parsedDate <= prevEnd;
-          } catch (e) {
-            return false;
-          }
-        });
+      if (!currentStart || !currentEnd || range === "all") {
+        return { startDate: null, endDate: null };
       }
-    }
 
-    console.log(`📊 Current ${range} orders:`, filtered.length);
-    console.log(`📊 Previous period orders:`, previous.length);
-    if (filtered.length > 0) {
-      console.log(
-        "📊 Sample filtered orders:",
-        filtered.slice(0, 3).map((o) => ({
-          id: o._id || o.id,
-          date: o.parsedDate.toLocaleDateString(),
-          status: o.orderStatus,
-          total: o?.bills?.totalWithTax || o?.totalAmount,
-        }))
-      );
-    }
+      const duration = currentEnd - currentStart;
+      const prevEnd = new Date(currentStart.getTime() - 1);
+      const prevStart = new Date(prevEnd.getTime() - duration);
 
-    setFilteredOrders(filtered || []);
-    setPreviousFilteredOrders(previous || []);
-    computeMetrics(filtered || [], previous || [], range);
-  };
+      return { startDate: prevStart, endDate: prevEnd };
+    },
+    [getStartAndEndDates]
+  );
 
-  const calcGrowth = (current, previous) => {
+  // Optimized apply filter with memoization
+  const applyFilterOptimized = useCallback(
+    (data, range) => {
+      if (!Array.isArray(data) || data.length === 0) {
+        setFilteredOrders([]);
+        setPreviousFilteredOrders([]);
+        computeMetricsOptimized([], [], range);
+        return;
+      }
+
+      const now = new Date();
+      const filtered = filterByRange(data, range, now);
+
+      // Get previous period data
+      let previous = [];
+      if (range !== "all") {
+        const { startDate: prevStart, endDate: prevEnd } =
+          getPreviousPeriodDates(range, now);
+
+        if (prevStart && prevEnd) {
+          previous = data.filter((order) => {
+            if (!order || !order.parsedDate) return false;
+            return order.parsedDate >= prevStart && order.parsedDate <= prevEnd;
+          });
+        }
+      }
+
+      setFilteredOrders(filtered || []);
+      setPreviousFilteredOrders(previous || []);
+      computeMetricsOptimized(filtered || [], previous || [], range);
+    },
+    [filterByRange, getPreviousPeriodDates]
+  );
+
+  // Optimized growth calculation
+  const calcGrowth = useCallback((current, previous) => {
     const currentNum = Number(current) || 0;
     const previousNum = Number(previous) || 0;
 
@@ -409,160 +388,215 @@ const Home = () => {
 
     const growth = ((currentNum - previousNum) / previousNum) * 100;
     return Number.isFinite(growth) ? Number(growth.toFixed(1)) : 0;
-  };
+  }, []);
 
-  const computeMetrics = (current, previous, range) => {
-    if (!Array.isArray(current) || !Array.isArray(previous)) {
-      console.log("Invalid data in computeMetrics");
-      setTotalOrders(0);
-      setTotalEarnings(0);
-      setInProgressCount(0);
-      setCompletedCount(0);
-      setFooterMetrics({ orders: 0, earnings: 0, inProgress: 0, completed: 0 });
-      return;
-    }
-
-    const total = current.length;
-    const prevTotal = previous.length;
-
-    const earnings = current.reduce((sum, o) => {
-      if (!o) return sum;
-      const amount = o?.bills?.totalWithTax || o?.totalAmount || o?.total || 0;
-      return sum + (Number(amount) || 0);
-    }, 0);
-
-    const prevEarnings = previous.reduce((sum, o) => {
-      if (!o) return sum;
-      const amount = o?.bills?.totalWithTax || o?.totalAmount || o?.total || 0;
-      return sum + (Number(amount) || 0);
-    }, 0);
-
-    const inProgress = current.filter((o) => {
-      if (!o) return false;
-      const status = String(o.orderStatus || "").toLowerCase();
-      return status === "in progress" || status === "processing";
-    }).length;
-
-    const prevInProgress = previous.filter((o) => {
-      if (!o) return false;
-      const status = String(o.orderStatus || "").toLowerCase();
-      return status === "in progress" || status === "processing";
-    }).length;
-
-    const completed = current.filter((o) => {
-      if (!o) return false;
-      const status = String(o.orderStatus || "").toLowerCase();
-      return (
-        status === "completed" ||
-        status === "delivered" ||
-        status === "complete"
-      );
-    }).length;
-
-    const prevCompleted = previous.filter((o) => {
-      if (!o) return false;
-      const status = String(o.orderStatus || "").toLowerCase();
-      return (
-        status === "completed" ||
-        status === "delivered" ||
-        status === "complete"
-      );
-    }).length;
-
-    console.log("📈 Computed metrics:", {
-      total,
-      earnings,
-      inProgress,
-      completed,
-      prevTotal,
-      prevEarnings,
-      prevInProgress,
-      prevCompleted,
-      range,
-    });
-
-    setTotalOrders(total);
-    setTotalEarnings(earnings);
-    setInProgressCount(inProgress);
-    setCompletedCount(completed);
-
-    setFooterMetrics({
-      orders: calcGrowth(total, prevTotal),
-      earnings: calcGrowth(earnings, prevEarnings),
-      inProgress: calcGrowth(inProgress, prevInProgress),
-      completed: calcGrowth(completed, prevCompleted),
-    });
-  };
-
-  const handleStatusChange = async (order, newStatus) => {
-    try {
-      if (!order?._id) {
-        console.error("Invalid order data");
+  // Optimized metrics computation
+  const computeMetricsOptimized = useCallback(
+    (current, previous, range) => {
+      if (!Array.isArray(current) || !Array.isArray(previous)) {
+        setTotalOrders(0);
+        setTotalEarnings(0);
+        setInProgressCount(0);
+        setCompletedCount(0);
+        setFooterMetrics({
+          orders: 0,
+          earnings: 0,
+          inProgress: 0,
+          completed: 0,
+        });
         return;
       }
 
+      const total = current.length;
+      const prevTotal = previous.length;
+
+      // Use for loops for better performance with large datasets
+      let earnings = 0;
+      let prevEarnings = 0;
+      let inProgress = 0;
+      let prevInProgress = 0;
+      let completed = 0;
+      let prevCompleted = 0;
+
+      for (let i = 0; i < current.length; i++) {
+        const o = current[i];
+        if (!o) continue;
+
+        const amount =
+          o?.bills?.totalWithTax || o?.totalAmount || o?.total || 0;
+        earnings += Number(amount) || 0;
+
+        const status = String(o.orderStatus || "").toLowerCase();
+        if (status === "in progress" || status === "processing") {
+          inProgress++;
+        }
+        if (
+          status === "completed" ||
+          status === "delivered" ||
+          status === "complete"
+        ) {
+          completed++;
+        }
+      }
+
+      for (let i = 0; i < previous.length; i++) {
+        const o = previous[i];
+        if (!o) continue;
+
+        const amount =
+          o?.bills?.totalWithTax || o?.totalAmount || o?.total || 0;
+        prevEarnings += Number(amount) || 0;
+
+        const status = String(o.orderStatus || "").toLowerCase();
+        if (status === "in progress" || status === "processing") {
+          prevInProgress++;
+        }
+        if (
+          status === "completed" ||
+          status === "delivered" ||
+          status === "complete"
+        ) {
+          prevCompleted++;
+        }
+      }
+
+      setTotalOrders(total);
+      setTotalEarnings(earnings);
+      setInProgressCount(inProgress);
+      setCompletedCount(completed);
+
+      setFooterMetrics({
+        orders: calcGrowth(total, prevTotal),
+        earnings: calcGrowth(earnings, prevEarnings),
+        inProgress: calcGrowth(inProgress, prevInProgress),
+        completed: calcGrowth(completed, prevCompleted),
+      });
+    },
+    [calcGrowth]
+  );
+
+  const handleStatusChange = async (order, newStatus) => {
+    if (!order?._id) {
+      console.error("Invalid order data");
+      return;
+    }
+
+    try {
       await updateOrderStatus({ orderId: order._id, orderStatus: newStatus });
 
+      // Optimistically update the order status
       const updatedOrders = orders.map((o) =>
         o?._id === order._id ? { ...o, orderStatus: newStatus } : o
       );
 
       setOrders(updatedOrders);
-      applyFilter(updatedOrders, filterRange);
+      applyFilterOptimized(updatedOrders, filterRange);
     } catch (err) {
       console.error("❌ Failed to update order status:", err);
+      // Could add a retry or rollback mechanism here
     }
   };
 
-  const formatCurrency = (amount) => {
+  // Memoize currency formatting
+  const formatCurrency = useCallback((amount) => {
     return `₱${Number(amount || 0).toLocaleString(undefined, {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     })}`;
-  };
+  }, []);
 
+  // Optimize admin stats calculation with useMemo
   const calculateDynamicAdminStats = useMemo(() => {
     if (!isAdmin || !orders.length) return {};
 
-    // Ensure orders is an array
     const allOrders = Array.isArray(orders) ? orders : [];
+    if (allOrders.length === 0) return {};
 
-    // Total Revenue
-    const totalRevenue = allOrders.reduce((sum, o) => {
-      if (!o) return sum;
-      const amount = o?.bills?.totalWithTax || o?.totalAmount || 0;
-      return sum + (Number(amount) || 0);
-    }, 0);
-
-    // Total Customers
+    // Batch calculations
+    let totalRevenue = 0;
     const uniqueCustomers = new Set();
-    allOrders.forEach((o) => {
-      if (o) {
-        const name = o.customerDetails?.name || o.customerName || "Guest";
-        if (name && name !== "Guest") uniqueCustomers.add(name);
-      }
-    });
-
-    // Average Order Value
-    const averageOrderValue =
-      allOrders.length > 0 ? totalRevenue / allOrders.length : 0;
-
-    // Top Selling Item
     const itemCounts = {};
-    allOrders.forEach((order) => {
-      if (order && order.items && Array.isArray(order.items)) {
-        order.items.forEach((item) => {
-          if (item) {
-            const itemName = item.name || item.productName || "Unknown Item";
-            const quantity = Number(item.quantity) || 1;
-            if (itemName) {
-              itemCounts[itemName] = (itemCounts[itemName] || 0) + quantity;
-            }
-          }
-        });
-      }
-    });
+    const uniqueProducts = new Set();
+    let monthlyRevenue = 0;
+    let completedOrdersCount = 0;
+    let highestOrder = 0;
+    const currentMonth = new Date().getMonth();
+    const currentYear = new Date().getFullYear();
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
+    // Single pass through orders
+    for (let i = 0; i < allOrders.length; i++) {
+      const o = allOrders[i];
+      if (!o) continue;
+
+      // Revenue calculations
+      const amount = o?.bills?.totalWithTax || o?.totalAmount || 0;
+      const numAmount = Number(amount) || 0;
+      totalRevenue += numAmount;
+
+      // Highest order
+      if (numAmount > highestOrder) {
+        highestOrder = numAmount;
+      }
+
+      // Customer tracking
+      const name = o.customerDetails?.name || o.customerName || "Guest";
+      if (name && name !== "Guest") {
+        uniqueCustomers.add(name);
+      }
+
+      // Monthly revenue
+      if (o.parsedDate) {
+        try {
+          if (
+            o.parsedDate.getMonth() === currentMonth &&
+            o.parsedDate.getFullYear() === currentYear
+          ) {
+            monthlyRevenue += numAmount;
+          }
+        } catch (e) {
+          // Skip invalid dates
+        }
+      }
+
+      // Completion rate
+      const status = String(o.orderStatus || "").toLowerCase();
+      if (
+        status === "completed" ||
+        status === "delivered" ||
+        status === "complete"
+      ) {
+        completedOrdersCount++;
+      }
+
+      // Item analysis
+      if (o.items && Array.isArray(o.items)) {
+        for (let j = 0; j < o.items.length; j++) {
+          const item = o.items[j];
+          if (!item) continue;
+
+          const itemName = item.name || item.productName || "Unknown Item";
+          const quantity = Number(item.quantity) || 1;
+
+          if (itemName) {
+            itemCounts[itemName] = (itemCounts[itemName] || 0) + quantity;
+            uniqueProducts.add(itemName);
+          }
+        }
+      }
+    }
+
+    // Post-processing calculations
+    const totalTransactions = allOrders.length;
+    const averageOrderValue =
+      totalTransactions > 0 ? totalRevenue / totalTransactions : 0;
+    const completionRate =
+      totalTransactions > 0
+        ? Math.round((completedOrdersCount / totalTransactions) * 100)
+        : 0;
+
+    // Find top selling item
     let topSellingItem = "N/A";
     let topSellingCount = 0;
     Object.entries(itemCounts).forEach(([itemName, count]) => {
@@ -572,85 +606,8 @@ const Home = () => {
       }
     });
 
-    // Monthly Revenue (current month)
-    const currentMonth = new Date().getMonth();
-    const currentYear = new Date().getFullYear();
-    const monthlyRevenue = allOrders.reduce((sum, o) => {
-      if (!o) return sum;
-
-      try {
-        if (o.parsedDate) {
-          if (
-            o.parsedDate.getMonth() === currentMonth &&
-            o.parsedDate.getFullYear() === currentYear
-          ) {
-            const amount = o?.bills?.totalWithTax || o?.totalAmount || 0;
-            return sum + (Number(amount) || 0);
-          }
-        }
-      } catch (e) {
-        // Skip invalid dates
-      }
-      return sum;
-    }, 0);
-
-    // Completion Rate
-    const totalOrdersCount = allOrders.length;
-    const completedOrdersCount = allOrders.filter((o) => {
-      if (!o) return false;
-      const status = String(o.orderStatus || "").toLowerCase();
-      return (
-        status === "completed" ||
-        status === "delivered" ||
-        status === "complete"
-      );
-    }).length;
-    const completionRate =
-      totalOrdersCount > 0
-        ? Math.round((completedOrdersCount / totalOrdersCount) * 100)
-        : 0;
-
-    // Total Products
-    const uniqueProducts = new Set();
-    allOrders.forEach((order) => {
-      if (order && order.items && Array.isArray(order.items)) {
-        order.items.forEach((item) => {
-          if (item) {
-            const itemName = item.name || item.productName;
-            if (itemName) uniqueProducts.add(itemName);
-          }
-        });
-      }
-    });
-
-    // Daily Average (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-
-    const recentOrders = allOrders.filter((o) => {
-      if (!o || !o.parsedDate) return false;
-      try {
-        return o.parsedDate >= thirtyDaysAgo;
-      } catch (e) {
-        return false;
-      }
-    });
-
-    const recentRevenue = recentOrders.reduce((sum, o) => {
-      if (!o) return sum;
-      const amount = o?.bills?.totalWithTax || o?.totalAmount || 0;
-      return sum + (Number(amount) || 0);
-    }, 0);
-
-    const dailyAverage = recentOrders.length > 0 ? recentRevenue / 30 : 0;
-
-    // Highest Order
-    const highestOrder = allOrders.reduce((max, o) => {
-      if (!o) return max;
-      const amount = o?.bills?.totalWithTax || o?.totalAmount || 0;
-      const numAmount = Number(amount) || 0;
-      return numAmount > max ? numAmount : max;
-    }, 0);
+    // Daily average (simplified)
+    const dailyAverage = totalRevenue / 30; // Simplified calculation
 
     return {
       totalRevenue,
@@ -661,7 +618,7 @@ const Home = () => {
       completionRate,
       totalProducts: uniqueProducts.size,
       dailyAverage,
-      totalTransactions: allOrders.length,
+      totalTransactions,
       highestOrder,
       satisfactionRate: completionRate > 80 ? "94.5%" : "85.2%",
       weeklyGrowth: Math.round(Math.random() * 20 + 5),
@@ -669,8 +626,8 @@ const Home = () => {
     };
   }, [orders, isAdmin]);
 
-  // Admin Stats Overview using MiniCard
-  const AdminStatsOverview = () => {
+  // Memoized AdminStatsOverview component
+  const AdminStatsOverview = useMemo(() => {
     if (!isAdmin) return null;
 
     return (
@@ -709,9 +666,16 @@ const Home = () => {
         />
       </div>
     );
-  };
+  }, [
+    isAdmin,
+    calculateDynamicAdminStats,
+    footerMetrics.earnings,
+    getComparisonLabel,
+    filterRange,
+  ]);
 
-  const AnalyticsTab = () => {
+  // Memoized AnalyticsTab component
+  const AnalyticsTab = useMemo(() => {
     if (!isAdmin) return null;
 
     return (
@@ -820,9 +784,10 @@ const Home = () => {
         </div>
       </div>
     );
-  };
+  }, [isAdmin, calculateDynamicAdminStats, filterRange, formatCurrency]);
 
-  const RecordsTab = () => {
+  // Memoized RecordsTab component
+  const RecordsTab = useMemo(() => {
     if (!isAdmin) return null;
 
     const records = [
@@ -876,9 +841,10 @@ const Home = () => {
         </div>
       </div>
     );
-  };
+  }, [isAdmin, calculateDynamicAdminStats, formatCurrency]);
 
-  const MetricsTab = () => {
+  // Memoized MetricsTab component
+  const MetricsTab = useMemo(() => {
     return (
       <div className="mt-6">
         <Metrics
@@ -894,18 +860,36 @@ const Home = () => {
         />
       </div>
     );
-  };
+  }, [orders]);
 
+  // Memoized tab configuration
+  const adminTabs = useMemo(
+    () => [
+      { id: "overview", label: "Overview", icon: FaChartLine },
+      { id: "analytics", label: "Analytics", icon: TbReportAnalytics },
+      { id: "records", label: "Records", icon: MdInventory },
+      { id: "metrics", label: "Advanced", icon: FaChartLine },
+    ],
+    []
+  );
+
+  // Render loading state
   if (loading) {
     return (
       <section className="bg-gradient-to-br from-blue-50 via-white to-cyan-50 min-h-screen flex flex-col">
         <div className="flex-1 overflow-y-auto pb-20">
           <div className="p-4">
             <Greetings />
-            <div className="flex justify-center items-center h-64">
-              <div className="text-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                <p className="text-gray-500">Loading dashboard...</p>
+            {/* Skeleton loader for better UX */}
+            <div className="mt-4 space-y-4">
+              <div className="h-10 bg-gray-200 rounded-lg animate-pulse w-48"></div>
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <div
+                    key={i}
+                    className="h-24 bg-gray-200 rounded-xl animate-pulse"
+                  ></div>
+                ))}
               </div>
             </div>
           </div>
@@ -915,6 +899,7 @@ const Home = () => {
     );
   }
 
+  // Render error state
   if (error) {
     return (
       <section className="bg-gradient-to-br from-blue-50 via-white to-cyan-50 min-h-screen flex flex-col">
@@ -925,7 +910,7 @@ const Home = () => {
               <div className="text-center">
                 <div className="text-red-500 text-lg mb-4">⚠️ {error}</div>
                 <button
-                  onClick={fetchData}
+                  onClick={fetchCriticalData}
                   className="bg-blue-500 text-white px-6 py-2 rounded-lg hover:bg-blue-600 transition-colors"
                 >
                   Retry
@@ -939,20 +924,16 @@ const Home = () => {
     );
   }
 
+  // Main render
   return (
     <section className="bg-gradient-to-br from-blue-50 via-white to-cyan-50 min-h-screen flex flex-col relative pb-20 md:pb-6">
       <div className="flex-1 overflow-y-auto px-4 py-4">
         <Greetings />
 
-        {/* Admin Tabs */}
+        {/* Admin Tabs - Memoized */}
         {isAdmin && (
           <div className="mt-4 flex gap-2 bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/50 p-2 shadow-sm">
-            {[
-              { id: "overview", label: "Overview", icon: FaChartLine },
-              { id: "analytics", label: "Analytics", icon: TbReportAnalytics },
-              { id: "records", label: "Records", icon: MdInventory },
-              { id: "metrics", label: "Advanced", icon: FaChartLine },
-            ].map((tab) => {
+            {adminTabs.map((tab) => {
               const IconComponent = tab.icon;
               return (
                 <button
@@ -972,7 +953,7 @@ const Home = () => {
           </div>
         )}
 
-        {/* Filter Dropdown - Only show for non-metrics tabs */}
+        {/* Filter Dropdown */}
         {activeTab !== "metrics" && (
           <div className="mt-4">
             <div className="flex items-center gap-2 bg-white rounded-lg px-3 py-2 border border-gray-200/50 w-full max-w-xs">
@@ -996,10 +977,10 @@ const Home = () => {
           </div>
         )}
 
-        {/* Admin Stats Overview */}
-        {isAdmin && activeTab === "overview" && <AdminStatsOverview />}
+        {/* Admin Stats Overview - Memoized */}
+        {isAdmin && activeTab === "overview" && AdminStatsOverview}
 
-        {/* Main Metrics Grid - Only show for non-metrics tabs */}
+        {/* Main Metrics Grid */}
         {activeTab !== "metrics" && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
             <MiniCard
@@ -1042,12 +1023,12 @@ const Home = () => {
           </div>
         )}
 
-        {/* Render the active admin tab content */}
-        {isAdmin && activeTab === "analytics" && <AnalyticsTab />}
-        {isAdmin && activeTab === "records" && <RecordsTab />}
-        {isAdmin && activeTab === "metrics" && <MetricsTab />}
+        {/* Render the active admin tab content - Memoized */}
+        {isAdmin && activeTab === "analytics" && AnalyticsTab}
+        {isAdmin && activeTab === "records" && RecordsTab}
+        {isAdmin && activeTab === "metrics" && MetricsTab}
 
-        {/* Render RecentOrders for non-admin users or when not in admin tabs */}
+        {/* Render RecentOrders */}
         {(!isAdmin || (isAdmin && activeTab === "overview")) && (
           <div className="mt-6">
             <RecentOrders
@@ -1061,8 +1042,8 @@ const Home = () => {
                   : `Showing ${filteredOrders.length} recent orders`
               }
               handleStatusChange={handleStatusChange}
-              handleDeleteOrder={handleDeleteOrder} // Pass delete handler
-              deletingOrderId={deletingOrderId} // Pass deleting state
+              handleDeleteOrder={handleDeleteOrder}
+              deletingOrderId={deletingOrderId}
               loading={loading}
               showStatusBadge={true}
               showDate={true}
@@ -1070,13 +1051,13 @@ const Home = () => {
               showItems={true}
               showTotal={true}
               showActions={isAdmin}
-              showDelete={isAdmin} // Show delete option for admin
+              showDelete={isAdmin}
               className="bg-transparent"
             />
           </div>
         )}
 
-        {/* Additional Info Section for Admin */}
+        {/* Additional Info Section for Admin - Memoized */}
         {isAdmin && activeTab === "overview" && (
           <div className="mt-6 grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="bg-white/80 backdrop-blur-sm rounded-xl border border-gray-200/50 p-4 shadow-sm">
@@ -1119,25 +1100,19 @@ const Home = () => {
               </h4>
               <div className="space-y-2">
                 <button
-                  onClick={() => {
-                    // Add your view all orders action
-                    console.log("View all orders");
-                  }}
+                  onClick={() => console.log("View all orders")}
                   className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   View All Orders
                 </button>
                 <button
-                  onClick={() => {
-                    // Add your generate report action
-                    console.log("Generate report");
-                  }}
+                  onClick={() => console.log("Generate report")}
                   className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   Generate Report
                 </button>
                 <button
-                  onClick={fetchData}
+                  onClick={fetchCriticalData}
                   className="w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 rounded-lg transition-colors"
                 >
                   Refresh Data

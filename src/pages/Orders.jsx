@@ -34,6 +34,7 @@ import BackButton from "../components/shared/BackButton";
 import Invoice from "../components/invoice/Invoice";
 
 const Orders = () => {
+  // State variables
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
@@ -51,7 +52,7 @@ const Orders = () => {
   const [selectingStartDate, setSelectingStartDate] = useState(true);
   const [orderToDelete, setOrderToDelete] = useState(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [orders, setOrders] = useState([]);
   const [filteredOrders, setFilteredOrders] = useState([]);
@@ -61,6 +62,13 @@ const Orders = () => {
   const [viewMode, setViewMode] = useState("grid");
   const [isCancelling, setIsCancelling] = useState(false);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [hasMoreOrders, setHasMoreOrders] = useState(true);
+  const [totalOrderCount, setTotalOrderCount] = useState(0);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
   const scrollRef = useRef(null);
   const datePickerRef = useRef(null);
   const downloadMenuRef = useRef(null);
@@ -68,9 +76,10 @@ const Orders = () => {
   const user = useSelector((state) => state.user);
   const navigate = useNavigate();
 
+  // Initial fetch with pagination
   useEffect(() => {
     document.title = "POS | Orders";
-    fetchAllOrders();
+    fetchOrders(1, pageSize);
 
     const handleClickOutside = (event) => {
       if (
@@ -98,53 +107,97 @@ const Orders = () => {
     };
   }, []);
 
-  // Fetch ALL orders like the Home page does
-  const fetchAllOrders = async () => {
+  // Fetch orders with pagination
+  const fetchOrders = async (page = 1, limit = pageSize) => {
     try {
-      setLoading(true);
+      if (page === 1) {
+        setLoading(true);
+      } else {
+        setIsLoadingMore(true);
+      }
       setError(null);
-      console.log("🔄 Fetching ALL orders...");
+      console.log(`🔄 Fetching orders page ${page} (${limit} per page)...`);
 
       let ordersData = [];
+      let totalCount = 0;
+      let fetchedPage = page;
 
       // For admins
       if (user.role?.toLowerCase() === "admin") {
-        console.log("🛠️ Using admin API to fetch ALL orders");
+        console.log(`🛠️ Using admin API to fetch page ${page}`);
         try {
-          const response = await getAdminOrders();
+          const response = await getAdminOrders({
+            page,
+            limit,
+            ...(dateFilter === "custom" &&
+            customDateRange.startDate &&
+            customDateRange.endDate
+              ? {
+                  startDate: customDateRange.startDate.toISOString(),
+                  endDate: customDateRange.endDate.toISOString(),
+                }
+              : {}),
+          });
           console.log("📦 Admin API response:", response);
 
-          // Handle different response structures like Home page
+          // Handle different response structures
           if (response?.data?.data) {
             ordersData = response.data.data;
-          } else if (Array.isArray(response?.data)) {
-            ordersData = response.data;
-          } else if (Array.isArray(response)) {
-            ordersData = response;
-          } else if (response?.orders) {
-            ordersData = response.orders;
+            totalCount = response.data.total || response.data.count || 0;
+            fetchedPage = response.data.page || page;
           } else if (response?.data?.orders) {
             ordersData = response.data.orders;
-          } else if (response?.data?.result) {
-            ordersData = response.data.result;
+            totalCount = response.data.total || 0;
+            fetchedPage = response.data.page || page;
+          } else if (Array.isArray(response?.data)) {
+            ordersData = response.data;
+            totalCount = response.data.length;
+          } else if (Array.isArray(response)) {
+            ordersData = response;
+            totalCount = response.length;
           }
         } catch (error) {
           console.error("❌ Admin API failed, trying user API:", error);
           // Fallback to regular orders API
-          const response = await getOrders();
-          ordersData = extractOrdersFromResponse(response);
+          const response = await getOrders({
+            page,
+            limit,
+            ...(dateFilter === "custom" &&
+            customDateRange.startDate &&
+            customDateRange.endDate
+              ? {
+                  startDate: customDateRange.startDate.toISOString(),
+                  endDate: customDateRange.endDate.toISOString(),
+                }
+              : {}),
+          });
+          const extracted = extractOrdersFromResponse(response);
+          ordersData = extracted;
+          totalCount = extracted.length;
         }
       } else {
         // For regular users
-        console.log("👤 Using user API to fetch ALL orders");
-        const response = await getOrders();
-        ordersData = extractOrdersFromResponse(response);
+        console.log(`👤 Using user API to fetch page ${page}`);
+        const response = await getOrders({
+          page,
+          limit,
+          ...(dateFilter === "custom" &&
+          customDateRange.startDate &&
+          customDateRange.endDate
+            ? {
+                startDate: customDateRange.startDate.toISOString(),
+                endDate: customDateRange.endDate.toISOString(),
+              }
+            : {}),
+        });
+        const extracted = extractOrdersFromResponse(response);
+        ordersData = extracted;
+        totalCount = extracted.length;
       }
 
-      // Process orders like Home page does
+      // Process orders
       ordersData = ordersData
         .map((order) => {
-          // Try to find a valid date field
           const dateString =
             order.createdAt ||
             order.orderDate ||
@@ -154,7 +207,6 @@ const Orders = () => {
             order.createdDate ||
             order.timestamp;
 
-          // Parse the date
           let parsedDate = new Date();
           if (dateString) {
             parsedDate = new Date(dateString);
@@ -175,26 +227,47 @@ const Orders = () => {
         })
         .filter((order) => order && order.parsedDate);
 
-      console.log(`✅ Successfully fetched ${ordersData.length} orders`);
-      setOrders(ordersData || []);
+      console.log(
+        `✅ Successfully fetched ${ordersData.length} orders (page ${fetchedPage})`
+      );
 
-      // Apply initial filter
-      applyDateFilter(ordersData || []);
+      // Update orders state
+      if (page === 1) {
+        setOrders(ordersData || []);
+      } else {
+        setOrders((prev) => [...prev, ...(ordersData || [])]);
+      }
+
+      // Update pagination state
+      setTotalOrderCount(totalCount);
+      setHasMoreOrders(ordersData.length === limit);
+      setCurrentPage(fetchedPage);
+
+      // Apply filters to fetched data
+      applyDateFilter(page === 1 ? ordersData : [...orders, ...ordersData]);
     } catch (err) {
       console.error("❌ Failed to fetch orders:", err);
       setError("Failed to load orders. Please try again.");
       enqueueSnackbar("Failed to load orders", { variant: "error" });
-      setOrders([]);
+      if (page === 1) {
+        setOrders([]);
+      }
     } finally {
       setLoading(false);
+      setIsLoadingMore(false);
     }
+  };
+
+  // Refresh all orders (first page)
+  const refreshOrders = () => {
+    setCurrentPage(1);
+    fetchOrders(1, pageSize);
   };
 
   const extractOrdersFromResponse = (response) => {
     if (!response) return [];
 
     const data = response.data || response;
-
     console.log("📦 Extracting orders from response:", typeof data);
 
     if (Array.isArray(data)) {
@@ -242,6 +315,7 @@ const Orders = () => {
     return [];
   };
 
+  // Apply date filter to current orders
   const applyDateFilter = (data) => {
     if (!Array.isArray(data) || data.length === 0) {
       setFilteredOrders([]);
@@ -330,37 +404,76 @@ const Orders = () => {
 
     console.log(`📊 Filtered ${filtered.length} orders for ${dateFilter}`);
     setFilteredOrders(filtered || []);
-
-    // Calculate totals
     calculateTotals(filtered);
   };
 
+  // Re-fetch when date filter changes
   useEffect(() => {
-    if (orders.length > 0) {
+    if (
+      dateFilter === "custom" &&
+      customDateRange.startDate &&
+      customDateRange.endDate
+    ) {
+      setCurrentPage(1);
+      fetchOrders(1, pageSize);
+    } else if (dateFilter !== "all") {
       applyDateFilter(orders);
     }
-  }, [dateFilter, customDateRange, orders]);
+  }, [dateFilter, customDateRange]);
 
+  // Calculate totals
   const calculateTotals = (ordersList) => {
-    const salesTotal = ordersList.reduce((sum, order) => {
-      if (!order || order.orderStatus?.toLowerCase() === "cancelled")
-        return sum;
+    if (!Array.isArray(ordersList) || ordersList.length === 0) {
+      setTotalOrders(0);
+      setTotalSales(0);
+      return;
+    }
+
+    const activeOrders = ordersList.filter(
+      (order) => order.orderStatus?.toLowerCase() !== "cancelled"
+    );
+
+    const salesTotal = activeOrders.reduce((sum, order) => {
+      if (!order) return sum;
       const amount =
         order.totalAmount || order.bills?.totalWithTax || order.amount || 0;
       return sum + (Number(amount) || 0);
     }, 0);
 
+    setTotalOrders(activeOrders.length);
     setTotalSales(salesTotal);
-    setTotalOrders(ordersList.length);
   };
 
+  // Scroll handling
   const handleScroll = () => {
     if (scrollRef.current) {
       const scrollTop = scrollRef.current.scrollTop;
+      const scrollHeight = scrollRef.current.scrollHeight;
+      const clientHeight = scrollRef.current.clientHeight;
+
       setShowScrollButton(scrollTop > 300);
+
+      // Infinite scroll - load more when near bottom
+      if (
+        scrollTop + clientHeight >= scrollHeight - 100 &&
+        hasMoreOrders &&
+        !isLoadingMore &&
+        !loading
+      ) {
+        loadMoreOrders();
+      }
     }
   };
 
+  // Load more orders for infinite scroll
+  const loadMoreOrders = () => {
+    if (hasMoreOrders && !isLoadingMore && !loading) {
+      const nextPage = currentPage + 1;
+      fetchOrders(nextPage, pageSize);
+    }
+  };
+
+  // Check if user can cancel order
   const canUserCancelOrder = (order) => {
     const userRole = user.role?.toLowerCase();
 
@@ -383,6 +496,7 @@ const Orders = () => {
     return false;
   };
 
+  // Cancel order handler
   const handleCancelOrder = async (order) => {
     try {
       setIsCancelling(true);
@@ -427,6 +541,7 @@ const Orders = () => {
     }
   };
 
+  // Status configuration
   const getStatusConfig = (orderStatus) => {
     const status = orderStatus?.toLowerCase() || "completed";
 
@@ -468,6 +583,7 @@ const Orders = () => {
     }
   };
 
+  // Filter orders with search
   const filteredOrdersWithSearch = React.useMemo(() => {
     try {
       if (!Array.isArray(filteredOrders)) {
@@ -504,6 +620,7 @@ const Orders = () => {
     }
   }, [filteredOrders, searchQuery]);
 
+  // Utility functions (keep existing)
   const calculateTotalAmount = (order) => {
     if (!order) return 0;
 
@@ -696,6 +813,7 @@ const Orders = () => {
     return null;
   };
 
+  // Calendar functions (keep existing)
   const generateCalendarDays = () => {
     const days = [];
     const firstDay = new Date(calendarYear, calendarMonth, 1);
@@ -795,6 +913,8 @@ const Orders = () => {
 
   const handleApplyDateRange = () => {
     setDateFilter("custom");
+    setCurrentPage(1);
+    fetchOrders(1, pageSize);
     setShowDatePicker(false);
   };
 
@@ -842,6 +962,7 @@ const Orders = () => {
     return "Select dates";
   };
 
+  // Export functions (keep existing)
   const prepareExportData = () => {
     const dataToExport = filteredOrdersWithSearch.map((order) => {
       const totalAmount = calculateTotalAmount(order);
@@ -1098,6 +1219,7 @@ const Orders = () => {
     }
   };
 
+  // Component for grid view
   const OrderCard = ({ order, onViewReceipt, onCancelOrder }) => {
     if (!order) return null;
 
@@ -1225,6 +1347,7 @@ const Orders = () => {
     );
   };
 
+  // Component for table view
   const OrderRow = ({ order, onViewReceipt, onCancelOrder }) => {
     if (!order) return null;
 
@@ -1333,6 +1456,25 @@ const Orders = () => {
     "November",
     "December",
   ];
+
+  // Calculate counts for display
+  const activeOrdersCount = React.useMemo(() => {
+    return filteredOrders.filter(
+      (order) => order.orderStatus?.toLowerCase() !== "cancelled"
+    ).length;
+  }, [filteredOrders]);
+
+  const cancelledOrdersCount = React.useMemo(() => {
+    return filteredOrders.filter(
+      (order) => order.orderStatus?.toLowerCase() === "cancelled"
+    ).length;
+  }, [filteredOrders]);
+
+  const totalActiveOrdersInDB = React.useMemo(() => {
+    return orders.filter(
+      (order) => order.orderStatus?.toLowerCase() !== "cancelled"
+    ).length;
+  }, [orders]);
 
   return (
     <section className="bg-gradient-to-br from-blue-50 via-white to-cyan-50 min-h-screen flex flex-col relative pb-20 md:pb-6">
@@ -1492,7 +1634,7 @@ const Orders = () => {
               </div>
 
               <button
-                onClick={fetchAllOrders}
+                onClick={refreshOrders}
                 disabled={loading}
                 className="bg-gradient-to-r from-purple-500 to-purple-600 hover:from-purple-600 hover:to-purple-700 text-white px-4 py-2 rounded-lg font-semibold text-sm flex items-center gap-2 transition-all duration-200 shadow-md hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Refresh orders"
@@ -1529,7 +1671,7 @@ const Orders = () => {
                 {error}
               </p>
               <button
-                onClick={fetchAllOrders}
+                onClick={refreshOrders}
                 className="mt-2 text-red-600 hover:text-red-800 text-xs underline"
               >
                 Try again
@@ -1555,6 +1697,7 @@ const Orders = () => {
                     e.stopPropagation();
                     setDateFilter("today");
                     setCustomDateRange({ startDate: null, endDate: null });
+                    refreshOrders();
                   }}
                 />
               </div>
@@ -1719,6 +1862,9 @@ const Orders = () => {
                     setDateFilter(filter);
                     setCustomDateRange({ startDate: null, endDate: null });
                     setShowDatePicker(false);
+                    if (filter === "all") {
+                      refreshOrders();
+                    }
                   }}
                   className={`
                     px-3 py-1.5 text-xs rounded-full transition-colors
@@ -1750,13 +1896,20 @@ const Orders = () => {
 
             <div className="flex flex-wrap gap-2 md:gap-4">
               <span className="text-xs sm:text-sm font-semibold text-blue-700 bg-blue-50 px-3 py-2 rounded-lg">
-                Orders: <span className="text-lg">{totalOrders}</span>
+                Page: <span className="text-lg">{currentPage}</span>
+              </span>
+              <span className="text-xs sm:text-sm font-semibold text-green-700 bg-green-50 px-3 py-2 rounded-lg">
+                Showing: <span className="text-lg">{orders.length}</span>
+              </span>
+              <span className="text-xs sm:text-sm font-semibold text-blue-700 bg-blue-50 px-3 py-2 rounded-lg">
+                Active Orders: <span className="text-lg">{totalOrders}</span>
               </span>
               <span className="text-xs sm:text-sm font-semibold text-green-700 bg-green-50 px-3 py-2 rounded-lg">
                 Sales: {formatCurrency(totalSales)}
               </span>
-              <span className="text-xs sm:text-sm font-semibold text-purple-700 bg-purple-50 px-3 py-2 rounded-lg">
-                Total in DB: <span className="text-lg">{orders.length}</span>
+              <span className="text-xs sm:text-sm font-semibold text-gray-700 bg-gray-50 px-3 py-2 rounded-lg">
+                Cancelled:{" "}
+                <span className="text-lg">{cancelledOrdersCount}</span>
               </span>
             </div>
           </div>
@@ -1795,6 +1948,11 @@ const Orders = () => {
               <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
                 {viewMode === "grid" ? "Grid View" : "Table View"}
               </span>
+              {filteredOrders.length > 0 && (
+                <span className="ml-2 text-xs bg-green-100 text-green-800 px-2 py-1 rounded">
+                  Active: {activeOrdersCount}
+                </span>
+              )}
             </div>
 
             {filteredOrdersWithSearch.length > 0 && (
@@ -1881,19 +2039,108 @@ const Orders = () => {
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 auto-rows-fr">
-              {filteredOrdersWithSearch.map((order) => (
-                <OrderCard
-                  key={order._id || Math.random().toString()}
-                  order={order}
-                  onViewReceipt={handleViewReceipt}
-                  onCancelOrder={(order) => {
-                    setOrderToDelete(order);
-                    setShowDeleteModal(true);
-                  }}
-                />
-              ))}
-            </div>
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-4 auto-rows-fr">
+                {filteredOrdersWithSearch.map((order) => (
+                  <OrderCard
+                    key={order._id || Math.random().toString()}
+                    order={order}
+                    onViewReceipt={handleViewReceipt}
+                    onCancelOrder={(order) => {
+                      setOrderToDelete(order);
+                      setShowDeleteModal(true);
+                    }}
+                  />
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              <div className="flex flex-col items-center gap-4 py-6 mt-6">
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={() => {
+                      const newPage = Math.max(1, currentPage - 1);
+                      setCurrentPage(newPage);
+                      fetchOrders(newPage, pageSize);
+                    }}
+                    disabled={currentPage === 1 || loading}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    <FaChevronLeft className="text-sm" />
+                    Previous
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-gray-700">Page</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={currentPage}
+                      onChange={(e) => {
+                        const page = Math.max(1, parseInt(e.target.value) || 1);
+                        setCurrentPage(page);
+                        fetchOrders(page, pageSize);
+                      }}
+                      className="w-16 px-2 py-1 border rounded text-center text-sm"
+                    />
+                    <span className="text-sm text-gray-700">
+                      of {Math.ceil(totalOrderCount / pageSize) || 1}
+                    </span>
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      const newPage = currentPage + 1;
+                      setCurrentPage(newPage);
+                      fetchOrders(newPage, pageSize);
+                    }}
+                    disabled={!hasMoreOrders || loading}
+                    className="px-4 py-2 bg-gray-100 hover:bg-gray-200 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    Next
+                    <FaChevronRight className="text-sm" />
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-gray-700">Show:</span>
+                  <select
+                    value={pageSize}
+                    onChange={(e) => {
+                      const newSize = parseInt(e.target.value);
+                      setPageSize(newSize);
+                      setCurrentPage(1);
+                      fetchOrders(1, newSize);
+                    }}
+                    className="px-3 py-1 border rounded text-sm"
+                  >
+                    <option value="10">10 per page</option>
+                    <option value="20">20 per page</option>
+                    <option value="50">50 per page</option>
+                    <option value="100">100 per page</option>
+                  </select>
+                  <span className="text-sm text-gray-700">
+                    • Total orders: {totalOrderCount}
+                  </span>
+                </div>
+
+                {isLoadingMore && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
+                    Loading more orders...
+                  </div>
+                )}
+
+                {hasMoreOrders && !isLoadingMore && (
+                  <button
+                    onClick={loadMoreOrders}
+                    className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                  >
+                    Load More Orders
+                  </button>
+                )}
+              </div>
+            </>
           )
         ) : (
           <div className="flex justify-center items-center py-8">
@@ -1920,7 +2167,7 @@ const Orders = () => {
               )}
               {orders.length === 0 && (
                 <button
-                  onClick={fetchAllOrders}
+                  onClick={refreshOrders}
                   className="mt-4 bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium"
                 >
                   Load Orders
