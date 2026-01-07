@@ -51,64 +51,77 @@ const Modal = ({ setIsTableModalOpen }) => {
         className="bg-[#262626] p-6 rounded-lg shadow-lg w-96"
       >
         {/* Modal Header */}
-
-        <div className="flex justify-between item-center mb-4">
+        <div className="flex justify-between items-center mb-4">
           <h2 className="text-[#f5f5f5] text-xl font-semibold">Add Table</h2>
           <button
             onClick={handleCloseModal}
-            className="text-[#f5f5f5] hover:text-red-500"
+            className="text-[#f5f5f5] hover:text-red-500 transition-colors"
           >
             <IoMdClose size={24} />
           </button>
         </div>
 
         {/* Modal Body */}
-
-        <form onSubmit={handleSubmit} className="space-y-4 mt-10">
+        <form onSubmit={handleSubmit} className="space-y-4 mt-6">
           <div>
-            <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+            <label className="block text-[#ababab] mb-2 text-sm font-medium">
               Table Number
             </label>
-            <div className="flex item-center rounded-lg p-5 px-4 bg-[#1f1f1f]">
+            <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f]">
               <input
                 type="number"
                 name="tableNo"
                 value={tableData.tableNo}
                 onChange={handleInputChange}
-                className="bg-transparent flex-1 text-white focus:outline-none"
+                className="bg-transparent flex-1 text-white focus:outline-none w-full"
+                placeholder="Enter table number"
                 required
+                min="1"
               />
             </div>
           </div>
+          
           <div>
-            <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+            <label className="block text-[#ababab] mb-2 text-sm font-medium">
               Number of Seats
             </label>
-            <div className="flex item-center rounded-lg p-5 px-4 bg-[#1f1f1f]">
+            <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f]">
               <input
                 type="number"
                 name="seats"
                 value={tableData.seats}
                 onChange={handleInputChange}
-                className="bg-transparent flex-1 text-white focus:outline-none"
+                className="bg-transparent flex-1 text-white focus:outline-none w-full"
+                placeholder="Enter number of seats"
                 required
+                min="1"
               />
             </div>
           </div>
 
-          <button
-            type="submit"
-            className="w-full rounded-lg mt-10 mb-6 py-3 text-lg bg-yellow-400 text-gray-900 font-bold"
-          >
-            Add Table
-          </button>
+          <div className="flex gap-3 pt-4">
+            <button
+              type="button"
+              onClick={handleCloseModal}
+              className="flex-1 rounded-lg py-3 text-lg bg-gray-600 text-white font-semibold hover:bg-gray-700 transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              className="flex-1 rounded-lg py-3 text-lg bg-yellow-400 text-gray-900 font-bold hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              disabled={tableMutation.isPending}
+            >
+              {tableMutation.isPending ? "Adding..." : "Add Table"}
+            </button>
+          </div>
         </form>
       </motion.div>
     </div>
   );
 };
 
-// Add PropTypes validation
+// PropTypes validation
 Modal.propTypes = {
   setIsTableModalOpen: PropTypes.func.isRequired,
 };

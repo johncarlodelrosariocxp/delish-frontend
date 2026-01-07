@@ -5,14 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build && shx cp dist/index.html dist/404.html",
+    "build": "vite build",
     "build:vercel": "vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "deploy": "npm run build",
-    "clean": "rm -rf node_modules/.vite node_modules/.cache dist",
-    "fresh": "npm run clean && npm install && npm run build",
-    "debug": "vite --debug"
+    "clean": "rm -rf node_modules package-lock.json dist .vite"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
@@ -24,6 +22,7 @@
     "localforage": "^1.10.0",
     "lucide-react": "^0.479.0",
     "notistack": "^3.0.2",
+    "prop-types": "^15.8.1",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-icons": "^5.5.0",
@@ -35,29 +34,14 @@
     "tailwind-scrollbar-hide": "^2.0.0"
   },
   "devDependencies": {
-    "@eslint/js": "^9.17.0",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitejs/plugin-react": "^4.3.4",
-    "@vitejs/plugin-react-swc": "^3.11.0",
     "autoprefixer": "^10.4.20",
-    "eslint": "^9.17.0",
-    "eslint-plugin-react": "^7.37.2",
-    "eslint-plugin-react-hooks": "^5.0.0",
-    "eslint-plugin-react-refresh": "^0.4.16",
-    "globals": "^15.14.0",
-    "npm-force-resolutions": "^0.0.10",
     "postcss": "^8.5.1",
-    "rollup-plugin-visualizer": "^6.0.5",
-    "shx": "^0.4.0",
     "tailwindcss": "^3.4.17",
-    "terser": "^5.44.0",
     "vite": "^6.4.1",
     "vite-plugin-compression": "^0.5.1",
     "vite-plugin-pwa": "^1.2.0"
-  },
-  "engines": {
-    "node": ">=18.0.0",
-    "npm": ">=9.0.0"
   }
 }
