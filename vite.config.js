@@ -3,14 +3,10 @@ import react from "@vitejs/plugin-react";
 import compression from "vite-plugin-compression";
 import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
-import { fileURLToPath } from "url";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 export default defineConfig({
   plugins: [
-    react(),
+    react(), // ✅ Correct React plugin
     compression({
       algorithm: "gzip",
       ext: ".gz",
@@ -23,65 +19,22 @@ export default defineConfig({
       threshold: 1024,
     }),
     VitePWA({
-      registerType: process.env.NODE_ENV === "production" ? "autoUpdate" : "prompt",
+      registerType: "autoUpdate",
       includeAssets: ["favicon.ico", "apple-touch-icon.png"],
       manifest: false,
       injectRegister: false,
       workbox: {
         globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
         maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-        navigationPreload: false,
         cleanupOutdatedCaches: true,
-        skipWaiting: false,
-        clientsClaim: false,
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.(?:googleapis|gstatic)\.com\/.*/i,
-            handler: "CacheFirst",
-            options: {
-              cacheName: "google-fonts",
-              expiration: {
-                maxEntries: 4,
-                maxAgeSeconds: 365 * 24 * 60 * 60,
-              },
-              matchOptions: { ignoreVary: true }
-            },
-          },
-          {
-            urlPattern: /\.(?:png|jpg|jpeg|svg|gif|webp)$/,
-            handler: "StaleWhileRevalidate",
-            options: {
-              cacheName: "images",
-              expiration: {
-                maxEntries: 100,
-                maxAgeSeconds: 30 * 24 * 60 * 60,
-              },
-              matchOptions: { ignoreVary: true }
-            },
-          },
-          {
-            urlPattern: /\.(?:js|css|mjs)$/,
-            handler: "StaleWhileRevalidate",
-            options: {
-              cacheName: "static-resources",
-              matchOptions: { ignoreVary: true }
-            },
-          },
-        ],
       },
       devOptions: {
         enabled: false,
-        type: "module",
-        navigateFallback: false,
-        suppressWarnings: true,
       },
       strategies: "generateSW",
       includeManifestIcons: false,
       disable: false,
       minify: true,
-      injectManifest: {
-        injectionPoint: undefined,
-      },
     }),
   ],
   resolve: {
@@ -107,35 +60,38 @@ export default defineConfig({
         drop_console: true,
         drop_debugger: true,
         pure_funcs: ["console.log", "console.debug"],
-        passes: 2,
+        passes: 3,
       },
     },
     rollupOptions: {
-      external: [], // ADD external if needed
       output: {
         manualChunks: (id) => {
           if (id.includes("node_modules")) {
             if (id.includes("react") || id.includes("react-dom")) {
               return "vendor-react";
             }
-            if (id.includes("antd") || id.includes("@ant-design")) {
-              return "vendor-antd";
+            if (id.includes("@reduxjs") || id.includes("react-redux")) {
+              return "vendor-redux";
+            }
+            if (id.includes("framer-motion")) {
+              return "vendor-ui";
             }
             return "vendor";
           }
         },
-        entryFileNames: "assets/[name].[hash].js",
-        chunkFileNames: "assets/[name].[hash].js",
-        assetFileNames: "assets/[name].[hash].[ext]",
+        entryFileNames: "assets/[hash].js",
+        chunkFileNames: "assets/[hash].js",
+        assetFileNames: "assets/[hash].[ext]",
       },
     },
-    chunkSizeWarningLimit: 1000,
+    chunkSizeWarningLimit: 500,
     cssCodeSplit: true,
     cssMinify: true,
     reportCompressedSize: false,
   },
   optimizeDeps: {
-    include: ["react", "react-dom", "prop-types"], // ADDED prop-types
-    force: false,
+    include: ["react", "react-dom", "react-dom/client"],
+    exclude: ["@vitejs/plugin-react-swc"],
+    force: process.env.NODE_ENV === "development",
   },
 });
