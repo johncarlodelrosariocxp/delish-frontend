@@ -371,29 +371,7 @@ const Register = ({ setIsRegister }) => {
 
   return (
     <div className="w-full max-w-md mx-auto p-6">
-      {/* Backend Status Indicator */}
-      <div
-        className={`mb-4 p-3 rounded-lg border text-center text-sm ${getBackendStatusColor()}`}
-      >
-        <p>{getBackendStatusText()}</p>
-        <p className="text-xs mt-1 opacity-80">
-          URL: {backendUrl || "Not detected"}
-        </p>
-        <div className="mt-2 flex gap-2 justify-center">
-          <button
-            onClick={checkBackendConnection}
-            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-xs rounded"
-          >
-            Re-check
-          </button>
-          <button
-            onClick={testRegistrationEndpoint}
-            className="px-3 py-1 bg-green-600 hover:bg-green-700 text-white text-xs rounded"
-          >
-            Test Registration
-          </button>
-        </div>
-      </div>
+    
 
       {/* Show error details if available */}
       {backendError && (
@@ -567,27 +545,7 @@ const Register = ({ setIsRegister }) => {
       </form>
 
       {/* Quick Test Credentials */}
-      <div className="mt-4 p-3 bg-gray-800 rounded-lg">
-        <p className="text-gray-400 text-xs mb-2">
-          <strong>Quick Test:</strong> Try these test credentials:
-        </p>
-        <button
-          onClick={() => {
-            setFormData({
-              name: "Test Employee",
-              email: `test${Date.now()}@delish.com`,
-              phone: "1234567890",
-              password: "password123",
-              role: "Cashier",
-            });
-            enqueueSnackbar("Test credentials filled!", { variant: "info" });
-          }}
-          className="w-full px-3 py-2 bg-gray-700 hover:bg-gray-600 text-gray-300 text-xs rounded"
-        >
-          Fill Test Data
-        </button>
-      </div>
-
+  
       {/* Manual Backend Check */}
       <div className="mt-4 p-3 bg-gray-900 rounded-lg">
         <p className="text-gray-400 text-xs mb-2">

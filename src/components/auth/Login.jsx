@@ -315,26 +315,7 @@ const Login = () => {
     <div className="w-full max-w-md mx-auto p-6">
       {/* Production Status Banner */}
       <div className="mb-6 p-4 bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="text-lg font-bold text-blue-300">
-              🚀 Production Mode
-            </h3>
-            <p className="text-blue-400 text-sm">
-              Backend:{" "}
-              <code className="bg-blue-900 px-2 py-1 rounded">
-                https://delish-backend-1.onrender.com
-              </code>
-            </p>
-          </div>
-          <button
-            onClick={handleEmergencyCreateUser}
-            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-xs rounded"
-            title="Create emergency admin user"
-          >
-            Create Test User
-          </button>
-        </div>
+       
 
         {isBackendConnected ? (
           <div className="mt-2 p-2 bg-green-900 bg-opacity-20 border border-green-700 rounded">
@@ -390,18 +371,7 @@ const Login = () => {
 
           {/* Quick Actions */}
           <div className="mt-4 space-y-2">
-            <button
-              type="button"
-              onClick={() =>
-                setFormData({
-                  email: "admin@delish.com",
-                  password: "password123",
-                })
-              }
-              className="w-full p-2 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded"
-            >
-              Fill Test Credentials
-            </button>
+           
             <button
               type="button"
               onClick={handleQuickLoginTest}
@@ -454,59 +424,7 @@ const Login = () => {
         </div>
       )}
 
-      {/* Debug Info */}
-      <div className="mt-6 p-3 bg-gray-900 rounded-lg text-xs text-gray-400">
-        <p className="font-semibold mb-1">Debug Info:</p>
-        <p>Token location check order:</p>
-        <ol className="ml-4 list-decimal">
-          <li>
-            <code>res.data.token</code>
-          </li>
-          <li>
-            <code>res.data.data?.token</code>
-          </li>
-        </ol>
-        <p>User location check order:</p>
-        <ol className="ml-4 list-decimal">
-          <li>
-            <code>res.data.data?.user</code>
-          </li>
-          <li>
-            <code>res.data.user</code>
-          </li>
-          <li>
-            <code>res.data.data</code>
-          </li>
-        </ol>
-        <p className="mt-2">Test Credentials:</p>
-        <p>Email: admin@delish.com</p>
-        <p>Password: password123</p>
-        <button
-          onClick={async () => {
-            try {
-              const res = await fetch(
-                "https://delish-backend-1.onrender.com/api/user/login",
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    email: "admin@delish.com",
-                    password: "password123",
-                  }),
-                }
-              );
-              const data = await res.json();
-              console.log("Response structure:", JSON.stringify(data, null, 2));
-              alert("Check console for response structure");
-            } catch (error) {
-              console.error("Test failed:", error);
-            }
-          }}
-          className="mt-2 px-3 py-1 bg-purple-700 hover:bg-purple-800 text-white text-xs rounded"
-        >
-          Log Response Structure
-        </button>
-      </div>
+ 
     </div>
   );
 };

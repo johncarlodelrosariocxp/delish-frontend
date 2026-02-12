@@ -143,13 +143,12 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
   const [isPrinting, setIsPrinting] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
   const [hasAutoPrinted, setHasAutoPrinted] = useState(false);
+  const [hasAutoPrintAttempted, setHasAutoPrintAttempted] = useState(false);
 
   // AUTO-SHOW INVOICE WHEN orderInfo CHANGES
   useEffect(() => {
     if (orderInfo && orderInfo._id) {
       console.log("🔄 Invoice auto-show triggered for order:", orderInfo._id);
-      // The invoice will automatically show because setShowInvoice is called from parent
-      // This is already handled by the parent component
     }
   }, [orderInfo]);
 
@@ -328,7 +327,7 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
     return receiptText;
   };
 
-  // Print receipt
+  // Print receipt - KEEPS BLUETOOTH CONNECTION ON
   const handlePrintReceipt = async () => {
     if (!isConnected) {
       setErrorMessage("Please connect to Bluetooth printer first.");
@@ -336,22 +335,28 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
     }
 
     setIsPrinting(true);
+    setErrorMessage(""); // Clear any previous errors
+    
     try {
       const receiptText = generateThermalText();
       await printReceipt(receiptText);
+      
+      // Mark as printed regardless of mode
       setHasAutoPrinted(true);
+      setHasAutoPrintAttempted(true);
 
-      // Open cash drawer for cash payments
+      // Open cash drawer for cash payments (printer stays connected)
       if (orderInfo.paymentMethod === "Cash") {
         try {
           await new Promise((resolve) => setTimeout(resolve, 500));
           await openCashDrawer();
         } catch (drawerError) {
           console.warn("Could not open cash drawer:", drawerError);
+          // Don't show error to user for drawer issues
         }
       }
 
-      setErrorMessage(""); // Clear any previous errors
+      console.log("✅ Receipt printed successfully - Bluetooth remains connected");
     } catch (error) {
       console.error("Print receipt error:", error);
       setErrorMessage(`Printing failed: ${error.message}`);
@@ -360,40 +365,59 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
     }
   };
 
-  // Auto-print when connected
+  // AUTO-PRINT - DOES NOT DISCONNECT BLUETOOTH
   useEffect(() => {
-    const handleAutoPrint = async () => {
+    // Only attempt auto-print once per invoice
+    if (hasAutoPrintAttempted) {
+      return;
+    }
+
+    const attemptAutoPrint = async () => {
+      // Don't auto-print if disabled
       if (disableAutoPrint) {
-        console.log("⏸️ Auto-print disabled");
+        console.log("⏸️ Auto-print disabled - Bluetooth connection will remain on");
+        setHasAutoPrintAttempted(true);
         return;
       }
 
-      if (!isConnected || isPrinting || !orderInfo || hasAutoPrinted) {
+      // Wait for connection and ensure we have order info
+      if (!isConnected || !orderInfo || isPrinting) {
         return;
       }
 
       try {
+        console.log("🖨️ Auto-printing receipt - Bluetooth connection remains active");
         await handlePrintReceipt();
       } catch (error) {
         console.error("Auto-print failed:", error);
+        setErrorMessage(`Auto-print failed: ${error.message}`);
       }
     };
 
-    if (isConnected && !hasAutoPrinted) {
+    // Only attempt auto-print once
+    if (!hasAutoPrintAttempted) {
+      // Add delay to ensure everything is ready
       const timer = setTimeout(() => {
-        handleAutoPrint();
-      }, 1000);
+        attemptAutoPrint();
+      }, 1500);
 
       return () => clearTimeout(timer);
     }
-  }, [isConnected, hasAutoPrinted, orderInfo, isPrinting, disableAutoPrint]);
+  }, [isConnected, orderInfo, disableAutoPrint, hasAutoPrintAttempted, isPrinting]);
 
-  // Handle cash drawer
+  // Handle cash drawer - KEEPS BLUETOOTH CONNECTION ON
   const handleOpenCashDrawer = async () => {
+    if (!isConnected) {
+      setErrorMessage("Please connect to Bluetooth printer first.");
+      return;
+    }
+    
     try {
       await openCashDrawer();
       setErrorMessage(""); // Clear any previous errors
+      console.log("💰 Cash drawer opened - Bluetooth remains connected");
     } catch (error) {
+      console.error("Open cash drawer error:", error);
       setErrorMessage(`Cannot open drawer: ${error.message}`);
     }
   };
@@ -406,23 +430,27 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
     return "🔌 Disconnected";
   };
 
-  // Automatically close invoice after successful print
-  useEffect(() => {
-    if (isConnected && hasAutoPrinted && !isPrinting && !disableAutoPrint) {
-      // Auto-close after 5 seconds if auto-print was successful
-      const timer = setTimeout(() => {
-        setShowInvoice(false);
-      }, 5000);
+  // CLOSE INVOICE - DOES NOT DISCONNECT BLUETOOTH
+  const handleCloseInvoice = () => {
+    console.log("🔌 Closing invoice - Bluetooth connection remains on");
+    // Reset states but KEEP BLUETOOTH CONNECTION
+    setHasAutoPrinted(false);
+    setHasAutoPrintAttempted(false);
+    setErrorMessage("");
+    setShowInvoice(false);
+  };
 
-      return () => clearTimeout(timer);
-    }
-  }, [
-    isConnected,
-    hasAutoPrinted,
-    isPrinting,
-    disableAutoPrint,
-    setShowInvoice,
-  ]);
+  // CLEANUP ON UNMOUNT - DOES NOT DISCONNECT BLUETOOTH
+  useEffect(() => {
+    return () => {
+      console.log("🧹 Invoice unmounting - Bluetooth connection remains active");
+      // Do NOT call disconnectBluetooth() here
+      // Just reset local states
+      setIsPrinting(false);
+      setHasAutoPrinted(false);
+      setHasAutoPrintAttempted(false);
+    };
+  }, []); // Empty dependency array - runs only on unmount
 
   if (!orderInfo) {
     return (
@@ -432,7 +460,7 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
             Invalid order data.
           </p>
           <button
-            onClick={() => setShowInvoice(false)}
+            onClick={handleCloseInvoice}
             className="mt-2 text-blue-500 hover:underline text-[10px] px-3 py-1.5"
           >
             Close
@@ -487,14 +515,17 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
             {printerName && isConnected && ` • ${printerName}`}
           </div>
 
-          {/* Auto-print status */}
+          {/* Print status */}
           {isPrinting && (
             <div className="mt-1 px-2 py-0.5 bg-blue-100 text-blue-800 rounded-full text-[10px] font-semibold">
-              {hasAutoPrinted
-                ? "Re-printing receipt..."
-                : disableAutoPrint
-                ? "Printing receipt..."
-                : "Auto-printing receipt..."}
+              Printing receipt...
+            </div>
+          )}
+
+          {/* Success message */}
+          {hasAutoPrinted && !isPrinting && (
+            <div className="mt-1 px-2 py-0.5 bg-green-100 text-green-800 rounded-full text-[10px] font-semibold">
+              ✓ Receipt printed successfully
             </div>
           )}
 
@@ -856,7 +887,7 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
             </button>
 
             <button
-              onClick={() => setShowInvoice(false)}
+              onClick={handleCloseInvoice}
               className="flex items-center justify-center gap-1 bg-gray-600 text-white px-2 py-2 rounded-lg hover:bg-gray-700 transition-colors text-[10px] font-semibold"
             >
               <IconTimes className="w-3 h-3" />
@@ -868,10 +899,10 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
           <div className="mt-2 text-center">
             <p className="text-[9px] text-gray-600">
               {disableAutoPrint
-                ? "Click 'Print Receipt' to print manually"
+                ? "Manual mode - Click 'Print Receipt' to print"
                 : isConnected && !hasAutoPrinted
-                ? "Receipt will auto-print when connected"
-                : "Connect Bluetooth printer for printing"}
+                ? "Auto-printing receipt..."
+                : "Bluetooth stays connected after printing"}
             </p>
           </div>
         </div>

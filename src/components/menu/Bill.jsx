@@ -24,13 +24,14 @@ import Invoice from "../invoice/Invoice";
 const Bill = ({ orderId }) => {
   const dispatch = useDispatch();
   const navigate = useNavigate();
-  const { isConnected, printReceipt, thermalCommands } = useBluetooth();
+  const { isConnected, printReceipt, thermalCommands, openCashDrawer } = useBluetooth();
 
   // State for Invoice modal
   const [showInvoice, setShowInvoice] = useState(false);
   const [invoiceOrderData, setInvoiceOrderData] = useState(null);
   const [disableAutoPrint, setDisableAutoPrint] = useState(false);
   const [isProcessingOrder, setIsProcessingOrder] = useState(false);
+  const [invoiceKey, setInvoiceKey] = useState(Date.now());
 
   // Get order-specific data
   const orders = useSelector((state) => state.order.orders);
@@ -138,7 +139,6 @@ const Bill = ({ orderId }) => {
   const pendingOrders = getAllPendingOrders();
   const cartData = currentOrder?.items || [];
 
-  const vatRate = 12;
   const pwdSeniorDiscountRate = 0.2;
   const employeeDiscountRate = 0.15;
   const shareholderDiscountRate = 0.1;
@@ -165,7 +165,7 @@ const Bill = ({ orderId }) => {
     type: "PWD",
   });
   const [customerType, setCustomerType] = useState("walk-in");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerName, setCustomerName] = useState("");
   const [cashAmount, setCashAmount] = useState(0);
   const [showCashModal, setShowCashModal] = useState(false);
   const [showOnlineOptions, setShowOnlineOptions] = useState(false);
@@ -616,7 +616,7 @@ const Bill = ({ orderId }) => {
     }-${getItemTag(item)}`;
   };
 
-  // Calculate totals
+  // Calculate totals - VAT removed
   const calculateTotals = () => {
     try {
       const baseGrossTotal = cartData.reduce(
@@ -687,13 +687,10 @@ const Bill = ({ orderId }) => {
         ? Math.max(0, subtotalAfterEmployeeDiscount) * shareholderDiscountRate
         : 0;
 
-      const discountedTotal = Math.max(
+      const total = Math.max(
         0,
         Math.max(0, subtotalAfterEmployeeDiscount) - shareholderDiscountAmount
       );
-      const netSales = discountedTotal / (1 + vatRate / 100);
-      const vatAmount = discountedTotal - netSales;
-      const total = Math.max(0, Number(discountedTotal.toFixed(2)));
 
       const totalDiscountAmount =
         pwdSeniorDiscountAmount +
@@ -721,8 +718,6 @@ const Bill = ({ orderId }) => {
         employeeDiscountAmount,
         shareholderDiscountAmount,
         customDiscountAmount,
-        netSales,
-        vatAmount,
         total,
         totalDiscountAmount,
         subtotalAfterPwdSeniorAndRedemption:
@@ -743,8 +738,6 @@ const Bill = ({ orderId }) => {
         employeeDiscountAmount: 0,
         shareholderDiscountAmount: 0,
         customDiscountAmount: 0,
-        netSales: 0,
-        vatAmount: 0,
         total: 0,
         totalDiscountAmount: 0,
         subtotalAfterPwdSeniorAndRedemption: 0,
@@ -1221,9 +1214,9 @@ const Bill = ({ orderId }) => {
     );
   };
 
-  // Handle customer phone input
-  const handlePhoneChange = (e) => {
-    setCustomerPhone(e.target.value);
+  // Handle customer name input
+  const handleNameChange = (e) => {
+    setCustomerName(e.target.value);
   };
 
   // Handle cash payment selection
@@ -1394,7 +1387,7 @@ const Bill = ({ orderId }) => {
     setShowRedeemOptions(false);
   };
 
-  // Prepare order data with correct category values
+  // Prepare order data with correct category values - VAT removed
   const prepareOrderData = () => {
     let paymentMethodValue = "Cash";
     let cashPaymentAmount = safeNumber(cashAmount);
@@ -1429,10 +1422,9 @@ const Bill = ({ orderId }) => {
     const paymentStatusValue = "completed";
     const orderStatusValue = "completed";
 
-    // Prepare bills data
+    // Prepare bills data - VAT removed
     const bills = {
       total: Number(totals.baseGrossTotal.toFixed(2)),
-      tax: Number(totals.vatAmount.toFixed(2)),
       totalWithTax: Number(totals.total.toFixed(2)),
       discount: Number(totals.totalDiscountAmount.toFixed(2)),
       pwdSeniorDiscount: Number(totals.pwdSeniorDiscountAmount.toFixed(2)),
@@ -1444,7 +1436,6 @@ const Bill = ({ orderId }) => {
       customDiscountType: customDiscountApplied ? customDiscountType : null,
       customDiscountValue: customDiscountApplied ? customDiscountValue : 0,
       customDiscountReason: customDiscountApplied ? customDiscountReason : null,
-      netSales: Number(totals.netSales.toFixed(2)),
       cashAmount: Number(cashPaymentAmount.toFixed(2)),
       onlineAmount: Number(onlinePaymentAmount.toFixed(2)),
       onlineMethod: onlinePaymentMethod,
@@ -1480,9 +1471,8 @@ const Bill = ({ orderId }) => {
       })
       .filter((item) => item !== null);
 
-    const customerName =
-      customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer";
-    const customerPhoneValue = customerPhone.trim() || "0000000000";
+    const customerNameValue = customerName.trim() || 
+      (customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer");
 
     let userId = user?._id;
     if (!userId || userId === "000000000000000000000001") {
@@ -1515,8 +1505,8 @@ const Bill = ({ orderId }) => {
 
     return {
       customerDetails: {
-        name: customerName,
-        phone: customerPhoneValue,
+        name: customerNameValue,
+        phone: "",
         email: "",
         address: "",
         guests: 1,
@@ -1576,7 +1566,157 @@ const Bill = ({ orderId }) => {
     return method;
   };
 
-  // Order mutation - UPDATED for invoice pop-up
+  // FIXED: Auto-print receipt function with proper error handling - UPDATED RECEIPT STRUCTURE
+  const autoPrintReceipt = async (orderData) => {
+    try {
+      // Check if printer is connected
+      if (!isConnected) {
+        console.warn("Printer not connected, skipping auto-print");
+        enqueueSnackbar("Printer not connected. Please print manually.", {
+          variant: "warning",
+        });
+        return;
+      }
+
+      console.log("Auto-printing receipt for order:", orderData.orderNumber);
+      
+      // Format date
+      const date = new Date(orderData.orderDate || new Date());
+      const formattedDate = date.toLocaleDateString();
+      const formattedTime = date.toLocaleTimeString();
+
+      // Build receipt content as a single string
+      let receiptText = "";
+      
+      // Initialize printer
+      receiptText += "\x1B\x40";
+      
+      // Center align
+      receiptText += "\x1B\x61\x01";
+      
+      // Header - Store Name
+      receiptText += "\x1B\x45\x01"; // Bold on
+      receiptText += "DELISH CHEESECAKE CAFE\n";
+      receiptText += "\x1B\x45\x00"; // Bold off
+      
+      // Order Slip
+      receiptText += "     Order Slip\n";
+      receiptText += "\n";
+      
+      // Order details - left align
+      receiptText += "\x1B\x61\x00"; // Left align
+      receiptText += `Order# ${orderData.orderNumber}\n`;
+      receiptText += `Date ${formattedDate}\n`;
+      receiptText += `Time ${formattedTime}\n`;
+      receiptText += `Cashier ${orderData.cashier || "Admin"}\n`;
+      receiptText += `Customer name ${orderData.customerDetails?.name || "Walk-in Customer"}\n`;
+      receiptText += "--------------------------------\n";
+      
+      // Items header - Quantity full view, Amount in PHP
+      receiptText += "Quantity                    Amount \n";
+      receiptText += "--------------------------------\n";
+      
+      // Items
+      orderData.items.forEach((item) => {
+        const quantity = item.quantity.toString();
+        const price = `PHP${(item.price || 0).toFixed(2)}`;
+        const name = item.name || "Item";
+        
+        // Format: Quantity and item name on left, price on right with spacing
+        receiptText += `${quantity} x ${name}`;
+        
+        // Add spaces to push price to the right
+        const itemLine = `${quantity} x ${name}`;
+        const totalWidth = 40; // Approximate character width
+        const spacesNeeded = Math.max(1, totalWidth - itemLine.length - price.length);
+        receiptText += " ".repeat(spacesNeeded);
+        receiptText += `${price}\n`;
+        
+        if (item.isRedeemed) {
+          receiptText += "  *REDEEMED - FREE*\n";
+        }
+        if (item.isPwdSeniorDiscounted) {
+          receiptText += "  *PWD/SENIOR -20%*\n";
+        }
+      });
+      
+      receiptText += "--------------------------------\n";
+      
+      // Totals - Right align for amount
+      receiptText += "\x1B\x61\x02"; // Right align
+      receiptText += `Subtotal:         ₱${(orderData.bills?.total || 0).toFixed(2)}\n`;
+      
+      if (orderData.bills?.pwdSeniorDiscount > 0) {
+        receiptText += `PWD/Senior Disc: -₱${orderData.bills.pwdSeniorDiscount.toFixed(2)}\n`;
+      }
+      if (orderData.bills?.employeeDiscount > 0) {
+        receiptText += `Employee Disc:   -₱${orderData.bills.employeeDiscount.toFixed(2)}\n`;
+      }
+      if (orderData.bills?.shareholderDiscount > 0) {
+        receiptText += `VIP Disc:        -₱${orderData.bills.shareholderDiscount.toFixed(2)}\n`;
+      }
+      if (orderData.bills?.redemptionDiscount > 0) {
+        receiptText += `Redemption:      -₱${orderData.bills.redemptionDiscount.toFixed(2)}\n`;
+      }
+      if (orderData.bills?.customDiscount > 0) {
+        receiptText += `Custom Disc:     -₱${orderData.bills.customDiscount.toFixed(2)}\n`;
+      }
+      
+      receiptText += "\x1B\x45\x01"; // Bold on
+      receiptText += `TOTAL:           ₱${(orderData.bills?.totalWithTax || 0).toFixed(2)}\n`;
+      receiptText += "\x1B\x45\x00"; // Bold off
+      receiptText += "--------------------------------\n";
+      
+      // Payment and Change
+      receiptText += `Payment: ${orderData.paymentMethod || "Cash"}\n`;
+      receiptText += `change: PHP${(orderData.bills?.change || 0).toFixed(2)}\n`;
+      
+      if (orderData.bills?.isPartialPayment) {
+        receiptText += `partial payment:   PHP${orderData.bills.remainingBalance.toFixed(2)}\n`;
+      }
+      
+      receiptText += "--------------------------------\n";
+      
+      // Center align for footer
+      receiptText += "\x1B\x61\x01"; // Center align
+      
+      // Social media
+      receiptText += "follow us on FB IG TIKTOK\n";
+      receiptText += "\n";
+      receiptText += "Thank you for dining with us !\n";
+      receiptText += "Please visit again!\n";
+      receiptText += "\n";
+      receiptText += "\n";
+      
+      // Cut paper
+      receiptText += "\x1D\x56\x00";
+      
+      // Send to printer
+      await printReceipt(receiptText);
+      
+      // Open cash drawer if payment method is Cash
+      if (orderData.paymentMethod === "Cash" || orderData.paymentMethod?.includes("Cash")) {
+        try {
+          // Cash drawer command
+          const drawerCommand = "\x1B\x70\x00\x19\xFA";
+          await printReceipt(drawerCommand);
+          console.log("Cash drawer opened");
+        } catch (drawerError) {
+          console.error("Failed to open cash drawer:", drawerError);
+        }
+      }
+      
+      enqueueSnackbar("Receipt printed successfully!", { variant: "success" });
+      
+    } catch (error) {
+      console.error("Failed to auto-print receipt:", error);
+      enqueueSnackbar("Failed to auto-print receipt. Please print manually.", {
+        variant: "error",
+      });
+    }
+  };
+
+  // Order mutation - UPDATED with fixed auto-print
   const orderMutation = useMutation({
     mutationFn: (reqData) => {
       console.log(
@@ -1626,13 +1766,10 @@ const Bill = ({ orderId }) => {
         orderNumber: data.orderNumber || orderData.orderNumber,
         bills: data.bills || orderData.bills,
         orderDate: new Date().toISOString(),
-        // Ensure these fields are included
         customerDetails: orderData.customerDetails || {
-          name:
-            customerType === "walk-in"
-              ? "Walk-in Customer"
-              : "Take-out Customer",
-          phone: customerPhone || "0000000000",
+          name: customerName || 
+            (customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer"),
+          phone: "",
         },
         paymentDetails: orderData.paymentDetails || {
           paymentMethodDisplay: getPaymentMethodDisplay(
@@ -1642,12 +1779,20 @@ const Bill = ({ orderId }) => {
         },
       };
 
+      // Auto-print receipt - FIXED: Added try-catch and await
+      try {
+        await autoPrintReceipt(invoiceData);
+      } catch (printError) {
+        console.error("Print error:", printError);
+        // Don't block the flow if printing fails
+      }
+
       // Set invoice data and show modal
       setInvoiceOrderData(invoiceData);
+      setInvoiceKey(Date.now());
       setShowInvoice(true);
       setDisableAutoPrint(false);
 
-      // Force a re-render to ensure modal shows
       setTimeout(() => {
         setShowInvoice(true);
       }, 100);
@@ -1664,7 +1809,6 @@ const Bill = ({ orderId }) => {
       setIsProcessing(false);
       setIsProcessingOrder(false);
 
-      // Reset order status on error
       if (currentOrder) {
         dispatch(resetOrderStatus(currentOrder.id));
       }
@@ -1799,7 +1943,7 @@ const Bill = ({ orderId }) => {
       type: "PWD",
     });
     setCustomerType("walk-in");
-    setCustomerPhone("");
+    setCustomerName("");
     setCashAmount(0);
     setShowCashModal(false);
     setShowOnlineOptions(false);
@@ -1918,7 +2062,7 @@ const Bill = ({ orderId }) => {
 
   return (
     <>
-      {/* Invoice Modal - Automatically shows after successful order placement - UPDATED */}
+      {/* Invoice Modal - Automatically shows after successful order placement */}
       {showInvoice && invoiceOrderData && (
         <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden animate-fadeIn">
@@ -1977,13 +2121,11 @@ const Bill = ({ orderId }) => {
               </div>
               <div className="max-h-[calc(90vh-80px)] overflow-y-auto">
                 <Invoice
-                  key={`${
-                    invoiceOrderData._id || invoiceOrderData.orderId
-                  }-${Date.now()}`}
+                  key={`${invoiceKey}`}
                   orderInfo={invoiceOrderData}
                   setShowInvoice={handleInvoiceClose}
                   disableAutoPrint={disableAutoPrint}
-                  autoPrint={!invoiceOrderData.isTempOrder} // Auto-print only for saved orders
+                  autoPrint={true}
                 />
                 {invoiceOrderData.isTempOrder && (
                   <div className="p-4 border-t bg-blue-50">
@@ -3071,7 +3213,7 @@ const Bill = ({ orderId }) => {
               </div>
             )}
 
-            {/* Customer Type & Phone */}
+            {/* Customer Type & Name */}
             <div className="bg-white rounded-lg p-4 shadow-md">
               <h2 className="text-gray-900 text-sm font-semibold mb-3">
                 Customer Details
@@ -3100,17 +3242,17 @@ const Bill = ({ orderId }) => {
               </div>
               <div className="mt-3">
                 <label className="block text-xs font-medium text-gray-700 mb-1">
-                  Customer Phone (Optional)
+                  Customer Name (Optional)
                 </label>
                 <input
-                  type="tel"
-                  value={customerPhone}
-                  onChange={handlePhoneChange}
+                  type="text"
+                  value={customerName}
+                  onChange={handleNameChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                  placeholder="Enter phone number (optional)"
+                  placeholder="Enter customer name (optional)"
                 />
                 <p className="text-xs text-gray-500 mt-1">
-                  Phone number is optional for walk-in customers
+                  Customer name is optional
                 </p>
               </div>
             </div>
@@ -3260,7 +3402,7 @@ const Bill = ({ orderId }) => {
               )}
             </div>
 
-            {/* Totals */}
+            {/* Totals - VAT removed */}
             <div className="bg-white rounded-lg p-4 shadow-md space-y-2">
               <div className="flex justify-between items-center">
                 <p className="text-xs text-gray-500 font-medium">
@@ -3355,20 +3497,6 @@ const Bill = ({ orderId }) => {
                     </h1>
                   </div>
                 )}
-
-              <div className="flex justify-between items-center">
-                <p className="text-xs text-gray-500 font-medium">Net of VAT</p>
-                <h1 className="text-gray-900 text-md font-bold">
-                  ₱{totals.netSales.toFixed(2)}
-                </h1>
-              </div>
-
-              <div className="flex justify-between items-center">
-                <p className="text-xs text-gray-500 font-medium">VAT (12%)</p>
-                <h1 className="text-gray-900 text-md font-bold">
-                  ₱{totals.vatAmount.toFixed(2)}
-                </h1>
-              </div>
 
               <div className="flex justify-between items-center border-t pt-2">
                 <p className="text-sm text-gray-700 font-semibold">TOTAL</p>

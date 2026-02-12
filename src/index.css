@@ -158,3 +158,22 @@ body {
   background-color: #f59e0b;
   animation: blinking 1s infinite;
 }
+
+@keyframes gradient-x {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+.animate-gradient-x {
+  animation: gradient-x 15s ease infinite;
+  background-size: 400% 400%;
+}
+
+.animate-shimmer {
+  animation: shimmer 8s infinite;
+}

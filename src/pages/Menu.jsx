@@ -88,14 +88,13 @@ const Menu = () => {
     }
   }, [dispatch, activeOrders.length]);
 
-  // Handle invoice modal display
+  // Auto-show invoice when order is completed
   useEffect(() => {
-    if (recentCompletedOrder && showInvoice) {
+    if (recentCompletedOrder) {
+      console.log("🔄 Order completed, showing invoice...");
       setShowInvoiceModal(true);
-    } else {
-      setShowInvoiceModal(false);
     }
-  }, [recentCompletedOrder, showInvoice]);
+  }, [recentCompletedOrder]);
 
   // Handle complete order
   const handleCompleteOrder = useCallback(
@@ -178,7 +177,6 @@ const Menu = () => {
   // Handle invoice close
   const handleCloseInvoice = useCallback(() => {
     setShowInvoiceModal(false);
-    dispatch(hideInvoice());
     dispatch(clearRecentCompletedOrder());
 
     // Create new order after closing invoice if none exist
@@ -425,7 +423,7 @@ const Menu = () => {
 
   return (
     <section className="bg-white min-h-screen flex flex-col">
-      {/* Invoice Modal */}
+      {/* Invoice Modal - Auto-shown when order is completed */}
       {showInvoiceModal && recentCompletedOrder && (
         <div className="fixed inset-0 z-[9999] bg-black bg-opacity-75 flex items-center justify-center p-4">
           <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
@@ -478,87 +476,9 @@ const Menu = () => {
         </div>
       )}
 
-      {/* Main Tabs - Only 2 Tabs */}
-      <div className="bg-gray-200 px-3 pt-3 flex items-center gap-2 border-b">
-        <button
-          onClick={() => setActiveTab("active")}
-          className={`px-4 py-2 rounded-t-lg font-medium text-sm ${
-            activeTab === "active"
-              ? "bg-white text-blue-600 border-t border-l border-r border-gray-300"
-              : "bg-gray-300 text-gray-600 hover:bg-gray-250"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <MdRestaurantMenu size={18} />
-            <span>Active Orders ({activeOrders.length})</span>
-          </div>
-        </button>
-
-        <button
-          onClick={() => setActiveTab("completed")}
-          className={`px-4 py-2 rounded-t-lg font-medium text-sm ${
-            activeTab === "completed"
-              ? "bg-white text-green-600 border-t border-l border-r border-gray-300"
-              : "bg-gray-300 text-gray-600 hover:bg-gray-250"
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            <MdCheckCircle size={18} />
-            <span>Completed ({completedOrders.length})</span>
-          </div>
-        </button>
-      </div>
-
       {/* Active Orders Tab Content */}
       {activeTab === "active" && (
         <>
-          {/* Order Tabs */}
-          <div className="bg-gray-200 px-3 pb-1 flex items-center gap-2 overflow-x-auto">
-            {activeOrders.map((order) => (
-              <div
-                key={order.id}
-                className={`flex items-center gap-2 px-3 py-2 rounded-t-lg cursor-pointer min-w-0 ${
-                  order.id === activeOrderId
-                    ? "bg-white border-t border-l border-r border-gray-300"
-                    : "bg-gray-300 hover:bg-gray-250"
-                }`}
-                onClick={() => handleSwitchOrder(order.id)}
-              >
-                <span className="text-sm font-medium whitespace-nowrap">
-                  <div className="flex items-center gap-1">
-                    <MdReceipt size={14} />
-                    <span>Order {order.number}</span>
-                  </div>
-                </span>
-                {order.items?.length > 0 && (
-                  <span className="bg-green-500 text-white text-xs rounded-full w-5 h-5 flex items-center justify-center">
-                    {order.items.reduce(
-                      (total, item) => total + (item.quantity || 1),
-                      0
-                    )}
-                  </span>
-                )}
-                {activeOrders.length > 1 && (
-                  <button
-                    onClick={(e) => handleCloseOrder(order.id, e)}
-                    className="text-gray-500 hover:text-red-500"
-                    title="Close Order"
-                  >
-                    <MdClose size={16} />
-                  </button>
-                )}
-              </div>
-            ))}
-
-            <button
-              onClick={handleAddNewOrder}
-              className="flex items-center gap-1 px-3 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600"
-            >
-              <MdAdd size={18} />
-              <span className="text-sm whitespace-nowrap">New Order</span>
-            </button>
-          </div>
-
           {/* Main POS Interface */}
           <div className="flex-1 flex flex-col lg:flex-row gap-3 p-3 pb-20 lg:pb-3">
             {activeOrders.length === 0 ? (
@@ -649,126 +569,6 @@ const Menu = () => {
             )}
           </div>
         </>
-      )}
-
-      {/* Completed Orders Tab Content */}
-      {activeTab === "completed" && (
-        <div className="flex-1 bg-white rounded-lg p-4 md:p-6">
-          <div className="mb-6">
-            <h2 className="text-2xl font-bold text-gray-900">Order History</h2>
-            <p className="text-gray-600 text-sm">
-              View all completed orders and print receipts
-            </p>
-          </div>
-
-          {completedOrders.length === 0 ? (
-            <div className="text-center py-12">
-              <MdCheckCircle className="text-gray-300 text-6xl mx-auto mb-4" />
-              <p className="text-gray-500 text-lg">No completed orders yet</p>
-              <button
-                onClick={() => setActiveTab("active")}
-                className="mt-4 bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 flex items-center gap-2 mx-auto"
-              >
-                <MdRestaurantMenu size={18} />
-                Go to Active Orders
-              </button>
-            </div>
-          ) : (
-            <div className="space-y-4 max-h-[calc(100vh-12rem)] overflow-y-auto pr-2">
-              {completedOrders.map((order) => (
-                <div
-                  key={order.id}
-                  className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4 hover:from-green-100 hover:to-emerald-100"
-                >
-                  <div className="flex flex-col md:flex-row justify-between items-start mb-3 gap-3">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
-                        <MdReceipt className="text-green-600" size={20} />
-                        <h3 className="font-bold text-green-900 text-lg">
-                          Order #{order.number}
-                        </h3>
-                        {order.bills?.total && (
-                          <span className="bg-green-600 text-white text-xs font-bold px-2 py-1 rounded-full">
-                            {formatCurrency(order.bills.total)}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex flex-col md:flex-row md:items-center gap-2 md:gap-4 text-sm">
-                        <p className="text-green-800 font-medium">
-                          <span className="font-semibold">Customer:</span>{" "}
-                          {order.customer?.customerName || "Walk-in"}
-                        </p>
-                        <p className="text-green-700">
-                          <span className="font-semibold">Payment:</span>{" "}
-                          {order.paymentMethod || "Cash"}
-                        </p>
-                      </div>
-                      <p className="text-green-600 text-xs mt-1">
-                        Completed: {formatDate(order.completedAt)}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 self-end md:self-center">
-                      <button
-                        onClick={(e) => handlePrintOrder(order, e)}
-                        disabled={printingOrderId === order.id}
-                        className="bg-gradient-to-r from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white p-2 rounded-lg flex items-center gap-1"
-                        title="Print Receipt"
-                      >
-                        {printingOrderId === order.id ? (
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                        ) : (
-                          <>
-                            <MdPrint size={18} />
-                            <span className="text-xs hidden sm:inline">
-                              Print
-                            </span>
-                          </>
-                        )}
-                      </button>
-                      <MdCheckCircle className="text-green-500 text-2xl" />
-                    </div>
-                  </div>
-
-                  {/* Order Items Preview */}
-                  {order.items && order.items.length > 0 && (
-                    <div className="mt-3 pt-3 border-t border-green-200">
-                      <p className="text-green-600 text-sm font-semibold mb-2">
-                        Items Ordered ({order.items.length} items):
-                      </p>
-                      <div className="space-y-2">
-                        {order.items.slice(0, 3).map((item, index) => (
-                          <div
-                            key={index}
-                            className="flex justify-between items-center bg-white rounded p-2 border border-green-100"
-                          >
-                            <div className="flex-1">
-                              <span className="text-green-900 font-medium">
-                                {item.quantity}x {item.name}
-                              </span>
-                            </div>
-                            <span className="font-bold text-green-900">
-                              {formatCurrency(
-                                (item.quantity || 1) *
-                                  (item.pricePerQuantity || item.price || 0)
-                              )}
-                            </span>
-                          </div>
-                        ))}
-                        {order.items.length > 3 && (
-                          <div className="text-center">
-                            <p className="text-green-600 text-sm">
-                              +{order.items.length - 3} more items
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
       )}
 
       {/* Bottom Navigation */}

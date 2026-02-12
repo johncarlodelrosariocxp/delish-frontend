@@ -6,7 +6,7 @@ import React, {
   lazy,
   Suspense,
 } from "react";
-import restaurant from "../assets/images/restaurant-img.jpg";
+import loginBg from "../assets/images/loginbg.jpeg";
 import logo from "../assets/images/delish.png";
 import { useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
@@ -80,7 +80,7 @@ const Auth = () => {
   // Memoized background styles to prevent recalculation
   const backgroundStyles = useMemo(
     () => ({
-      backgroundImage: `url(${restaurant})`,
+      backgroundImage: `url(${loginBg})`,
       filter: "brightness(0.55)",
     }),
     []
@@ -107,13 +107,16 @@ const Auth = () => {
 
   return (
     <div className="relative flex items-center justify-center min-h-screen w-full overflow-hidden bg-black">
-      {/* Optimized Background with priority loading */}
-      <div className="absolute inset-0 w-full h-full">
+      {/* Optimized Background with priority loading - FIXED */}
+      <div className="fixed inset-0 w-full h-full">
         <img
-          src={restaurant}
+          src={loginBg}
           alt="Restaurant Background"
-          className="w-full h-full object-cover scale-105"
-          style={{ filter: "brightness(0.55)" }}
+          className="w-full h-full object-cover"
+          style={{ 
+            filter: "brightness(0.55)",
+            objectPosition: "center"
+          }}
           loading="eager"
           decoding="async"
           onLoad={() => setImageLoaded(true)}
@@ -123,14 +126,14 @@ const Auth = () => {
         )}
       </div>
 
-      {/* Minimal Overlay */}
-      <div className="absolute inset-0 bg-black/40"></div>
+      {/* Minimal Overlay - FIXED */}
+      <div className="fixed inset-0 bg-black/40"></div>
 
-      {/* Main Content Container */}
-      <div className="relative z-10 flex flex-col lg:flex-row items-center justify-center w-full max-w-6xl mx-auto px-4 py-6 gap-6">
+      {/* Main Content Container - Scrollable */}
+      <div className="relative z-10 flex flex-col lg:flex-row items-center justify-center w-full max-w-6xl mx-auto px-4 py-6 min-h-screen">
         {/* Left Section - Form */}
         <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm">
-          <div className="relative bg-white/5 backdrop-blur-sm border border-yellow-200/10 rounded-xl shadow-lg p-6 w-full text-white">
+          <div className="relative bg-white/5 border border-yellow-200/10 rounded-xl shadow-lg p-6 w-full text-white">
             {/* Optimized Logo Section */}
             <div className="flex flex-col items-center gap-2 mb-4">
               <div className="h-16 w-16 flex items-center justify-center rounded-full bg-white shadow-sm">
@@ -185,8 +188,8 @@ const Auth = () => {
           </div>
         </div>
 
-        {/* Right Section - Quote (Only on larger screens) */}
-        <div className="hidden lg:flex flex-1 items-center justify-center">
+        {/* Right Section - Quote (Only on larger screens) - FIXED and POSITIONED HIGHER */}
+        <div className="hidden lg:flex flex-1 flex-col items-center justify-start pt-16">
           <div className="relative bg-white/5 backdrop-blur-sm border border-yellow-200/10 rounded-xl shadow-lg p-6 text-center text-white max-w-md">
             <h3 className="text-lg font-semibold text-yellow-300 mb-2">
               "At Delish Cheesecake..."
