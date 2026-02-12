@@ -152,10 +152,11 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
     }
   }, [orderInfo]);
 
-  // Generate receipt text for thermal printer
+  // Generate receipt text for thermal printer - EXACT MATCH to original design
   const generateThermalText = () => {
-    const orderId =
+    const orderNumber =
       orderInfo._id?.slice(-8) ||
+      (orderInfo.orderNumber) ||
       (orderInfo.orderDate
         ? Math.floor(new Date(orderInfo.orderDate).getTime())
             .toString()
@@ -163,163 +164,131 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
         : "N/A");
 
     const cashier = getFirstName(orderInfo.cashier || "Admin");
-    const customerType = orderInfo.customerType || "walk-in";
-    const paymentMethod = orderInfo.paymentMethod || "Cash";
+    
+    // Format date and time
+    const now = new Date();
+    const formattedDate = now.toLocaleDateString("en-PH", {
+      month: '2-digit',
+      day: '2-digit',
+      year: 'numeric'
+    }).replace(/\//g, '/');
+    
+    const formattedTime = now.toLocaleTimeString("en-PH", {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false
+    });
 
-    const totals = {
-      baseGrossTotal: safeNumber(orderInfo.bills?.total || 0),
-      pwdSeniorDiscountAmount: safeNumber(
-        orderInfo.bills?.pwdSeniorDiscount || 0
-      ),
-      redemptionAmount: safeNumber(orderInfo.bills?.redemptionDiscount || 0),
-      employeeDiscountAmount: safeNumber(
-        orderInfo.bills?.employeeDiscount || 0
-      ),
-      shareholderDiscountAmount: safeNumber(
-        orderInfo.bills?.shareholderDiscount || 0
-      ),
-      vatAmount: safeNumber(orderInfo.bills?.tax || 0),
-      total: safeNumber(orderInfo.bills?.totalWithTax || 0),
-      cashAmount: safeNumber(orderInfo.bills?.cashAmount || 0),
-      change: safeNumber(orderInfo.bills?.change || 0),
-    };
+    const customerName = orderInfo.customerDetails?.name || 
+                        (orderInfo.customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer") ||
+                        "Walk-in Customer";
 
     let receiptText = thermalCommands.INIT;
 
-    // Header
-    receiptText += thermalCommands.ALIGN_CENTER;
-    receiptText += thermalCommands.TEXT_LARGE;
+    // Header - Store Name with Bold
+    receiptText += "\x1B\x45\x01"; // Bold on
     receiptText += "DELISH CHEESECAKE CAFE\n";
-    receiptText += thermalCommands.TEXT_NORMAL;
+    receiptText += "\x1B\x45\x00"; // Bold off
+    
+    // Order Slip
+    receiptText += "  Order Slip\n";
+    receiptText += "\n";
+    
+    // Order details - Left align
+    receiptText += "\x1B\x61\x00"; // Left align
+    receiptText += `Order# ${orderNumber}\n`;
+    receiptText += `Date ${formattedDate}\n`;
+    receiptText += `Time ${formattedTime}\n`;
+    receiptText += `Cashier ${cashier}\n`;
+    receiptText += `Customer name ${customerName}\n`;
     receiptText += "--------------------------------\n";
-    receiptText += "Order Slip\n";
-    receiptText += "--------------------------------\n\n";
-
-    // Order information
-    receiptText += thermalCommands.ALIGN_LEFT;
-    receiptText += thermalCommands.BOLD_ON;
-    receiptText += `Order #: ${orderId}\n`;
-    receiptText += thermalCommands.BOLD_OFF;
-    receiptText += `Date: ${new Date().toLocaleDateString("en-PH")}\n`;
-    receiptText += `Time: ${new Date().toLocaleTimeString("en-PH", {
-      hour: "2-digit",
-      minute: "2-digit",
-      hour12: false,
-    })}\n`;
-    receiptText += `Cashier: ${cashier}\n`;
-    receiptText += `Customer: ${
-      customerType === "walk-in" ? "Dine-in" : "Take-out"
-    }\n`;
-    receiptText += "--------------------------------\n\n";
-
-    // Items header
-    receiptText += thermalCommands.BOLD_ON;
-    receiptText += "QTY  ITEM                AMOUNT\n";
-    receiptText += thermalCommands.BOLD_OFF;
+    
+    // Items header - Quantity full view, Amount in PHP
+    receiptText += "Quantity \n";
+    receiptText += "Amount \n";
     receiptText += "--------------------------------\n";
-
-    // Items list
+    
+    // Items
     (orderInfo.items || []).forEach((item) => {
-      const name = item.name || "Unknown Item";
-      const quantity = item.quantity || 1;
-      const price = safeNumber(
-        item.pricePerQuantity || item.originalPrice || 0
-      );
-      const total = safeNumber(item.price || 0);
-      const isRedeemed = item.isRedeemed || item.isFree || false;
-      const isPwdSeniorDiscounted = item.isPwdSeniorDiscounted || false;
-
-      const qtyStr = quantity.toString().padStart(2, " ");
-      let nameStr = name;
-      if (nameStr.length > 20) {
-        nameStr = nameStr.substring(0, 17) + "...";
-      } else {
-        nameStr = nameStr.padEnd(20, " ");
+      const quantity = (item.quantity || 1).toString();
+      const price = `PHP${(item.price || 0).toFixed(2)}`;
+      const name = item.name || "Item";
+      
+      // Format: Quantity and item name on left, price on right with spacing
+      const itemLine = `${quantity} x ${name}`;
+      const totalWidth = 40; // Approximate character width
+      const spacesNeeded = Math.max(1, totalWidth - itemLine.length - price.length);
+      
+      receiptText += `${quantity} x ${name}`;
+      receiptText += " ".repeat(spacesNeeded);
+      receiptText += `${price}\n`;
+      
+      if (item.isRedeemed || item.isFree) {
+        receiptText += "  *REDEEMED - FREE*\n";
       }
-
-      const amountStr = (
-        isRedeemed ? "FREE" : `PHP${total.toFixed(2)}`
-      ).padStart(8, " ");
-      receiptText += `${qtyStr}   ${nameStr}${amountStr}\n`;
-
-      if (isRedeemed) {
-        receiptText += "     *REDEEMED\n";
-      } else if (isPwdSeniorDiscounted) {
-        const originalTotal = price * quantity;
-        const discountAmount = originalTotal * 0.2;
-        receiptText += `     *PWD/SENIOR -PHP${discountAmount.toFixed(2)}\n`;
+      if (item.isPwdSeniorDiscounted) {
+        receiptText += "  *PWD/SENIOR -20%*\n";
       }
     });
-
+    
     receiptText += "--------------------------------\n";
-
-    // Totals
-    receiptText += thermalCommands.ALIGN_RIGHT;
-    receiptText += `SUBTOTAL:   PHP${totals.baseGrossTotal.toFixed(2)}\n`;
-
-    if (totals.pwdSeniorDiscountAmount > 0) {
-      receiptText += `PWD/SENIOR: -PHP${totals.pwdSeniorDiscountAmount.toFixed(
-        2
-      )}\n`;
+    
+    // Totals - Right align for amount
+    receiptText += "\x1B\x61\x02"; // Right align
+    
+    const subtotal = safeNumber(orderInfo.bills?.total || 0);
+    const pwdSeniorDisc = safeNumber(orderInfo.bills?.pwdSeniorDiscount || 0);
+    const employeeDisc = safeNumber(orderInfo.bills?.employeeDiscount || 0);
+    const shareholderDisc = safeNumber(orderInfo.bills?.shareholderDiscount || 0);
+    const redemptionDisc = safeNumber(orderInfo.bills?.redemptionDiscount || 0);
+    const customDisc = safeNumber(orderInfo.bills?.customDiscount || 0);
+    const totalWithTax = safeNumber(orderInfo.bills?.totalWithTax || 0);
+    
+    receiptText += `Subtotal:         PHP${subtotal.toFixed(2)}\n`;
+    
+    if (pwdSeniorDisc > 0) {
+      receiptText += `PWD/Senior Disc: -PHP${pwdSeniorDisc.toFixed(2)}\n`;
     }
-
-    if (totals.redemptionAmount > 0) {
-      receiptText += `REDEMPTION: -PHP${totals.redemptionAmount.toFixed(2)}\n`;
+    if (employeeDisc > 0) {
+      receiptText += `Employee Disc:   -PHP${employeeDisc.toFixed(2)}\n`;
     }
-
-    if (totals.employeeDiscountAmount > 0) {
-      receiptText += `EMP DISC:   -PHP${totals.employeeDiscountAmount.toFixed(
-        2
-      )}\n`;
+    if (shareholderDisc > 0) {
+      receiptText += `VIP Disc:        -PHP${shareholderDisc.toFixed(2)}\n`;
     }
-
-    if (totals.shareholderDiscountAmount > 0) {
-      receiptText += `SHAREHOLDER:-PHP${totals.shareholderDiscountAmount.toFixed(
-        2
-      )}\n`;
+    if (redemptionDisc > 0) {
+      receiptText += `Redemption:      -PHP${redemptionDisc.toFixed(2)}\n`;
     }
-
-    receiptText += `VAT (12%):  PHP${totals.vatAmount.toFixed(2)}\n`;
+    if (customDisc > 0) {
+      receiptText += `Custom Disc:     -PHP${customDisc.toFixed(2)}\n`;
+    }
+    
+    receiptText += "\x1B\x45\x01"; // Bold on
+    receiptText += `TOTAL:           PHP${totalWithTax.toFixed(2)}\n`;
+    receiptText += "\x1B\x45\x00"; // Bold off
     receiptText += "--------------------------------\n";
-
-    receiptText += thermalCommands.BOLD_ON;
-    receiptText += `TOTAL:      PHP${totals.total.toFixed(2)}\n`;
-    receiptText += thermalCommands.BOLD_OFF;
-    receiptText += "--------------------------------\n";
-
-    // Payment info
-    receiptText += thermalCommands.ALIGN_LEFT;
-    receiptText += `Payment: ${paymentMethod}\n`;
-
-    if (paymentMethod === "Cash" && totals.cashAmount > 0) {
-      receiptText += `Cash:    PHP${totals.cashAmount.toFixed(2)}\n`;
-      receiptText += `Change:  PHP${totals.change.toFixed(2)}\n`;
+    
+    // Payment and Change - Left align
+    receiptText += "\x1B\x61\x00"; // Left align
+    receiptText += `Payment: ${orderInfo.paymentMethod || "Cash"}\n`;
+    receiptText += `change: PHP${safeNumber(orderInfo.bills?.change || 0).toFixed(2)}\n`;
+    
+    if (orderInfo.bills?.isPartialPayment) {
+      receiptText += `partial payment:   PHP${safeNumber(orderInfo.bills?.remainingBalance || 0).toFixed(2)}\n`;
     }
-
-    // PWD/Senior details
-    if (orderInfo.pwdSeniorDetails?.name) {
-      receiptText += "--------------------------------\n";
-      receiptText += "PWD/SENIOR DETAILS:\n";
-      receiptText += `Name: ${getFirstName(orderInfo.pwdSeniorDetails.name)}\n`;
-      receiptText += `ID #: ${orderInfo.pwdSeniorDetails.idNumber || ""}\n`;
-      receiptText += `Type: ${orderInfo.pwdSeniorDetails.type || "PWD"}\n`;
-    }
-
+    
     receiptText += "--------------------------------\n";
-
-    // Footer
-    receiptText += thermalCommands.ALIGN_CENTER;
-    receiptText += thermalCommands.BOLD_ON;
-    receiptText += "Follow us on:\n";
-    receiptText += thermalCommands.BOLD_OFF;
-    receiptText += "[Facebook]  [I]  [T]\n";
-    receiptText += thermalCommands.BOLD_ON;
-    receiptText += "delish cheesecake\n";
-    receiptText += thermalCommands.BOLD_OFF;
-    receiptText += "----------------\n";
-    receiptText += "Thank you for dining with us!\n";
-    receiptText += "Please visit again!\n\n";
-
+    
+    // Center align for footer
+    receiptText += "\x1B\x61\x01"; // Center align
+    
+    // Social media
+    receiptText += "follow us on FB IG TIKTOK\n";
+    receiptText += "\n";
+    receiptText += "Thank you for dining with us !\n";
+    receiptText += "Please visit again!\n";
+    receiptText += "\n";
+    receiptText += "\n";
+    
     // Feed and cut
     receiptText += thermalCommands.FEED_N_LINES(3);
     receiptText += thermalCommands.CUT_PARTIAL;
@@ -552,7 +521,7 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
               <div>
                 <span className="text-gray-600">ID:</span>
                 <p className="font-medium truncate">
-                  {orderInfo._id?.slice(-8) || "N/A"}
+                  {orderInfo._id?.slice(-8) || orderInfo.orderNumber || "N/A"}
                 </p>
               </div>
               <div>
@@ -584,9 +553,8 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
               <div className="col-span-2">
                 <span className="text-gray-600">Customer:</span>
                 <p className="font-medium truncate text-blue-600">
-                  {orderInfo.customerType === "walk-in"
-                    ? "Dine-in"
-                    : "Take-out"}
+                  {orderInfo.customerDetails?.name || 
+                   (orderInfo.customerType === "walk-in" ? "Walk-in Customer" : "Take-out Customer")}
                 </p>
               </div>
             </div>
@@ -696,7 +664,7 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
 
               {safeNumber(orderInfo.bills?.pwdSeniorDiscount || 0) > 0 && (
                 <div className="flex justify-between text-green-600">
-                  <span>PWD/SENIOR:</span>
+                  <span>PWD/Senior Disc:</span>
                   <span>
                     -PHP
                     {safeNumber(
@@ -708,7 +676,7 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
 
               {safeNumber(orderInfo.bills?.redemptionDiscount || 0) > 0 && (
                 <div className="flex justify-between text-blue-600">
-                  <span>REDEMPTION:</span>
+                  <span>Redemption:</span>
                   <span>
                     -PHP
                     {safeNumber(
@@ -720,7 +688,7 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
 
               {safeNumber(orderInfo.bills?.employeeDiscount || 0) > 0 && (
                 <div className="flex justify-between text-yellow-600">
-                  <span>EMP DISC:</span>
+                  <span>Employee Disc:</span>
                   <span>
                     -PHP
                     {safeNumber(orderInfo.bills?.employeeDiscount || 0).toFixed(
@@ -732,11 +700,23 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
 
               {safeNumber(orderInfo.bills?.shareholderDiscount || 0) > 0 && (
                 <div className="flex justify-between text-purple-600">
-                  <span>SHAREHOLDER:</span>
+                  <span>VIP Disc:</span>
                   <span>
                     -PHP
                     {safeNumber(
                       orderInfo.bills?.shareholderDiscount || 0
+                    ).toFixed(2)}
+                  </span>
+                </div>
+              )}
+
+              {safeNumber(orderInfo.bills?.customDiscount || 0) > 0 && (
+                <div className="flex justify-between text-orange-600">
+                  <span>Custom Disc:</span>
+                  <span>
+                    -PHP
+                    {safeNumber(
+                      orderInfo.bills?.customDiscount || 0
                     ).toFixed(2)}
                   </span>
                 </div>
@@ -760,7 +740,7 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
                 safeNumber(orderInfo.bills?.cashAmount || 0) > 0 && (
                   <>
                     <div className="border-t pt-0.5 flex justify-between">
-                      <span className="text-gray-600">Cash:</span>
+                      <span className="text-gray-600">Payment:</span>
                       <span className="text-gray-800">
                         PHP
                         {safeNumber(orderInfo.bills?.cashAmount || 0).toFixed(
@@ -769,13 +749,22 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
                       </span>
                     </div>
                     <div className="flex justify-between">
-                      <span className="text-gray-600">Change:</span>
+                      <span className="text-gray-600">change:</span>
                       <span className="text-green-600 font-semibold">
                         PHP{safeNumber(orderInfo.bills?.change || 0).toFixed(2)}
                       </span>
                     </div>
                   </>
                 )}
+                
+              {orderInfo.bills?.isPartialPayment && (
+                <div className="flex justify-between text-orange-600">
+                  <span>partial payment:</span>
+                  <span>
+                    PHP{safeNumber(orderInfo.bills?.remainingBalance || 0).toFixed(2)}
+                  </span>
+                </div>
+              )}
             </div>
           </div>
 
@@ -789,31 +778,27 @@ const Invoice = ({ orderInfo, setShowInvoice, disableAutoPrint = false }) => {
                 <div className="w-6 h-6 bg-blue-600 rounded-full flex items-center justify-center">
                   <IconFacebook className="text-white text-xs" />
                 </div>
-                <span className="text-[8px] text-gray-600 mt-0.5">
-                  Facebook
-                </span>
+                <span className="text-[8px] text-gray-600 mt-0.5">FB</span>
               </div>
               <div className="flex flex-col items-center">
                 <div className="w-6 h-6 bg-gradient-to-r from-purple-500 to-pink-500 rounded-full flex items-center justify-center">
                   <IconInstagram className="text-white text-xs" />
                 </div>
-                <span className="text-[8px] text-gray-600 mt-0.5">
-                  Instagram
-                </span>
+                <span className="text-[8px] text-gray-600 mt-0.5">IG</span>
               </div>
               <div className="flex flex-col items-center">
                 <div className="w-6 h-6 bg-black rounded-full flex items-center justify-center">
                   <IconTiktok className="text-white text-xs" />
                 </div>
-                <span className="text-[8px] text-gray-600 mt-0.5">TikTok</span>
+                <span className="text-[8px] text-gray-600 mt-0.5">TIKTOK</span>
               </div>
             </div>
             <div className="text-center mt-2">
-              <p className="text-[11px] font-bold text-purple-700">
-                delish cheesecake
+              <p className="text-[10px] text-gray-600">
+                Thank you for dining with us !
               </p>
-              <p className="text-[9px] text-gray-600 mt-0.5">
-                Best cheesecake in town!
+              <p className="text-[9px] text-gray-500 mt-0.5">
+                Please visit again!
               </p>
             </div>
           </div>

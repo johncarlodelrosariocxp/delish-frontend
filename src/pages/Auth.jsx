@@ -107,8 +107,8 @@ const Auth = () => {
 
   return (
     <div className="relative flex items-center justify-center min-h-screen w-full overflow-hidden bg-black">
-      {/* Optimized Background with priority loading - FIXED */}
-      <div className="fixed inset-0 w-full h-full">
+      {/* Background Layer - FIXED */}
+      <div className="fixed inset-0 w-full h-full -z-20">
         <img
           src={loginBg}
           alt="Restaurant Background"
@@ -126,14 +126,32 @@ const Auth = () => {
         )}
       </div>
 
-      {/* Minimal Overlay - FIXED */}
-      <div className="fixed inset-0 bg-black/40"></div>
+      {/* Overlay Layer - FIXED */}
+      <div className="fixed inset-0 bg-black/60 -z-10"></div>
+
+      {/* Quote Section - FIXED at TOP */}
+      <div className="fixed top-8 left-0 right-0 z-30 flex justify-center px-4">
+        <div className="bg-black/70 border border-yellow-200/30 rounded-xl shadow-lg p-5 text-center text-white max-w-2xl w-full mx-auto">
+          <h3 className="text-xl font-semibold text-yellow-300 mb-2">
+            "At Delish Cheesecake..."
+          </h3>
+          <blockquote className="text-sm italic leading-relaxed text-gray-100">
+            We serve{" "}
+            <span className="text-yellow-400 font-medium">moments</span>
+            of warmth and flavor with genuine{" "}
+            <span className="text-yellow-300 font-medium">
+              Filipino hospitality
+            </span>
+            .
+          </blockquote>
+        </div>
+      </div>
 
       {/* Main Content Container - Scrollable */}
-      <div className="relative z-10 flex flex-col lg:flex-row items-center justify-center w-full max-w-6xl mx-auto px-4 py-6 min-h-screen">
+      <div className="relative z-20 flex flex-col lg:flex-row items-center justify-center w-full max-w-6xl mx-auto px-4 py-6 min-h-screen">
         {/* Left Section - Form */}
         <div className="flex-1 flex flex-col items-center justify-center w-full max-w-sm">
-          <div className="relative bg-white/5 border border-yellow-200/10 rounded-xl shadow-lg p-6 w-full text-white">
+          <div className="bg-black/70 border border-yellow-200/30 rounded-xl shadow-lg p-6 w-full text-white">
             {/* Optimized Logo Section */}
             <div className="flex flex-col items-center gap-2 mb-4">
               <div className="h-16 w-16 flex items-center justify-center rounded-full bg-white shadow-sm">
@@ -188,23 +206,8 @@ const Auth = () => {
           </div>
         </div>
 
-        {/* Right Section - Quote (Only on larger screens) - FIXED and POSITIONED HIGHER */}
-        <div className="hidden lg:flex flex-1 flex-col items-center justify-start pt-16">
-          <div className="relative bg-white/5 backdrop-blur-sm border border-yellow-200/10 rounded-xl shadow-lg p-6 text-center text-white max-w-md">
-            <h3 className="text-lg font-semibold text-yellow-300 mb-2">
-              "At Delish Cheesecake..."
-            </h3>
-            <blockquote className="text-xs italic leading-relaxed text-gray-100">
-              We serve{" "}
-              <span className="text-yellow-400 font-medium">moments</span>
-              of warmth and flavor with genuine{" "}
-              <span className="text-yellow-300 font-medium">
-                Filipino hospitality
-              </span>
-              .
-            </blockquote>
-          </div>
-        </div>
+        {/* Empty right section for balance on larger screens */}
+        <div className="hidden lg:flex flex-1"></div>
       </div>
     </div>
   );

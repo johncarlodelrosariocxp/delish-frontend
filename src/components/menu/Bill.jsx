@@ -1600,7 +1600,7 @@ const Bill = ({ orderId }) => {
       receiptText += "\x1B\x45\x00"; // Bold off
       
       // Order Slip
-      receiptText += "     Order Slip\n";
+      receiptText += "  Order Slip\n";
       receiptText += "\n";
       
       // Order details - left align
@@ -1613,7 +1613,8 @@ const Bill = ({ orderId }) => {
       receiptText += "--------------------------------\n";
       
       // Items header - Quantity full view, Amount in PHP
-      receiptText += "Quantity                    Amount \n";
+      receiptText += "Quantity \n";
+      receiptText += "Amount \n";
       receiptText += "--------------------------------\n";
       
       // Items
@@ -1644,26 +1645,26 @@ const Bill = ({ orderId }) => {
       
       // Totals - Right align for amount
       receiptText += "\x1B\x61\x02"; // Right align
-      receiptText += `Subtotal:         ₱${(orderData.bills?.total || 0).toFixed(2)}\n`;
+      receiptText += `Subtotal:         PHP${(orderData.bills?.total || 0).toFixed(2)}\n`;
       
       if (orderData.bills?.pwdSeniorDiscount > 0) {
-        receiptText += `PWD/Senior Disc: -₱${orderData.bills.pwdSeniorDiscount.toFixed(2)}\n`;
+        receiptText += `PWD/Senior Disc: -PHP${orderData.bills.pwdSeniorDiscount.toFixed(2)}\n`;
       }
       if (orderData.bills?.employeeDiscount > 0) {
-        receiptText += `Employee Disc:   -₱${orderData.bills.employeeDiscount.toFixed(2)}\n`;
+        receiptText += `Employee Disc:   -PHP${orderData.bills.employeeDiscount.toFixed(2)}\n`;
       }
       if (orderData.bills?.shareholderDiscount > 0) {
-        receiptText += `VIP Disc:        -₱${orderData.bills.shareholderDiscount.toFixed(2)}\n`;
+        receiptText += `VIP Disc:        -PHP${orderData.bills.shareholderDiscount.toFixed(2)}\n`;
       }
       if (orderData.bills?.redemptionDiscount > 0) {
-        receiptText += `Redemption:      -₱${orderData.bills.redemptionDiscount.toFixed(2)}\n`;
+        receiptText += `Redemption:      -PHP${orderData.bills.redemptionDiscount.toFixed(2)}\n`;
       }
       if (orderData.bills?.customDiscount > 0) {
-        receiptText += `Custom Disc:     -₱${orderData.bills.customDiscount.toFixed(2)}\n`;
+        receiptText += `Custom Disc:     -PHP${orderData.bills.customDiscount.toFixed(2)}\n`;
       }
       
       receiptText += "\x1B\x45\x01"; // Bold on
-      receiptText += `TOTAL:           ₱${(orderData.bills?.totalWithTax || 0).toFixed(2)}\n`;
+      receiptText += `TOTAL:           PHP${(orderData.bills?.totalWithTax || 0).toFixed(2)}\n`;
       receiptText += "\x1B\x45\x00"; // Bold off
       receiptText += "--------------------------------\n";
       
@@ -3186,32 +3187,7 @@ const Bill = ({ orderId }) => {
         {/* Show bill if there's a current order */}
         {currentOrder && (
           <div className="max-w-[600px] mx-auto space-y-4 pb-8">
-            {/* Next Order Banner */}
-            {nextOrder && !processedOrders.has(nextOrder.id) && (
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-blue-800">
-                      Next Order Available
-                    </p>
-                    <p className="text-xs text-blue-600">
-                      Order {nextOrder.number} has{" "}
-                      {nextOrder.items?.length || 0} items
-                    </p>
-                    <p className="text-xs text-gray-500 mt-1">
-                      {pendingOrderCount - 1} more order
-                      {pendingOrderCount - 1 > 1 ? "s" : ""} pending
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => setShowNextOrderConfirm(true)}
-                    className="text-sm text-blue-700 hover:text-blue-900 font-medium"
-                  >
-                    Switch Now →
-                  </button>
-                </div>
-              </div>
-            )}
+        
 
             {/* Customer Type & Name */}
             <div className="bg-white rounded-lg p-4 shadow-md">
