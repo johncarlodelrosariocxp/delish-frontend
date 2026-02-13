@@ -1,41 +1,10 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
-import compression from "vite-plugin-compression";
-import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 
 export default defineConfig({
   plugins: [
     react(),
-    compression({
-      algorithm: "gzip",
-      ext: ".gz",
-      threshold: 1024,
-      deleteOriginFile: false,
-    }),
-    compression({
-      algorithm: "brotliCompress",
-      ext: ".br",
-      threshold: 1024,
-    }),
-    VitePWA({
-      registerType: "autoUpdate",
-      includeAssets: ["favicon.ico", "apple-touch-icon.png"],
-      manifest: false,
-      injectRegister: false,
-      workbox: {
-        globPatterns: ["**/*.{js,css,html,ico,png,svg}"],
-        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
-        cleanupOutdatedCaches: true,
-      },
-      devOptions: {
-        enabled: false,
-      },
-      strategies: "generateSW",
-      includeManifestIcons: false,
-      disable: false,
-      minify: true,
-    }),
   ],
   resolve: {
     alias: {
@@ -50,8 +19,7 @@ export default defineConfig({
     },
   },
   build: {
-    // FIXED: Change from "es2020" to "es2022" or "esnext"
-    target: "es2022", // or use "esnext" for latest features
+    target: "es2022",
     outDir: "dist",
     assetsDir: "assets",
     sourcemap: false,
@@ -74,29 +42,24 @@ export default defineConfig({
             if (id.includes("@reduxjs") || id.includes("react-redux")) {
               return "vendor-redux";
             }
-            if (id.includes("framer-motion")) {
+            if (id.includes("framer-motion") || id.includes("antd")) {
               return "vendor-ui";
             }
             return "vendor";
           }
         },
-        entryFileNames: "assets/[hash].js",
-        chunkFileNames: "assets/[hash].js",
-        assetFileNames: "assets/[hash].[ext]",
       },
     },
-    chunkSizeWarningLimit: 500,
+    chunkSizeWarningLimit: 600,
     cssCodeSplit: true,
     cssMinify: true,
     reportCompressedSize: false,
+    emptyOutDir: true,
   },
   optimizeDeps: {
-    include: ["react", "react-dom", "react-dom/client"],
-    exclude: ["@vitejs/plugin-react-swc"],
-    force: process.env.NODE_ENV === "development",
-    // ADD THIS to ensure esbuild uses compatible target
+    include: ["react", "react-dom", "react-dom/client", "antd", "@reduxjs/toolkit"],
     esbuildOptions: {
-      target: "es2022", // Match the build target
+      target: "es2022",
     },
   },
 });
