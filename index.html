@@ -523,12 +523,12 @@
       </div>
     </noscript>
 
-    <!-- Script entry point - FIXED: Removed top-level await for Vercel/Netlify compatibility -->
+    <!-- Script entry point - COMPLETELY FIXED: Removed import.meta.env reassignment -->
     <script type="module">
-      // Dynamic import for Vercel compatibility - FIXED
-      import.meta.env = import.meta.env || {};
+      // FIXED: Removed the line that tries to reassign import.meta.env
+      // import.meta.env is a constant and cannot be reassigned
       
-      // Use .then() instead of top-level await (which causes issues on Vercel/Netlify)
+      // Use .then() instead of top-level await
       import("/src/main.jsx")
         .then(() => {
           console.log("✅ React app loaded successfully");
