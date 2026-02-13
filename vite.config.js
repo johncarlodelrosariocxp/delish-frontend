@@ -6,7 +6,7 @@ import path from "path";
 
 export default defineConfig({
   plugins: [
-    react(), // ✅ Correct React plugin
+    react(),
     compression({
       algorithm: "gzip",
       ext: ".gz",
@@ -50,7 +50,8 @@ export default defineConfig({
     },
   },
   build: {
-    target: "es2020",
+    // FIXED: Change from "es2020" to "es2022" or "esnext"
+    target: "es2022", // or use "esnext" for latest features
     outDir: "dist",
     assetsDir: "assets",
     sourcemap: false,
@@ -93,5 +94,9 @@ export default defineConfig({
     include: ["react", "react-dom", "react-dom/client"],
     exclude: ["@vitejs/plugin-react-swc"],
     force: process.env.NODE_ENV === "development",
+    // ADD THIS to ensure esbuild uses compatible target
+    esbuildOptions: {
+      target: "es2022", // Match the build target
+    },
   },
 });
