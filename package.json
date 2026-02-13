@@ -34,8 +34,8 @@
     "tailwind-scrollbar-hide": "^2.0.0"
   },
   "devDependencies": {
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
+    "@types/react": "18.2.0",
+    "@types/react-dom": "18.2.0",
     "@vitejs/plugin-react": "^4.3.4",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.1",
@@ -43,5 +43,17 @@
     "vite": "^6.4.1",
     "vite-plugin-compression": "^0.5.1",
     "vite-plugin-pwa": "^1.2.0"
+  },
+  "resolutions": {
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "@types/react": "18.2.0",
+    "@types/react-dom": "18.2.0"
+  },
+  "overrides": {
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "@types/react": "18.2.0",
+    "@types/react-dom": "18.2.0"
   }
 }

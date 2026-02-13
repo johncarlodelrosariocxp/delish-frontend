@@ -5,7 +5,6 @@ import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 
 export default defineConfig({
-  // FIXED: Add base for relative paths on Vercel/Netlify
   base: "./",
   plugins: [
     react(),
@@ -59,27 +58,12 @@ export default defineConfig({
         skipWaiting: true,
         navigateFallback: "/index.html",
         navigateFallbackDenylist: [/^\/api/],
-        runtimeCaching: [
-          {
-            urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
-            handler: "CacheFirst",
-            options: {
-              cacheName: "google-fonts-cache",
-              expiration: {
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 60 * 24 * 365,
-              },
-            },
-          },
-        ],
       },
       devOptions: {
         enabled: false,
       },
       strategies: "generateSW",
-      includeManifestIcons: true,
       disable: false,
-      minify: true,
     }),
   ],
   resolve: {
@@ -90,9 +74,6 @@ export default defineConfig({
   server: {
     port: 5173,
     host: true,
-    hmr: {
-      overlay: false,
-    },
   },
   build: {
     target: "es2022",
@@ -104,25 +85,15 @@ export default defineConfig({
       compress: {
         drop_console: true,
         drop_debugger: true,
-        pure_funcs: ["console.log", "console.debug"],
         passes: 3,
       },
     },
     rollupOptions: {
       output: {
-        manualChunks: (id) => {
-          if (id.includes("node_modules")) {
-            if (id.includes("react") || id.includes("react-dom")) {
-              return "vendor-react";
-            }
-            if (id.includes("@reduxjs") || id.includes("react-redux")) {
-              return "vendor-redux";
-            }
-            if (id.includes("framer-motion") || id.includes("antd")) {
-              return "vendor-ui";
-            }
-            return "vendor";
-          }
+        manualChunks: {
+          vendor: ['react', 'react-dom'],
+          redux: ['@reduxjs/toolkit', 'react-redux'],
+          ui: ['antd', 'framer-motion'],
         },
       },
     },
@@ -133,7 +104,7 @@ export default defineConfig({
     emptyOutDir: true,
   },
   optimizeDeps: {
-    include: ["react", "react-dom", "react-dom/client", "antd", "@reduxjs/toolkit"],
+    include: ["react", "react-dom", "antd", "@reduxjs/toolkit"],
     esbuildOptions: {
       target: "es2022",
     },
