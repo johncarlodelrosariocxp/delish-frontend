@@ -4,6 +4,7 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/png" href="/delish-logo.png" />
     <link rel="icon" type="image/svg+xml" href="/delish-logo.svg" />
+    <link rel="manifest" href="/manifest.json" />
 
     <!-- Responsive viewport - allow all orientations -->
     <meta
@@ -11,8 +12,27 @@
       content="width=device-width, initial-scale=1.0, maximum-scale=5.0, minimum-scale=0.1, viewport-fit=cover, user-scalable=yes"
     />
 
+    <!-- Standard mobile web app capability -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta
+      name="apple-mobile-web-app-status-bar-style"
+      content="black-translucent"
+    />
+    <meta name="apple-mobile-web-app-title" content="Delish POS" />
+    <link rel="apple-touch-icon" href="/delish-logo.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/delish-logo-152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/delish-logo-180.png" />
+    <link rel="apple-touch-icon" sizes="167x167" href="/delish-logo-167.png" />
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#2563eb" />
     <meta name="description" content="Delish Restaurant Point of Sale System" />
     <meta name="application-name" content="Delish POS" />
+
+    <!-- Microsoft -->
+    <meta name="msapplication-TileColor" content="#2563eb" />
+    <meta name="msapplication-TileImage" content="/delish-logo.png" />
 
     <title>Delish POS</title>
 
@@ -108,6 +128,15 @@
         box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         align-items: center;
         gap: 6px;
+      }
+
+      /* PWA standalone adjustments */
+      body.pwa-standalone {
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
+        background: #f3f4f6;
       }
 
       /* Mobile bottom navigation safe area */
@@ -267,6 +296,50 @@
     </style>
 
     <script>
+      // Service Worker Registration - Fixed for Vercel
+      if ("serviceWorker" in navigator) {
+        window.addEventListener("load", function () {
+          // Check if we're in production mode
+          const isProduction = window.location.hostname !== 'localhost' && 
+                              window.location.hostname !== '127.0.0.1';
+          
+          if (isProduction) {
+            navigator.serviceWorker
+              .register("/sw.js", {
+                scope: "/",
+                updateViaCache: "none",
+              })
+              .then(
+                function (registration) {
+                  console.log("✅ ServiceWorker registered:", registration.scope);
+
+                  // Check for updates
+                  registration.addEventListener("updatefound", function () {
+                    const newWorker = registration.installing;
+                    if (newWorker) {
+                      newWorker.addEventListener("statechange", function () {
+                        if (
+                          newWorker.state === "installed" &&
+                          navigator.serviceWorker.controller
+                        ) {
+                          console.log("🆕 New version available!");
+                          // Store update flag instead of immediate confirm
+                          localStorage.setItem("sw_update_available", "true");
+                        }
+                      });
+                    }
+                  });
+                },
+                function (err) {
+                  console.log("❌ ServiceWorker failed:", err);
+                }
+              );
+          } else {
+            console.log("🔧 ServiceWorker disabled in development");
+          }
+        });
+      }
+
       // Data Persistence - Fixed to avoid race conditions
       let hasUnsavedChanges = false;
       let saveTimeout = null;
@@ -324,11 +397,37 @@
         }
       });
 
+      // PWA Installation
+      window.addEventListener("appinstalled", function (event) {
+        console.log("📱 App installed successfully");
+        localStorage.setItem("app_installed", "true");
+        localStorage.setItem("app_installed_date", new Date().toISOString());
+      });
+
+      // Detect PWA mode
+      function isRunningAsPWA() {
+        return (
+          window.matchMedia("(display-mode: standalone)").matches ||
+          window.navigator.standalone === true ||
+          window.matchMedia("(display-mode: fullscreen)").matches ||
+          document.referrer.includes("android-app://")
+        );
+      }
+
       // Network status
       window.addEventListener("online", function () {
         document.body.classList.remove("offline");
         document.body.classList.add("online");
         console.log("🌐 Network: online");
+        
+        // Trigger sync if service worker is ready
+        if ("serviceWorker" in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.ready.then(function(registration) {
+            if (registration.sync) {
+              registration.sync.register("sync-orders");
+            }
+          });
+        }
       });
 
       window.addEventListener("offline", function () {
@@ -356,6 +455,18 @@
           console.error("❌ Failed to load saved state:", error);
         }
 
+        // Add PWA class if running as standalone
+        if (isRunningAsPWA()) {
+          document.body.classList.add("pwa-standalone");
+          console.log("📱 Running as PWA");
+        }
+
+        // Check for SW update
+        if (localStorage.getItem("sw_update_available") === "true") {
+          console.log("🆕 Update available");
+          // You can show a notification here
+        }
+
         // Set initial network status
         if (navigator.onLine) {
           document.body.classList.add("online");
@@ -363,6 +474,7 @@
           document.body.classList.add("offline");
         }
 
+        // Remove any loading indicators
         console.log("✅ Delish POS ready");
       });
 
@@ -411,32 +523,38 @@
       </div>
     </noscript>
 
-    <!-- Script entry point -->
+    <!-- Script entry point - FIXED: Removed top-level await for Vercel/Netlify compatibility -->
     <script type="module">
-      try {
-        await import("/src/main.jsx");
-        console.log("✅ React app loaded");
-      } catch (error) {
-        console.error("❌ Failed to load React app:", error);
-        
-        // Show error UI
-        const root = document.getElementById("root");
-        if (root) {
-          root.innerHTML = `
-            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; text-align: center; background: #f3f4f6;">
-              <div style="background: white; padding: 32px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px;">
-                <h2 style="font-size: 20px; color: #ef4444; margin-bottom: 12px;">Failed to Load Application</h2>
-                <p style="font-size: 14px; color: #4b5563; margin-bottom: 20px; line-height: 1.5;">
-                  There was an error loading Delish POS. Please try refreshing the page.
-                </p>
-                <button onclick="window.location.reload()" style="background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
-                  Refresh Page
-                </button>
+      // Dynamic import for Vercel compatibility - FIXED
+      import.meta.env = import.meta.env || {};
+      
+      // Use .then() instead of top-level await (which causes issues on Vercel/Netlify)
+      import("/src/main.jsx")
+        .then(() => {
+          console.log("✅ React app loaded successfully");
+        })
+        .catch((error) => {
+          console.error("❌ Failed to load React app:", error);
+          
+          // Show error UI
+          const root = document.getElementById("root");
+          if (root) {
+            root.innerHTML = `
+              <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; padding: 20px; text-align: center; background: #f3f4f6;">
+                <div style="background: white; padding: 32px; border-radius: 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); max-width: 400px;">
+                  <img src="/delish-logo.svg" alt="Delish POS" style="width: 60px; height: 60px; margin-bottom: 16px;" />
+                  <h2 style="font-size: 20px; color: #ef4444; margin-bottom: 12px;">Failed to Load Application</h2>
+                  <p style="font-size: 14px; color: #4b5563; margin-bottom: 20px; line-height: 1.5;">
+                    There was an error loading Delish POS. Please try refreshing the page.
+                  </p>
+                  <button onclick="window.location.reload()" style="background: #2563eb; color: white; border: none; padding: 12px 24px; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer;">
+                    Refresh Page
+                  </button>
+                </div>
               </div>
-            </div>
-          `;
-        }
-      }
+            `;
+          }
+        });
     </script>
   </body>
 </html>
