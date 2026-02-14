@@ -77,25 +77,20 @@ const Auth = () => {
     preloadApp();
   }, []);
 
-  // Memoized background styles to prevent recalculation
-  const backgroundStyles = useMemo(
-    () => ({
-      backgroundImage: `url(${loginBg})`,
-      filter: "brightness(0.55)",
-    }),
-    []
-  );
-
   // Fast loading fallback
   if (isCheckingAuth) {
     return (
       <div className="relative flex items-center justify-center min-h-screen w-full overflow-hidden bg-black">
-        {/* Minimal background with inline blur hash placeholder */}
-        <div
-          className="absolute inset-0 bg-gray-900"
-          style={backgroundStyles}
-        />
-
+        {/* Background with actual image */}
+        <div className="absolute inset-0 w-full h-full">
+          <img
+            src={loginBg}
+            alt="Restaurant Background"
+            className="w-full h-full object-cover"
+            style={{ filter: "brightness(0.55)" }}
+            loading="eager"
+          />
+        </div>
         {/* Fast loading indicator */}
         <div className="relative z-10 flex flex-col items-center justify-center gap-3">
           <div className="h-8 w-8 border-2 border-yellow-400 border-t-transparent rounded-full animate-spin"></div>
@@ -107,7 +102,7 @@ const Auth = () => {
 
   return (
     <div className="relative flex items-center justify-center min-h-screen w-full overflow-hidden bg-black">
-      {/* Background Layer - FIXED */}
+      {/* Background Layer - FIXED with loginbg.jpeg */}
       <div className="fixed inset-0 w-full h-full -z-20">
         <img
           src={loginBg}

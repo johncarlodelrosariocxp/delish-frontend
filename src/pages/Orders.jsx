@@ -16,165 +16,163 @@ import BackButton from "../components/shared/BackButton";
 import Invoice from "../components/invoice/Invoice";
 import OrderCard from "../components/orders/OrderCard";
 
+// Constants
 const CACHE_KEY = "pos_orders_cache";
 const CACHE_EXPIRY = 60 * 60 * 1000; // 60 minutes
-const MAX_CACHE_ITEMS = 50; // Limit number of orders to cache
-const MAX_ORDER_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days - remove old orders
+const MAX_CACHE_ITEMS = 50;
+const MAX_ORDER_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
-// Helper function to safely set localStorage with error handling
+// Helper function to safely set localStorage
 const safeSetLocalStorage = (key, value) => {
+  if (typeof window === 'undefined') return false;
+  
   try {
     localStorage.setItem(key, value);
     return true;
   } catch (e) {
     if (e.name === 'QuotaExceededError' || e.code === 22) {
-      console.warn('LocalStorage quota exceeded. Clearing old cache...');
-      const keysToRemove = [];
-      for (let i = 0; i < localStorage.length; i++) {
-        const storageKey = localStorage.key(i);
-        if (storageKey && (storageKey.includes('pos_') || storageKey.includes('cache'))) {
-          keysToRemove.push(storageKey);
-        }
-      }
-      keysToRemove.forEach(key => {
-        try {
-          localStorage.removeItem(key);
-        } catch (removeError) {
-          console.error('Failed to remove item:', key);
-        }
-      });
+      // Clear old cache items
       try {
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const storageKey = localStorage.key(i);
+          if (storageKey?.includes('pos_')) {
+            keysToRemove.push(storageKey);
+          }
+        }
+        keysToRemove.forEach(k => localStorage.removeItem(k));
         localStorage.setItem(key, value);
         return true;
       } catch (retryError) {
-        console.error('Still failed to set localStorage after clearing:', retryError);
+        console.error('Still failed to set localStorage:', retryError);
         return false;
       }
-    } else {
-      console.error('Failed to save to localStorage:', e);
-      return false;
     }
+    return false;
   }
 };
 
+// Optimize cache data
 const getOptimizedCacheData = (orders) => {
-  if (!orders || orders.length === 0) return null;
-  const sortedOrders = [...orders]
+  if (!orders?.length) return null;
+  
+  return orders
     .sort((a, b) => {
-      const dateA = a.parsedDate || new Date(a.createdAt || 0);
-      const dateB = b.parsedDate || new Date(b.createdAt || 0);
+      const dateA = a.parsedDate instanceof Date ? a.parsedDate : new Date(a.createdAt || 0);
+      const dateB = b.parsedDate instanceof Date ? b.parsedDate : new Date(b.createdAt || 0);
       return dateB - dateA;
     })
-    .slice(0, MAX_CACHE_ITEMS);
-  const now = Date.now();
-  const recentOrders = sortedOrders.filter(order => {
-    const orderDate = order.parsedDate || new Date(order.createdAt || 0);
-    return now - orderDate.getTime() < MAX_ORDER_AGE;
-  });
-  return recentOrders.map(o => ({
-    _id: o._id,
-    orderStatus: o.orderStatus,
-    totalAmount: o.totalAmount,
-    bills: o.bills ? { totalWithTax: o.bills.totalWithTax } : undefined,
-    customerDetails: o.customerDetails ? { name: o.customerDetails.name } : undefined,
-    createdAt: o.createdAt,
-    orderDate: o.orderDate,
-    items: o.items ? o.items.map(item => ({
-      name: item.name,
-      quantity: item.quantity,
-      price: item.price
-    })).slice(0, 5) : [],
-    table: o.table ? { tableNo: o.table.tableNo } : undefined,
-    parsedDate: o.parsedDate instanceof Date ? o.parsedDate.toISOString() : o.parsedDate
-  }));
+    .slice(0, MAX_CACHE_ITEMS)
+    .filter(order => {
+      const orderDate = order.parsedDate instanceof Date ? order.parsedDate : new Date(order.createdAt || 0);
+      return Date.now() - orderDate.getTime() < MAX_ORDER_AGE;
+    })
+    .map(o => ({
+      _id: o._id,
+      orderStatus: o.orderStatus,
+      totalAmount: o.totalAmount,
+      bills: o.bills ? { totalWithTax: o.bills.totalWithTax } : undefined,
+      customerDetails: o.customerDetails ? { name: o.customerDetails.name } : undefined,
+      createdAt: o.createdAt,
+      orderDate: o.orderDate,
+      items: o.items?.slice(0, 5).map(({ name, quantity, price }) => ({ name, quantity, price })),
+      table: o.table ? { tableNo: o.table.tableNo } : undefined,
+      parsedDate: o.parsedDate instanceof Date ? o.parsedDate.toISOString() : o.parsedDate
+    }));
 };
 
 const Orders = () => {
-  const [orders, setOrders] = useState(() => {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      try {
-        const { data } = JSON.parse(cached);
-        if (data && Array.isArray(data) && data.length > 0) {
-          console.log("Loading orders from cache:", data.length);
-          return data.map(order => ({
-            ...order,
-            parsedDate: order.parsedDate ? new Date(order.parsedDate) : new Date()
-          }));
-        }
-      } catch (e) {
-        console.error("Failed to parse cached orders:", e);
-        localStorage.removeItem(CACHE_KEY);
-      }
-    }
-    return [];
-  });
-  
+  // State
+  const [orders, setOrders] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedOrder, setSelectedOrder] = useState(null);
   const [showInvoice, setShowInvoice] = useState(false);
-  const [dateFilter, setDateFilter] = useState(() => {
-    return localStorage.getItem("pos_date_filter") || "today";
-  });
+  const [dateFilter, setDateFilter] = useState("today");
   const [showDateDropdown, setShowDateDropdown] = useState(false);
   const [deletingOrderId, setDeletingOrderId] = useState(null);
   const [updatingOrderId, setUpdatingOrderId] = useState(null);
   const [showCalendar, setShowCalendar] = useState(false);
-  const [startDate, setStartDate] = useState(() => {
-    return localStorage.getItem("pos_start_date") || "";
-  });
-  const [endDate, setEndDate] = useState(() => {
-    return localStorage.getItem("pos_end_date") || "";
-  });
-  const [lastFetchTime, setLastFetchTime] = useState(() => {
-    const cached = localStorage.getItem(CACHE_KEY);
-    if (cached) {
-      try {
-        const { timestamp } = JSON.parse(cached);
-        return timestamp;
-      } catch (e) {
-        return 0;
-      }
-    }
-    return 0;
-  });
-  const [wsConnected, setWsConnected] = useState(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0);
-  const [autoRefreshing, setAutoRefreshing] = useState(false);
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [lastFetchTime, setLastFetchTime] = useState(0);
 
+  // Refs
+  const initialFetchDone = useRef(false);
+  const saveTimeoutRef = useRef(null);
+  const mountedRef = useRef(true);
+
+  // Hooks
   const user = useSelector((state) => state.user);
   const navigate = useNavigate();
   const isAdmin = user?.role?.toLowerCase() === "admin";
-  const initialFetchDone = useRef(false);
-  const saveTimeoutRef = useRef(null);
-  const refreshTimeoutRef = useRef(null);
-  const wsRef = useRef(null);
-  const reconnectTimeoutRef = useRef(null);
-  const refreshButtonRef = useRef(null);
 
-  // Save orders to localStorage
+  // Initialize from localStorage
   useEffect(() => {
-    if (orders && orders.length > 0) {
-      if (saveTimeoutRef.current) {
-        clearTimeout(saveTimeoutRef.current);
-      }
-      saveTimeoutRef.current = setTimeout(() => {
-        console.log("Saving orders to cache:", orders.length);
-        const optimizedData = getOptimizedCacheData(orders);
-        if (optimizedData && optimizedData.length > 0) {
-          const cacheData = {
-            data: optimizedData,
-            timestamp: Date.now()
-          };
-          const success = safeSetLocalStorage(CACHE_KEY, JSON.stringify(cacheData));
-          if (success) {
-            setLastFetchTime(Date.now());
-          }
+    mountedRef.current = true;
+    
+    // Load cached orders
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { data } = JSON.parse(cached);
+        if (data?.length) {
+          setOrders(data.map(order => ({
+            ...order,
+            parsedDate: order.parsedDate ? new Date(order.parsedDate) : new Date()
+          })));
         }
-      }, 2000);
+      }
+    } catch (e) {
+      localStorage.removeItem(CACHE_KEY);
     }
+
+    // Load filter states
+    setDateFilter(localStorage.getItem("pos_date_filter") || "today");
+    setStartDate(localStorage.getItem("pos_start_date") || "");
+    setEndDate(localStorage.getItem("pos_end_date") || "");
+
+    // Load last fetch time
+    try {
+      const cached = localStorage.getItem(CACHE_KEY);
+      if (cached) {
+        const { timestamp } = JSON.parse(cached);
+        setLastFetchTime(timestamp || 0);
+      }
+    } catch (e) {
+      // Ignore
+    }
+
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
+  // Save orders to localStorage with debounce
+  useEffect(() => {
+    if (!orders?.length) return;
+
+    if (saveTimeoutRef.current) {
+      clearTimeout(saveTimeoutRef.current);
+    }
+
+    saveTimeoutRef.current = setTimeout(() => {
+      if (!mountedRef.current) return;
+      
+      const optimizedData = getOptimizedCacheData(orders);
+      if (optimizedData?.length) {
+        const cacheData = {
+          data: optimizedData,
+          timestamp: Date.now()
+        };
+        safeSetLocalStorage(CACHE_KEY, JSON.stringify(cacheData));
+        if (mountedRef.current) {
+          setLastFetchTime(Date.now());
+        }
+      }
+    }, 2000);
+
     return () => {
       if (saveTimeoutRef.current) {
         clearTimeout(saveTimeoutRef.current);
@@ -186,455 +184,69 @@ const Orders = () => {
   useEffect(() => {
     safeSetLocalStorage("pos_date_filter", dateFilter);
   }, [dateFilter]);
+  
   useEffect(() => {
     safeSetLocalStorage("pos_start_date", startDate);
   }, [startDate]);
+  
   useEffect(() => {
     safeSetLocalStorage("pos_end_date", endDate);
   }, [endDate]);
 
-  // Animate refresh button on auto-refresh
-  useEffect(() => {
-    if (autoRefreshing && refreshButtonRef.current) {
-      refreshButtonRef.current.classList.add('animate-pulse', 'bg-blue-100');
-      const timer = setTimeout(() => {
-        if (refreshButtonRef.current) {
-          refreshButtonRef.current.classList.remove('animate-pulse', 'bg-blue-100');
-        }
-        setAutoRefreshing(false);
-      }, 1000);
-      return () => clearTimeout(timer);
-    }
-  }, [refreshTrigger, autoRefreshing]);
-
-  // MAIN AUTO REFRESH FUNCTION
-  const autoRefreshOrders = useCallback(async (source = "unknown") => {
-    console.log(`🔄 AUTO REFRESH [${source}]: Fetching latest orders...`);
+  // Process orders data
+  const processOrdersData = useCallback((data) => {
+    let ordersData = [];
     
-    setAutoRefreshing(true);
-    setRefreshTrigger(prev => prev + 1);
-    
-    try {
-      const response = await getOrders();
-      let ordersData = [];
-      if (response?.data?.data) {
-        ordersData = response.data.data;
-      } else if (Array.isArray(response?.data)) {
-        ordersData = response.data;
-      } else if (Array.isArray(response)) {
-        ordersData = response;
-      }
-
-      console.log(`✅ AUTO REFRESH [${source}]: Fetched`, ordersData.length, "orders");
-
-      const processedOrders = ordersData.map(order => {
-        const dateString = order.createdAt || order.orderDate || order.date;
-        let parsedDate = new Date();
-        if (dateString) {
-          parsedDate = new Date(dateString);
-        }
-        return {
-          ...order,
-          _id: order._id || order.id,
-          parsedDate: parsedDate
-        };
-      });
-
-      // Check if we have new orders
-      const existingIds = new Set(orders.map(o => o._id));
-      const newOrders = processedOrders.filter(o => !existingIds.has(o._id));
-      
-      if (newOrders.length > 0) {
-        console.log(`🎉 AUTO REFRESH [${source}]: ${newOrders.length} new orders found!`);
-        
-        // Show notification for new orders
-        if (Notification.permission === 'granted') {
-          newOrders.forEach(order => {
-            new Notification('New Order Received!', {
-              body: `Order #${order._id.slice(-6)} - ₱${order.bills?.totalWithTax || order.totalAmount || 0}`,
-              icon: '/favicon.ico'
-            });
-          });
-        }
-        
-        // Force refresh button to pulse
-        setRefreshTrigger(prev => prev + 1);
-      }
-
-      setOrders(processedOrders);
-      setError(null);
-      
-      // Force a re-render by updating a timestamp
-      setLastFetchTime(Date.now());
-      
-    } catch (err) {
-      console.error(`❌ AUTO REFRESH [${source}]: Failed:`, err);
-      setError("Failed to refresh orders");
-    } finally {
-      setTimeout(() => {
-        setAutoRefreshing(false);
-      }, 1000);
-    }
-  }, [orders]);
-
-  // WebSocket Connection for real-time updates
-  useEffect(() => {
-    const connectWebSocket = () => {
-      try {
-        // Use secure WebSocket if on HTTPS
-        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const wsUrl = `${protocol}//${window.location.host}/ws/orders`;
-        
-        wsRef.current = new WebSocket(wsUrl);
-        
-        wsRef.current.onopen = () => {
-          console.log("✅ WebSocket Connected");
-          setWsConnected(true);
-          // Send subscription message
-          wsRef.current.send(JSON.stringify({
-            type: 'subscribe',
-            channel: 'orders'
-          }));
-        };
-        
-        wsRef.current.onmessage = (event) => {
-          try {
-            const data = JSON.parse(event.data);
-            console.log("📢 WebSocket Message:", data);
-            
-            // Auto refresh on any order-related message
-            if (data.type === 'order_created' || 
-                data.type === 'order_updated' || 
-                data.type === 'order_paid' ||
-                data.type === 'order_status_changed' ||
-                data.channel === 'orders') {
-              
-              console.log("🔥 New order event via WebSocket!");
-              
-              // Set a flag in localStorage for cross-tab sync
-              localStorage.setItem('pos_new_order_timestamp', Date.now().toString());
-              localStorage.setItem('pos_new_order_data', JSON.stringify(data));
-              
-              // Trigger auto refresh
-              autoRefreshOrders("websocket");
-              
-              // Force refresh button animation
-              setRefreshTrigger(prev => prev + 1);
-              setAutoRefreshing(true);
-            }
-          } catch (e) {
-            console.error("Failed to parse WebSocket message:", e);
-          }
-        };
-        
-        wsRef.current.onclose = () => {
-          console.log("❌ WebSocket Disconnected");
-          setWsConnected(false);
-          
-          // Attempt to reconnect after 3 seconds
-          if (reconnectTimeoutRef.current) {
-            clearTimeout(reconnectTimeoutRef.current);
-          }
-          reconnectTimeoutRef.current = setTimeout(() => {
-            console.log("🔄 Attempting WebSocket reconnection...");
-            connectWebSocket();
-          }, 3000);
-        };
-        
-        wsRef.current.onerror = (error) => {
-          console.error("WebSocket Error:", error);
-          setWsConnected(false);
-        };
-      } catch (e) {
-        console.error("Failed to create WebSocket:", e);
-      }
-    };
-
-    connectWebSocket();
-
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-      }
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-    };
-  }, [autoRefreshOrders]);
-
-  // SSE (Server-Sent Events) fallback
-  useEffect(() => {
-    let eventSource;
-    
-    try {
-      eventSource = new EventSource('/api/orders/events');
-      
-      eventSource.onmessage = (event) => {
-        console.log("📢 SSE Event:", event.data);
-        
-        // Set flag for new order
-        localStorage.setItem('pos_new_order_sse', Date.now().toString());
-        
-        // Trigger refresh with animation
-        setRefreshTrigger(prev => prev + 1);
-        setAutoRefreshing(true);
-        autoRefreshOrders("sse");
-      };
-      
-      eventSource.addEventListener('order_created', (event) => {
-        console.log("🔥 Order created via SSE");
-        
-        // Parse order data if available
-        try {
-          const orderData = JSON.parse(event.data);
-          localStorage.setItem('pos_new_order_data', JSON.stringify(orderData));
-        } catch (e) {}
-        
-        setRefreshTrigger(prev => prev + 1);
-        setAutoRefreshing(true);
-        autoRefreshOrders("sse_order_created");
-      });
-      
-      eventSource.addEventListener('order_updated', () => {
-        console.log("🔥 Order updated via SSE");
-        setRefreshTrigger(prev => prev + 1);
-        setAutoRefreshing(true);
-        autoRefreshOrders("sse_order_updated");
-      });
-      
-      eventSource.onerror = (error) => {
-        console.error("SSE Error:", error);
-        eventSource.close();
-      };
-    } catch (e) {
-      console.error("Failed to create EventSource:", e);
+    if (data?.data?.data) {
+      ordersData = data.data.data;
+    } else if (Array.isArray(data?.data)) {
+      ordersData = data.data;
+    } else if (Array.isArray(data)) {
+      ordersData = data;
     }
 
-    return () => {
-      if (eventSource) {
-        eventSource.close();
-      }
-    };
-  }, [autoRefreshOrders]);
-
-  // Manual fetch function
-  const fetchOrders = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      console.log("📥 Manual fetch: Getting orders...");
-      const response = await getOrders();
-      let ordersData = [];
-      if (response?.data?.data) {
-        ordersData = response.data.data;
-      } else if (Array.isArray(response?.data)) {
-        ordersData = response.data;
-      } else if (Array.isArray(response)) {
-        ordersData = response;
-      }
-      console.log("✅ Manual fetch: Got", ordersData.length, "orders");
-      
-      const processedOrders = ordersData.map(order => {
-        const dateString = order.createdAt || order.orderDate || order.date;
-        let parsedDate = new Date();
-        if (dateString) {
-          parsedDate = new Date(dateString);
-        }
-        return {
-          ...order,
-          _id: order._id || order.id,
-          parsedDate: parsedDate
-        };
-      });
-      
-      setOrders(processedOrders);
-      setLastFetchTime(Date.now());
-    } catch (err) {
-      console.error("❌ Manual fetch failed:", err);
-      setError("Failed to load orders. Please try again.");
-    } finally {
-      setLoading(false);
-    }
+    return ordersData.map(order => ({
+      ...order,
+      _id: order._id || order.id,
+      parsedDate: new Date(order.createdAt || order.orderDate || order.date || Date.now())
+    }));
   }, []);
 
-  // Initial fetch
-  useEffect(() => {
-    if (orders.length > 0) {
-      console.log("Using cached orders:", orders.length);
-      initialFetchDone.current = true;
-      return;
+  // Manual fetch only - no auto refresh
+  const fetchOrders = useCallback(async (showLoading = true) => {
+    if (!mountedRef.current) return;
+    
+    if (showLoading) setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await getOrders();
+      if (!mountedRef.current) return;
+      
+      const processedOrders = processOrdersData(response);
+      setOrders(processedOrders);
+      setLastFetchTime(Date.now());
+    } catch (err) {
+      if (mountedRef.current) {
+        setError("Failed to load orders. Please try again.");
+      }
+    } finally {
+      if (showLoading && mountedRef.current) {
+        setLoading(false);
+      }
     }
-    if (!initialFetchDone.current) {
-      console.log("No cached orders, fetching...");
+  }, [processOrdersData]);
+
+  // Initial fetch only if no cached orders
+  useEffect(() => {
+    if (!mountedRef.current) return;
+    
+    // Only fetch if we have no orders (cache was empty)
+    if (orders.length === 0 && !initialFetchDone.current) {
       initialFetchDone.current = true;
       fetchOrders();
     }
   }, [fetchOrders, orders.length]);
-
-  // POLLING - Check every 5 seconds (AGGRESSIVE)
-  useEffect(() => {
-    console.log("🚀 Starting aggressive polling...");
-    const pollInterval = setInterval(() => {
-      console.log("🔄 Polling: Checking for new orders...");
-      
-      // Only auto-refresh if not already refreshing
-      if (!autoRefreshing) {
-        autoRefreshOrders("polling");
-      }
-    }, 3000); // 3 seconds
-    
-    return () => clearInterval(pollInterval);
-  }, [autoRefreshOrders, autoRefreshing]);
-
-  // Listen for localStorage changes (cross-tab sync)
-  useEffect(() => {
-    const handleStorageChange = (e) => {
-      if (e.key === 'pos_new_order_timestamp' || 
-          e.key === 'pos_new_order_data' ||
-          e.key === 'pos_new_order_sse') {
-        
-        console.log(`📢 New order detected from another tab!`);
-        
-        // Trigger refresh with animation
-        setRefreshTrigger(prev => prev + 1);
-        setAutoRefreshing(true);
-        autoRefreshOrders("cross_tab");
-        
-        // Clear the flag after 1 second
-        setTimeout(() => {
-          localStorage.removeItem(e.key);
-        }, 1000);
-      }
-    };
-    
-    window.addEventListener('storage', handleStorageChange);
-    return () => window.removeEventListener('storage', handleStorageChange);
-  }, [autoRefreshOrders]);
-
-  // Custom event listener for order creation
-  useEffect(() => {
-    const handleOrderCreated = (event) => {
-      console.log("🎯 Order created event received:", event.detail);
-      
-      // Force refresh button animation
-      setRefreshTrigger(prev => prev + 1);
-      setAutoRefreshing(true);
-      
-      // Trigger auto refresh
-      autoRefreshOrders("custom_event");
-      
-      // Show notification
-      if (event.detail?.order && Notification.permission === 'granted') {
-        const order = event.detail.order;
-        new Notification('New Order!', {
-          body: `Order #${order._id?.slice(-6) || ''} - ₱${order.bills?.totalWithTax || order.totalAmount || 0}`,
-          icon: '/favicon.ico'
-        });
-      }
-    };
-    
-    window.addEventListener('order:created', handleOrderCreated);
-    window.addEventListener('pos:orderCreated', handleOrderCreated);
-    window.addEventListener('newOrder', handleOrderCreated);
-    
-    return () => {
-      window.removeEventListener('order:created', handleOrderCreated);
-      window.removeEventListener('pos:orderCreated', handleOrderCreated);
-      window.removeEventListener('newOrder', handleOrderCreated);
-    };
-  }, [autoRefreshOrders]);
-
-  // Event Listeners - Multiple events
-  useEffect(() => {
-    const handleAnyOrderEvent = (event) => {
-      console.log("📢 ORDER EVENT DETECTED:", event.type, event.detail);
-      
-      // Clear any pending refresh
-      if (refreshTimeoutRef.current) {
-        clearTimeout(refreshTimeoutRef.current);
-      }
-      
-      // Trigger refresh button animation
-      setRefreshTrigger(prev => prev + 1);
-      setAutoRefreshing(true);
-      
-      // Immediate refresh
-      autoRefreshOrders(`event_${event.type}`);
-      
-      // Also update local state if order data is included
-      if (event.detail?.order) {
-        setOrders(prevOrders => {
-          const existingIndex = prevOrders.findIndex(o => o._id === event.detail.order._id);
-          const newOrder = {
-            ...event.detail.order,
-            parsedDate: new Date(event.detail.order.createdAt || event.detail.order.orderDate || event.detail.order.date || Date.now())
-          };
-          
-          if (existingIndex >= 0) {
-            const updated = [...prevOrders];
-            updated[existingIndex] = newOrder;
-            return updated;
-          } else {
-            return [newOrder, ...prevOrders].slice(0, MAX_CACHE_ITEMS * 2);
-          }
-        });
-      }
-    };
-
-    // Add all possible event listeners
-    const events = [
-      'orderUpdate', 'orderCreated', 'orderUpdated', 'orderPaid',
-      'orderStatusChanged', 'newOrder', 'orderAdded', 'orderCompleted',
-      'orderCancelled', 'orderRefunded', 'paymentReceived'
-    ];
-    
-    events.forEach(eventType => {
-      window.addEventListener(eventType, handleAnyOrderEvent);
-    });
-
-    // Also listen for custom events with different naming
-    window.addEventListener('order:created', handleAnyOrderEvent);
-    window.addEventListener('order:updated', handleAnyOrderEvent);
-    window.addEventListener('order:paid', handleAnyOrderEvent);
-    window.addEventListener('pos:orderCreated', handleAnyOrderEvent);
-    window.addEventListener('pos:orderUpdated', handleAnyOrderEvent);
-
-    return () => {
-      events.forEach(eventType => {
-        window.removeEventListener(eventType, handleAnyOrderEvent);
-      });
-      window.removeEventListener('order:created', handleAnyOrderEvent);
-      window.removeEventListener('order:updated', handleAnyOrderEvent);
-      window.removeEventListener('order:paid', handleAnyOrderEvent);
-      window.removeEventListener('pos:orderCreated', handleAnyOrderEvent);
-      window.removeEventListener('pos:orderUpdated', handleAnyOrderEvent);
-    };
-  }, [autoRefreshOrders]);
-
-  // Set a flag when component mounts to signal we're ready for updates
-  useEffect(() => {
-    // Request notification permission
-    if (Notification.permission === 'default') {
-      Notification.requestPermission();
-    }
-    
-    // Set a ready flag
-    localStorage.setItem('pos_orders_page_ready', 'true');
-    
-    // Simulate a new order every 30 seconds for testing (remove in production)
-    const testInterval = setInterval(() => {
-      if (process.env.NODE_ENV === 'development') {
-        console.log("🧪 Dev mode: Simulating new order...");
-        setRefreshTrigger(prev => prev + 1);
-        setAutoRefreshing(true);
-      }
-    }, 30000);  
-    
-    return () => {
-      localStorage.removeItem('pos_orders_page_ready');
-      clearInterval(testInterval);
-    };
-  }, []);
 
   // Clear old cache
   useEffect(() => {
@@ -644,42 +256,48 @@ const Orders = () => {
         const { timestamp } = JSON.parse(cached);
         if (Date.now() - timestamp > CACHE_EXPIRY * 2) {
           localStorage.removeItem(CACHE_KEY);
-          console.log("Cleared old cache");
         }
       }
     } catch (e) {
-      console.error("Failed to clear old cache:", e);
+      // Ignore
     }
   }, []);
 
   // Date filter functions
-  const getDateRange = (filterType) => {
+  const getDateRange = useCallback((filterType) => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    const startOfWeek = new Date(today);
-    startOfWeek.setDate(today.getDate() - today.getDay());
-    const startOfLastWeek = new Date(startOfWeek);
-    startOfLastWeek.setDate(startOfWeek.getDate() - 7);
-    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-    const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0);
-
+    
     switch (filterType) {
       case "today":
-        return { start: today, end: new Date(today.getTime() + 24 * 60 * 60 * 1000) };
-      case "yesterday":
+        return { start: today, end: new Date(today.getTime() + 86400000) };
+      case "yesterday": {
         const yesterday = new Date(today);
         yesterday.setDate(today.getDate() - 1);
         return { start: yesterday, end: today };
-      case "this week":
-        return { start: startOfWeek, end: new Date(startOfWeek.getTime() + 7 * 24 * 60 * 60 * 1000) };
-      case "last week":
-        return { start: startOfLastWeek, end: new Date(startOfLastWeek.getTime() + 7 * 24 * 60 * 60 * 1000) };
-      case "this month":
+      }
+      case "this week": {
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - today.getDay());
+        return { start: startOfWeek, end: new Date(startOfWeek.getTime() + 604800000) };
+      }
+      case "last week": {
+        const startOfWeek = new Date(today);
+        startOfWeek.setDate(today.getDate() - today.getDay());
+        const startOfLastWeek = new Date(startOfWeek);
+        startOfLastWeek.setDate(startOfWeek.getDate() - 7);
+        return { start: startOfLastWeek, end: new Date(startOfLastWeek.getTime() + 604800000) };
+      }
+      case "this month": {
+        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
         return { start: startOfMonth, end: endOfMonth };
-      case "last month":
+      }
+      case "last month": {
+        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 1);
         return { start: startOfLastMonth, end: endOfLastMonth };
+      }
       case "custom":
         if (startDate && endDate) {
           const customStart = new Date(startDate);
@@ -691,19 +309,19 @@ const Orders = () => {
       default:
         return { start: null, end: null };
     }
-  };
+  }, [startDate, endDate]);
 
   // Filter orders
   const filteredOrders = orders.filter(order => {
     if (dateFilter !== "all") {
       const { start, end } = getDateRange(dateFilter);
       if (start && end && order.parsedDate) {
-        const orderDate = order.parsedDate;
-        if (orderDate < start || orderDate > end) {
+        if (order.parsedDate < start || order.parsedDate > end) {
           return false;
         }
       }
     }
+    
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       const orderId = order._id || "";
@@ -721,10 +339,7 @@ const Orders = () => {
   // Calculate totals
   const totalSales = filteredOrders
     .filter(order => order.orderStatus?.toLowerCase() !== "cancelled")
-    .reduce((sum, order) => {
-      const amount = order?.bills?.totalWithTax || order?.totalAmount || 0;
-      return sum + (Number(amount) || 0);
-    }, 0);
+    .reduce((sum, order) => sum + (Number(order?.bills?.totalWithTax || order?.totalAmount || 0)), 0);
 
   const activeOrdersCount = filteredOrders.filter(
     order => order.orderStatus?.toLowerCase() !== "cancelled"
@@ -734,16 +349,14 @@ const Orders = () => {
     order => order.orderStatus?.toLowerCase() === "completed"
   ).length;
 
-  // Handle order status change
+  // Handlers
   const handleStatusChange = async (order, newStatus) => {
     if (!order?._id) return;
     setUpdatingOrderId(order._id);
     try {
-      setOrders(prevOrders => 
-        prevOrders.map(o =>
-          o._id === order._id ? { ...o, orderStatus: newStatus } : o
-        )
-      );
+      setOrders(prev => prev.map(o =>
+        o._id === order._id ? { ...o, orderStatus: newStatus } : o
+      ));
     } catch (err) {
       console.error("Failed to update order status:", err);
     } finally {
@@ -751,14 +364,11 @@ const Orders = () => {
     }
   };
 
-  // Handle order deletion
   const handleDeleteOrder = async (orderId) => {
     if (!orderId) return;
     setDeletingOrderId(orderId);
     try {
-      setOrders(prevOrders => 
-        prevOrders.filter(o => o._id !== orderId)
-      );
+      setOrders(prev => prev.filter(o => o._id !== orderId));
     } catch (err) {
       console.error("Failed to delete order:", err);
     } finally {
@@ -766,20 +376,18 @@ const Orders = () => {
     }
   };
 
-  // Handle view receipt
   const handleViewReceipt = (order) => {
     setSelectedOrder(order);
     setShowInvoice(true);
   };
 
-  const goToHome = () => {
-    navigate("/");
-  };
+  const goToHome = () => navigate("/");
 
   const handleCustomDateApply = () => {
     if (startDate && endDate) {
       setDateFilter("custom");
       setShowCalendar(false);
+      setShowDateDropdown(false);
     }
   };
 
@@ -802,13 +410,12 @@ const Orders = () => {
 
   const getDateFilterLabel = () => {
     if (dateFilter === "custom" && startDate && endDate) {
-      const start = new Date(startDate).toLocaleDateString();
-      const end = new Date(endDate).toLocaleDateString();
-      return `${start} - ${end}`;
+      return `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`;
     }
     return dateFilterOptions.find(opt => opt.value === dateFilter)?.label || "Today";
   };
 
+  // Render
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
@@ -822,38 +429,24 @@ const Orders = () => {
             }`}>
               {isAdmin ? "Admin" : "Cashier"}
             </span>
-            <div className="flex items-center gap-2">
-              {wsConnected && (
-                <span className="flex items-center gap-1 text-xs text-green-600">
-                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
-                  Live
-                </span>
-              )}
-              {lastFetchTime > 0 && (
-                <span className="text-[10px] text-gray-500">
-                  {orders.length} orders • {new Date(lastFetchTime).toLocaleTimeString()}
-                </span>
-              )}
-            </div>
+            {lastFetchTime > 0 && (
+              <span className="text-[10px] text-gray-500">
+                {orders.length} orders • Last updated: {new Date(lastFetchTime).toLocaleTimeString()}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <button
-              ref={refreshButtonRef}
-              onClick={() => {
-                console.log("Manual refresh clicked");
-                fetchOrders();
-              }}
-              className={`bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 text-sm transition-all duration-300 ${
-                autoRefreshing ? 'bg-blue-100 border-blue-300 scale-105' : ''
-              }`}
+              onClick={() => fetchOrders(true)}
+              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
               disabled={loading}
             >
-              {loading || autoRefreshing ? (
+              {loading ? (
                 <FaSpinner className="animate-spin" />
               ) : (
-                <FaSync className={`${refreshTrigger > 0 ? 'animate-spin' : ''}`} />
+                <FaSync />
               )}
-              {autoRefreshing ? 'Updating...' : 'Refresh'}
+              {loading ? 'Loading...' : 'Refresh'}
             </button>
             <button
               onClick={goToHome}
@@ -868,9 +461,7 @@ const Orders = () => {
         {/* Search and Filters */}
         <div className="px-4 py-3 border-t">
           <div className="relative mb-3">
-            <div className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400">
-              <FaSearch />
-            </div>
+            <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
             <input
               type="text"
               placeholder="Search orders by ID, customer, or status..."
@@ -978,7 +569,7 @@ const Orders = () => {
                 </span>
                 <button
                   onClick={handleCustomDateClear}
-                  className="text-red-500 text-sm"
+                  className="text-red-500 text-sm hover:text-red-700"
                 >
                   Clear
                 </button>
@@ -1005,7 +596,7 @@ const Orders = () => {
               </div>
               <div className="bg-white px-3 py-2 rounded-lg shadow-sm">
                 <div className="text-gray-500">Sales</div>
-                <div className="font-bold">PHP{totalSales.toFixed(2)}</div>
+                <div className="font-bold">₱{totalSales.toFixed(2)}</div>
               </div>
             </div>
           </div>
@@ -1013,8 +604,8 @@ const Orders = () => {
       </div>
 
       {/* Orders List */}
-      <div className="flex-1 overflow-y-auto p-4 mb-48">
-        {loading && orders.length === 0 ? (
+      <div className="flex-1 overflow-y-auto p-4 pb-48">
+        {loading && !orders.length ? (
           <div className="flex justify-center items-center h-64">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-3"></div>
@@ -1026,24 +617,24 @@ const Orders = () => {
             <div className="text-center">
               <p className="text-red-500 mb-3">{error}</p>
               <button
-                onClick={() => fetchOrders()}
+                onClick={() => fetchOrders(true)}
                 className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
               >
                 Try Again
               </button>
             </div>
           </div>
-        ) : filteredOrders.length === 0 ? (
+        ) : !filteredOrders.length ? (
           <div className="flex justify-center items-center h-64">
             <div className="text-center">
               <div className="text-4xl mb-2">📋</div>
               <p className="text-gray-600 mb-2">
-                {orders.length === 0 ? "No orders found" : "No orders match your filters"}
+                {!orders.length ? "No orders found" : "No orders match your filters"}
               </p>
               {orders.length > 0 && dateFilter !== "all" && (
                 <button
                   onClick={() => setDateFilter("all")}
-                  className="text-blue-500 text-sm"
+                  className="text-blue-500 text-sm hover:text-blue-700 mr-2"
                 >
                   Show all orders
                 </button>
@@ -1051,14 +642,14 @@ const Orders = () => {
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="text-blue-500 text-sm ml-2"
+                  className="text-blue-500 text-sm hover:text-blue-700"
                 >
                   Clear search
                 </button>
               )}
-              {orders.length === 0 && (
+              {!orders.length && (
                 <button
-                  onClick={() => fetchOrders()}
+                  onClick={() => fetchOrders(true)}
                   className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 mt-2"
                 >
                   Refresh Orders
@@ -1067,7 +658,7 @@ const Orders = () => {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-48">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {filteredOrders.map((order) => (
               <OrderCard
                 key={order._id}

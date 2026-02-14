@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   FaPrint,
-  FaTrashAlt,
+  FaBan,
   FaUser,
   FaReceipt,
   FaCheckCircle,
@@ -166,26 +166,12 @@ const OrderCard = ({
     return itemsText;
   };
 
-  // FIXED: Get cashier/admin name with proper detection and display real names
+  // Get cashier/admin name with proper detection and display real names
   const getCashierInfo = (order) => {
     let userName = "Staff";
     let userRole = "Cashier";
     let found = false;
     let originalUserData = null;
-
-    // Debug: Log the entire order object to see what fields are available
-    console.log("Order cashier fields:", {
-      createdBy: order.createdBy,
-      user: order.user,
-      cashierName: order.cashierName,
-      cashier: order.cashier,
-      adminName: order.adminName,
-      admin: order.admin,
-      processedBy: order.processedBy,
-      staffName: order.staffName,
-      employeeName: order.employeeName,
-      customerDetails: order.customerDetails
-    });
 
     // Helper function to extract name from user object
     const extractUserName = (userObj) => {
@@ -391,13 +377,6 @@ const OrderCard = ({
 
     // Capitalize role
     userRole = userRole.charAt(0).toUpperCase() + userRole.slice(1).toLowerCase();
-
-    console.log("Detected cashier:", { 
-      userName, 
-      userRole, 
-      found,
-      originalData: originalUserData 
-    });
     
     return { name: userName, role: userRole, found };
   };
@@ -417,47 +396,68 @@ const OrderCard = ({
     return "Cash";
   };
 
-  // REAL DELETE - Permanently removes from database
-  const handleDelete = async () => {
+  // UPDATED: Cancel order instead of delete
+  const handleCancel = async () => {
+    // Check if order is already cancelled
+    if (order.orderStatus?.toLowerCase() === "cancelled") {
+      alert("This order is already cancelled.");
+      return;
+    }
+
     // Show confirmation dialog with clear warning
-    const confirmDelete = window.confirm(
-      "⚠️ PERMANENT DELETION WARNING ⚠️\n\n" +
-      "Are you sure you want to permanently delete this order?\n" +
+    const confirmCancel = window.confirm(
+      "⚠️ CANCEL ORDER WARNING ⚠️\n\n" +
+      "Are you sure you want to cancel this order?\n" +
       "Order ID: " + (order._id?.slice(-8) || "N/A") + "\n" +
       "Customer: " + (order.customerDetails?.name || order.customerName || "Walk-in Customer") + "\n" +
       "Amount: " + formatCurrency(calculateTotalAmount(order)) + "\n\n" +
-      "THIS ACTION CANNOT BE UNDONE AND WILL DELETE THE ORDER FROM THE DATABASE!"
+      "This will mark the order as CANCELLED and update the total orders count.\n" +
+      "This action can be reversed by changing the status back."
     );
     
-    if (!confirmDelete) {
+    if (!confirmCancel) {
       return; // User cancelled
     }
     
     setLocalDeleting(true);
     
     try {
-      // Make sure we have an ID to delete
+      // Make sure we have an ID to update
       if (!order._id) {
-        throw new Error("Order ID is missing - cannot delete");
+        throw new Error("Order ID is missing - cannot cancel");
       }
       
-      console.log(`🗑️ Attempting to permanently delete order ${order._id} from database...`);
+      console.log(`🗑️ Attempting to cancel order ${order._id}...`);
       
-      // Call the parent onDelete function which should make the API call
-      // This MUST call your backend API to delete from MongoDB
-      await onDelete(order._id);
+      // Create updated order with cancelled status
+      const updatedOrder = {
+        ...order,
+        orderStatus: "cancelled",
+        status: "cancelled",
+        cancelledAt: new Date().toISOString(),
+        // Add cancellation flag for total orders calculation
+        isCancelled: true
+      };
       
-      console.log(`✅ Order ${order._id} successfully deleted from database`);
+      // Call onStatusChange if available, otherwise use onDelete with cancelled flag
+      if (onStatusChange) {
+        await onStatusChange(updatedOrder);
+      } else {
+        // If no status change handler, use onDelete but with cancellation context
+        await onDelete(updatedOrder);
+      }
+      
+      console.log(`✅ Order ${order._id} successfully cancelled`);
       
       // Show success message
-      alert(`Order #${order._id?.slice(-8)} has been permanently deleted from the database.`);
+      alert(`Order #${order._id?.slice(-8)} has been cancelled and will be deducted from total orders.`);
       
     } catch (error) {
-      console.error("❌ Database deletion error:", error);
+      console.error("❌ Order cancellation error:", error);
       
       // Show detailed error message
       alert(
-        `❌ FAILED TO DELETE ORDER FROM DATABASE\n\n` +
+        `❌ FAILED TO CANCEL ORDER\n\n` +
         `Error: ${error.message || "Unknown error"}\n\n` +
         `Please check your network connection and try again.\n` +
         `If the problem persists, contact system administrator.`
@@ -493,6 +493,9 @@ const OrderCard = ({
   };
 
   const customerName = getCustomerName(order);
+  
+  // Check if order is cancelled to disable cancel button
+  const isCancelled = order.orderStatus?.toLowerCase() === "cancelled";
 
   return (
     <div className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-all duration-200 w-full h-full flex flex-col">
@@ -527,7 +530,7 @@ const OrderCard = ({
             {isUpdating
               ? "Updating..."
               : deleting
-              ? "Deleting..."
+              ? "Cancelling..."
               : statusConfig.text}
           </span>
         </div>
@@ -616,6 +619,19 @@ const OrderCard = ({
         </div>
       ) : null}
 
+      {/* Cancellation Info (if cancelled) */}
+      {isCancelled && order.cancelledAt && (
+        <div className="mt-1 pt-2 border-t border-gray-100 mb-3">
+          <div className="text-xs text-red-600 mb-1 flex items-center gap-1">
+            <FaTimesCircle className="text-[10px]" />
+            Cancelled on:
+          </div>
+          <div className="text-xs text-gray-700">
+            {formatDate(order.cancelledAt)}
+          </div>
+        </div>
+      )}
+
       {/* Notes (if any) */}
       {order.notes && (
         <div className="mt-1 pt-2 border-t border-gray-100 mb-3">
@@ -626,7 +642,7 @@ const OrderCard = ({
         </div>
       )}
 
-      {/* Receipt and Delete Buttons */}
+      {/* Receipt and Cancel Buttons */}
       <div className="flex gap-2 pt-2 border-t border-gray-200 mt-auto">
         <button
           onClick={() => onViewReceipt(order)}
@@ -637,16 +653,20 @@ const OrderCard = ({
           View Receipt
         </button>
         <button
-          onClick={handleDelete}
-          disabled={deleting}
-          className="flex-1 bg-red-500 text-white px-2 py-2 rounded text-xs font-medium flex items-center gap-2 justify-center hover:bg-red-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          onClick={handleCancel}
+          disabled={deleting || isCancelled}
+          className={`flex-1 px-2 py-2 rounded text-xs font-medium flex items-center gap-2 justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+            isCancelled 
+              ? "bg-gray-400 text-white cursor-not-allowed" 
+              : "bg-orange-500 text-white hover:bg-orange-600"
+          }`}
         >
           {deleting ? (
             <FaSpinner className="animate-spin text-[10px]" />
           ) : (
-            <FaTrashAlt className="text-[10px] text-white" />
+            <FaBan className="text-[10px] text-white" />
           )}
-          {deleting ? "Deleting..." : "Delete"}
+          {deleting ? "Cancelling..." : isCancelled ? "Cancelled" : "Cancel"}
         </button>
       </div>
     </div>
