@@ -124,23 +124,7 @@ const Auth = () => {
       {/* Overlay Layer - Lighter overlay for better readability */}
       <div className="fixed inset-0 bg-black/10 -z-10"></div>
 
-      {/* Quote Section - Fixed at TOP */}
-      <div className="fixed top-8 left-0 right-0 z-30 flex justify-center px-4">
-        <div className="bg-black/50 backdrop-blur-sm border border-yellow-200/30 rounded-xl shadow-lg p-5 text-center text-white max-w-2xl w-full mx-auto">
-          <h3 className="text-xl font-semibold text-yellow-300 mb-2">
-            "At Delish Cheesecake..."
-          </h3>
-          <blockquote className="text-sm italic leading-relaxed text-gray-100">
-            We serve{" "}
-            <span className="text-yellow-400 font-medium">moments</span>
-            of warmth and flavor with genuine{" "}
-            <span className="text-yellow-300 font-medium">
-              Filipino hospitality
-            </span>
-            .
-          </blockquote>
-        </div>
-      </div>
+     
 
       {/* Main Content Container - CENTERED */}
       <div className="relative z-20 flex items-center justify-center w-full max-w-md mx-auto px-4 py-6 min-h-screen">
