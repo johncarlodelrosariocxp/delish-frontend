@@ -22,6 +22,8 @@ const Tables = lazy(() => import("./pages/Tables"));
 const Menu = lazy(() => import("./pages/Menu"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Inventory = lazy(() => import("./pages/Inventory"));
+const ProfitLoss = lazy(() => import("./pages/ProfitLoss"));
+const Expenses = lazy(() => import("./pages/Expenses"));
 
 // Cache
 const cache = new Map();
@@ -239,7 +241,7 @@ function Layout() {
             fontWeight: "bold",
           }}
         >
-          ⚠️ Offline
+          ⚠️ Offline Mode - Some features may be limited
         </div>
       )}
       <InstallPrompt />
@@ -297,6 +299,22 @@ function Layout() {
             element={
               <ProtectedRoutes>
                 <Inventory />
+              </ProtectedRoutes>
+            }
+          />
+          <Route
+            path="/profit-loss"
+            element={
+              <ProtectedRoutes>
+                <ProfitLoss />
+              </ProtectedRoutes>
+            }
+          />
+          <Route
+            path="/expenses"
+            element={
+              <ProtectedRoutes>
+                <Expenses />
               </ProtectedRoutes>
             }
           />

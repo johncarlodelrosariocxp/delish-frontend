@@ -373,7 +373,7 @@ export const pastryItems = [
   },
 ];
 
-// 🍟 Snacks (Updated from image)
+// 🍟 Snacks (Updated from image) - ADDED TABARON
 export const snackItems = [
   {
     id: 1,
@@ -388,6 +388,13 @@ export const snackItems = [
     category: "Snacks",
     tag: "food",
     variants: [{ label: "Regular", price: 249 }],
+  },
+  {
+    id: 3,
+    name: "Tabaron",
+    category: "Snacks",
+    tag: "food",
+    variants: [{ label: "Regular", price: 130 }],
   },
 ];
 

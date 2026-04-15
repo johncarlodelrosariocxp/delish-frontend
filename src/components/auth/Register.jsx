@@ -346,13 +346,13 @@ const Register = ({ setIsRegister }) => {
   const getBackendStatusColor = () => {
     switch (backendStatus) {
       case "connected":
-        return "bg-green-900 border-green-700 text-green-300";
+        return "bg-green-500/20 backdrop-blur-md border-green-500/30 text-green-300";
       case "disconnected":
-        return "bg-red-900 border-red-700 text-red-300";
+        return "bg-red-500/20 backdrop-blur-md border-red-500/30 text-red-300";
       case "error":
-        return "bg-yellow-900 border-yellow-700 text-yellow-300";
+        return "bg-yellow-500/20 backdrop-blur-md border-yellow-500/30 text-yellow-300";
       default:
-        return "bg-blue-900 border-blue-700 text-blue-300";
+        return "bg-blue-500/20 backdrop-blur-md border-blue-500/30 text-blue-300";
     }
   };
 
@@ -371,23 +371,29 @@ const Register = ({ setIsRegister }) => {
 
   return (
     <div className="w-full max-w-md mx-auto p-6">
-    
+      {/* Backend Status Banner - TRANSPARENT */}
+      <div className={`mb-4 p-3 rounded-lg ${getBackendStatusColor()}`}>
+        <p className="text-sm font-medium drop-shadow-md">{getBackendStatusText()}</p>
+        {backendUrl && backendStatus === "connected" && (
+          <p className="text-xs mt-1 opacity-75 drop-shadow-md">{backendUrl}</p>
+        )}
+      </div>
 
       {/* Show error details if available */}
       {backendError && (
-        <div className="mb-4 p-3 bg-red-900 bg-opacity-20 border border-red-700 rounded-lg">
-          <p className="text-red-300 text-sm font-semibold mb-1">
+        <div className="mb-4 p-3 bg-red-500/20 backdrop-blur-md border border-red-500/30 rounded-lg">
+          <p className="text-red-300 text-sm font-semibold mb-1 drop-shadow-md">
             Error Details:
           </p>
-          <pre className="text-red-400 text-xs whitespace-pre-wrap overflow-auto max-h-32">
+          <pre className="text-red-400 text-xs whitespace-pre-wrap overflow-auto max-h-32 drop-shadow-md">
             {backendError}
           </pre>
         </div>
       )}
 
       <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-white mb-2">Create Account</h2>
-        <p className="text-[#ababab] text-sm">
+        <h2 className="text-2xl font-bold text-yellow-300 mb-2 drop-shadow-lg">Create Account</h2>
+        <p className="text-gray-200 text-sm drop-shadow-md">
           Create a new employee account for Delish POS
         </p>
       </div>
@@ -395,17 +401,17 @@ const Register = ({ setIsRegister }) => {
       <form onSubmit={handleSubmit}>
         {/* Name Field */}
         <div>
-          <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+          <label className="block text-yellow-300 mb-2 mt-3 text-sm font-medium drop-shadow-md">
             Employee Name
           </label>
-          <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f] border border-gray-700 focus-within:border-yellow-400 transition-colors">
+          <div className="flex items-center rounded-lg p-4 bg-black/30 backdrop-blur-md border border-yellow-400/30 focus-within:border-yellow-400 focus-within:bg-black/40 transition-all">
             <input
               type="text"
               name="name"
               value={formData.name}
               onChange={handleChange}
               placeholder="Enter employee full name"
-              className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
+              className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-300 w-full"
               required
               minLength={2}
               disabled={registerMutation.isLoading}
@@ -415,17 +421,17 @@ const Register = ({ setIsRegister }) => {
 
         {/* Email Field */}
         <div>
-          <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+          <label className="block text-yellow-300 mb-2 mt-3 text-sm font-medium drop-shadow-md">
             Employee Email
           </label>
-          <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f] border border-gray-700 focus-within:border-yellow-400 transition-colors">
+          <div className="flex items-center rounded-lg p-4 bg-black/30 backdrop-blur-md border border-yellow-400/30 focus-within:border-yellow-400 focus-within:bg-black/40 transition-all">
             <input
               type="email"
               name="email"
               value={formData.email}
               onChange={handleChange}
               placeholder="Enter employee email"
-              className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
+              className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-300 w-full"
               required
               disabled={registerMutation.isLoading}
             />
@@ -434,17 +440,17 @@ const Register = ({ setIsRegister }) => {
 
         {/* Phone Field */}
         <div>
-          <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+          <label className="block text-yellow-300 mb-2 mt-3 text-sm font-medium drop-shadow-md">
             Employee Phone
           </label>
-          <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f] border border-gray-700 focus-within:border-yellow-400 transition-colors">
+          <div className="flex items-center rounded-lg p-4 bg-black/30 backdrop-blur-md border border-yellow-400/30 focus-within:border-yellow-400 focus-within:bg-black/40 transition-all">
             <input
               type="tel"
               name="phone"
               value={formData.phone}
               onChange={handleChange}
               placeholder="Enter employee phone number"
-              className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
+              className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-300 w-full"
               required
               minLength={10}
               disabled={registerMutation.isLoading}
@@ -454,17 +460,17 @@ const Register = ({ setIsRegister }) => {
 
         {/* Password Field */}
         <div>
-          <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+          <label className="block text-yellow-300 mb-2 mt-3 text-sm font-medium drop-shadow-md">
             Password
           </label>
-          <div className="flex items-center rounded-lg p-4 bg-[#1f1f1f] border border-gray-700 focus-within:border-yellow-400 transition-colors">
+          <div className="flex items-center rounded-lg p-4 bg-black/30 backdrop-blur-md border border-yellow-400/30 focus-within:border-yellow-400 focus-within:bg-black/40 transition-all">
             <input
               type="password"
               name="password"
               value={formData.password}
               onChange={handleChange}
               placeholder="Enter password (min. 6 characters)"
-              className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-500 w-full"
+              className="bg-transparent flex-1 text-white focus:outline-none placeholder-gray-300 w-full"
               required
               minLength={6}
               disabled={registerMutation.isLoading}
@@ -474,7 +480,7 @@ const Register = ({ setIsRegister }) => {
 
         {/* Role Selection */}
         <div>
-          <label className="block text-[#ababab] mb-2 mt-3 text-sm font-medium">
+          <label className="block text-yellow-300 mb-2 mt-3 text-sm font-medium drop-shadow-md">
             Choose your role
           </label>
           <div className="flex gap-3 mt-4">
@@ -484,10 +490,10 @@ const Register = ({ setIsRegister }) => {
                 type="button"
                 onClick={() => handleRoleSelection(role)}
                 disabled={registerMutation.isLoading}
-                className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all ${
+                className={`flex-1 py-3 px-4 rounded-lg font-medium transition-all drop-shadow-md ${
                   formData.role === role
-                    ? "bg-yellow-400 text-gray-900 shadow-lg"
-                    : "bg-[#1f1f1f] text-[#ababab] border border-gray-700 hover:border-yellow-400"
+                    ? "bg-yellow-500 text-gray-900 shadow-lg"
+                    : "bg-black/30 backdrop-blur-md text-gray-300 border border-yellow-400/30 hover:border-yellow-400 hover:bg-black/40"
                 } disabled:opacity-50 disabled:cursor-not-allowed`}
               >
                 {role}
@@ -500,7 +506,7 @@ const Register = ({ setIsRegister }) => {
         <button
           type="submit"
           disabled={registerMutation.isLoading}
-          className="w-full rounded-lg mt-6 py-4 text-lg bg-yellow-400 text-gray-900 font-bold hover:bg-yellow-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed shadow-lg hover:shadow-yellow-500/25"
+          className="w-full rounded-lg mt-6 py-4 text-lg bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-lg"
         >
           {registerMutation.isLoading ? (
             <span className="flex items-center justify-center">
@@ -537,47 +543,12 @@ const Register = ({ setIsRegister }) => {
             type="button"
             onClick={() => setIsRegister(false)}
             disabled={registerMutation.isLoading}
-            className="text-yellow-400 hover:text-yellow-300 text-sm font-medium transition-colors disabled:opacity-50"
+            className="text-yellow-400 hover:text-yellow-300 text-sm font-medium transition-colors drop-shadow-md disabled:opacity-50"
           >
             ← Back to Login
           </button>
         </div>
       </form>
-
-      {/* Quick Test Credentials */}
-  
-      {/* Manual Backend Check */}
-      <div className="mt-4 p-3 bg-gray-900 rounded-lg">
-        <p className="text-gray-400 text-xs mb-2">
-          <strong>Manual Check:</strong> Open these links in new tab:
-        </p>
-        <div className="space-y-1">
-          <a
-            href={`${backendUrl}/api/health`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block px-3 py-1 bg-blue-800 hover:bg-blue-700 text-blue-300 text-xs rounded text-center"
-          >
-            Check /api/health
-          </a>
-          <a
-            href={`${backendUrl}/api/user/register`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block px-3 py-1 bg-blue-800 hover:bg-blue-700 text-blue-300 text-xs rounded text-center"
-          >
-            Check /api/user/register
-          </a>
-          <a
-            href={backendUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="block px-3 py-1 bg-blue-800 hover:bg-blue-700 text-blue-300 text-xs rounded text-center"
-          >
-            Check Root URL
-          </a>
-        </div>
-      </div>
     </div>
   );
 };

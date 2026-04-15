@@ -368,6 +368,7 @@ const Orders = () => {
     if (!orderId) return;
     setDeletingOrderId(orderId);
     try {
+      // Remove from local state (actual API call is handled in OrderCard)
       setOrders(prev => prev.filter(o => o._id !== orderId));
     } catch (err) {
       console.error("Failed to delete order:", err);
@@ -420,78 +421,123 @@ const Orders = () => {
     <div className="min-h-screen bg-gray-50 flex flex-col">
       {/* Header */}
       <div className="bg-white shadow-sm border-b sticky top-0 z-10">
-        <div className="px-4 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <BackButton />
-            <h1 className="text-xl font-bold text-gray-800">Orders</h1>
-            <span className={`px-2 py-1 text-xs rounded-full ${
-              isAdmin ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
-            }`}>
-              {isAdmin ? "Admin" : "Cashier"}
-            </span>
-            {lastFetchTime > 0 && (
-              <span className="text-[10px] text-gray-500">
-                {orders.length} orders • Last updated: {new Date(lastFetchTime).toLocaleTimeString()}
+        <div className="px-4 py-3">
+          {/* Desktop Layout */}
+          <div className="hidden md:flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <BackButton />
+              <h1 className="text-xl font-bold text-gray-800">Orders</h1>
+              <span className={`px-2 py-1 text-xs rounded-full ${
+                isAdmin ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+              }`}>
+                {isAdmin ? "Admin" : "Cashier"}
               </span>
-            )}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => fetchOrders(true)}
-              className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
-              disabled={loading}
-            >
-              {loading ? (
-                <FaSpinner className="animate-spin" />
-              ) : (
-                <FaSync />
+              {lastFetchTime > 0 && (
+                <span className="text-[10px] text-gray-500">
+                  {orders.length} orders • Last updated: {new Date(lastFetchTime).toLocaleTimeString()}
+                </span>
               )}
-              {loading ? 'Loading...' : 'Refresh'}
-            </button>
-            <button
-              onClick={goToHome}
-              className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm"
-            >
-              <FaHome />
-              Home
-            </button>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => fetchOrders(true)}
+                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
+                disabled={loading}
+              >
+                {loading ? (
+                  <FaSpinner className="animate-spin" />
+                ) : (
+                  <FaSync />
+                )}
+                {loading ? 'Loading...' : 'Refresh'}
+              </button>
+              <button
+                onClick={goToHome}
+                className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm"
+              >
+                <FaHome />
+                Home
+              </button>
+            </div>
+          </div>
+
+          {/* Mobile Layout */}
+          <div className="md:hidden">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <BackButton />
+                <h1 className="text-lg font-bold text-gray-800">Orders</h1>
+                <span className={`px-2 py-0.5 text-xs rounded-full ${
+                  isAdmin ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
+                }`}>
+                  {isAdmin ? "Admin" : "Cashier"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => fetchOrders(true)}
+                  className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2 py-1.5 rounded-lg flex items-center gap-1 text-xs"
+                  disabled={loading}
+                >
+                  {loading ? (
+                    <FaSpinner className="animate-spin text-xs" />
+                  ) : (
+                    <FaSync className="text-xs" />
+                  )}
+                  <span className="hidden sm:inline">Refresh</span>
+                </button>
+                <button
+                  onClick={goToHome}
+                  className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg flex items-center gap-1 text-sm"
+                >
+                  <FaHome className="text-xs" />
+                  <span className="hidden sm:inline">Home</span>
+                </button>
+              </div>
+            </div>
+            {lastFetchTime > 0 && (
+              <div className="text-[10px] text-gray-500 text-center">
+                {orders.length} orders • Updated: {new Date(lastFetchTime).toLocaleTimeString()}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Search and Filters */}
         <div className="px-4 py-3 border-t">
           <div className="relative mb-3">
-            <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400" />
+            <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 text-sm" />
             <input
               type="text"
               placeholder="Search orders by ID, customer, or status..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-10 pr-10 py-2 border rounded-lg focus:outline-none focus:border-blue-500"
+              className="w-full pl-10 pr-10 py-2 text-sm border rounded-lg focus:outline-none focus:border-blue-500"
             />
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery("")}
                 className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                <FaTimes />
+                <FaTimes className="text-xs" />
               </button>
             )}
           </div>
 
-          <div className="flex flex-wrap gap-2 mb-3">
+          <div className="flex flex-wrap gap-2">
             <div className="relative">
               <button
                 onClick={() => setShowDateDropdown(!showDateDropdown)}
-                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-4 py-2 rounded-lg flex items-center gap-2"
+                className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg flex items-center gap-1 text-sm"
               >
-                <FaCalendar />
-                {getDateFilterLabel()}
+                <FaCalendar className="text-xs" />
+                <span className="max-w-[150px] truncate hidden sm:inline">{getDateFilterLabel()}</span>
+                <span className="sm:hidden text-xs">Date</span>
                 <FaChevronDown className="text-xs" />
               </button>
               
               {showDateDropdown && (
-                <div className="absolute top-full left-0 mt-1 w-48 bg-white border rounded-lg shadow-lg z-30">
+                <div className="absolute top-full left-0 mt-1 w-48 bg-white border rounded-lg shadow-lg z-30 max-h-80 overflow-y-auto">
                   {dateFilterOptions.map((option) => (
                     <button
                       key={option.value}
@@ -505,7 +551,7 @@ const Orders = () => {
                         }
                         setShowDateDropdown(false);
                       }}
-                      className={`w-full text-left px-4 py-2 hover:bg-gray-50 ${
+                      className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
                         dateFilter === option.value ? "bg-blue-50 text-blue-600" : ""
                       }`}
                     >
@@ -517,59 +563,69 @@ const Orders = () => {
             </div>
 
             {showCalendar && (
-              <div className="absolute top-full left-0 mt-1 bg-white border rounded-lg shadow-lg z-40 p-4 w-64">
-                <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Start Date
-                  </label>
-                  <input
-                    type="date"
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg"
-                  />
-                </div>
-                <div className="mb-3">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    End Date
-                  </label>
-                  <input
-                    type="date"
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="w-full px-3 py-2 border rounded-lg"
-                  />
-                </div>
-                <div className="flex gap-2">
-                  <button
-                    onClick={handleCustomDateApply}
-                    disabled={!startDate || !endDate}
-                    className={`flex-1 px-3 py-2 rounded-lg ${
-                      startDate && endDate
-                        ? "bg-blue-500 text-white hover:bg-blue-600"
-                        : "bg-gray-200 text-gray-500 cursor-not-allowed"
-                    }`}
-                  >
-                    Apply
-                  </button>
-                  <button
-                    onClick={() => setShowCalendar(false)}
-                    className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg"
-                  >
-                    Cancel
-                  </button>
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg shadow-xl w-full max-w-sm">
+                  <div className="p-4 border-b">
+                    <h3 className="font-semibold">Custom Date Range</h3>
+                  </div>
+                  <div className="p-4">
+                    <div className="mb-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        Start Date
+                      </label>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={(e) => setStartDate(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <label className="block text-sm font-medium text-gray-700 mb-1">
+                        End Date
+                      </label>
+                      <input
+                        type="date"
+                        value={endDate}
+                        onChange={(e) => setEndDate(e.target.value)}
+                        className="w-full px-3 py-2 text-sm border rounded-lg"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={handleCustomDateApply}
+                        disabled={!startDate || !endDate}
+                        className={`flex-1 px-3 py-2 text-sm rounded-lg ${
+                          startDate && endDate
+                            ? "bg-blue-500 text-white hover:bg-blue-600"
+                            : "bg-gray-200 text-gray-500 cursor-not-allowed"
+                        }`}
+                      >
+                        Apply
+                      </button>
+                      <button
+                        onClick={() => setShowCalendar(false)}
+                        className="flex-1 bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 text-sm rounded-lg"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 </div>
               </div>
             )}
 
             {dateFilter === "custom" && startDate && endDate && (
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-gray-600">
+              <div className="flex items-center gap-1 text-xs">
+                <span className="text-gray-600 truncate max-w-[180px] hidden sm:inline">
                   {new Date(startDate).toLocaleDateString()} - {new Date(endDate).toLocaleDateString()}
+                </span>
+                <span className="sm:hidden text-gray-600 text-xs">
+                  Custom
                 </span>
                 <button
                   onClick={handleCustomDateClear}
-                  className="text-red-500 text-sm hover:text-red-700"
+                  className="text-red-500 hover:text-red-700 text-xs"
                 >
                   Clear
                 </button>
@@ -581,22 +637,15 @@ const Orders = () => {
         {/* Stats */}
         {orders.length > 0 && (
           <div className="px-4 py-3 border-t bg-gray-50">
-            <div className="flex flex-wrap gap-3 text-sm">
-              <div className="bg-white px-3 py-2 rounded-lg shadow-sm">
-                <div className="text-gray-500">Total Orders</div>
-                <div className="font-bold">{filteredOrders.length}</div>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
+              <div className="bg-white px-2 py-1.5 md:px-3 md:py-2 rounded-lg shadow-sm text-center">
+                <div className="text-xs text-gray-500">Total Orders</div>
+                <div className="font-bold text-sm md:text-base">{filteredOrders.length}</div>
               </div>
-              <div className="bg-white px-3 py-2 rounded-lg shadow-sm">
-                <div className="text-gray-500">Active</div>
-                <div className="font-bold text-green-600">{activeOrdersCount}</div>
-              </div>
-              <div className="bg-white px-3 py-2 rounded-lg shadow-sm">
-                <div className="text-gray-500">Completed</div>
-                <div className="font-bold text-blue-600">{completedOrdersCount}</div>
-              </div>
-              <div className="bg-white px-3 py-2 rounded-lg shadow-sm">
-                <div className="text-gray-500">Sales</div>
-                <div className="font-bold">₱{totalSales.toFixed(2)}</div>
+             
+              <div className="bg-white px-2 py-1.5 md:px-3 md:py-2 rounded-lg shadow-sm text-center">
+                <div className="text-xs text-gray-500">Sales</div>
+                <div className="font-bold text-xs md:text-sm">₱{totalSales.toFixed(2)}</div>
               </div>
             </div>
           </div>
@@ -608,17 +657,17 @@ const Orders = () => {
         {loading && !orders.length ? (
           <div className="flex justify-center items-center h-64">
             <div className="text-center">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-3"></div>
-              <p className="text-gray-600">Loading orders...</p>
+              <div className="animate-spin rounded-full h-10 w-10 md:h-12 md:w-12 border-b-2 border-blue-500 mx-auto mb-2 md:mb-3"></div>
+              <p className="text-sm text-gray-600">Loading orders...</p>
             </div>
           </div>
         ) : error ? (
           <div className="flex justify-center items-center h-64">
             <div className="text-center">
-              <p className="text-red-500 mb-3">{error}</p>
+              <p className="text-red-500 text-sm mb-2">{error}</p>
               <button
                 onClick={() => fetchOrders(true)}
-                className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600"
+                className="bg-blue-500 text-white px-4 py-2 text-sm rounded-lg hover:bg-blue-600"
               >
                 Try Again
               </button>
@@ -627,14 +676,14 @@ const Orders = () => {
         ) : !filteredOrders.length ? (
           <div className="flex justify-center items-center h-64">
             <div className="text-center">
-              <div className="text-4xl mb-2">📋</div>
-              <p className="text-gray-600 mb-2">
+              <div className="text-3xl md:text-4xl mb-2">📋</div>
+              <p className="text-gray-600 text-sm mb-2">
                 {!orders.length ? "No orders found" : "No orders match your filters"}
               </p>
               {orders.length > 0 && dateFilter !== "all" && (
                 <button
                   onClick={() => setDateFilter("all")}
-                  className="text-blue-500 text-sm hover:text-blue-700 mr-2"
+                  className="text-blue-500 text-xs hover:text-blue-700 mr-2"
                 >
                   Show all orders
                 </button>
@@ -642,7 +691,7 @@ const Orders = () => {
               {searchQuery && (
                 <button
                   onClick={() => setSearchQuery("")}
-                  className="text-blue-500 text-sm hover:text-blue-700"
+                  className="text-blue-500 text-xs hover:text-blue-700"
                 >
                   Clear search
                 </button>
@@ -650,7 +699,7 @@ const Orders = () => {
               {!orders.length && (
                 <button
                   onClick={() => fetchOrders(true)}
-                  className="bg-blue-500 text-white px-4 py-2 rounded-lg hover:bg-blue-600 mt-2"
+                  className="bg-blue-500 text-white px-4 py-2 text-sm rounded-lg hover:bg-blue-600 mt-2"
                 >
                   Refresh Orders
                 </button>
@@ -658,7 +707,7 @@ const Orders = () => {
             </div>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-4">
             {filteredOrders.map((order) => (
               <OrderCard
                 key={order._id}

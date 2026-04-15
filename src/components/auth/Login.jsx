@@ -76,7 +76,7 @@ const Login = () => {
   );
 
   // =============================
-  // 📌 Login Mutation - COMPLETELY FIXED VERSION
+  // 📌 Login Mutation
   // =============================
   const loginMutation = useMutation({
     mutationFn: (reqData) => login(reqData),
@@ -313,18 +313,16 @@ const Login = () => {
 
   return (
     <div className="w-full max-w-md mx-auto p-6">
-      {/* Production Status Banner */}
-      <div className="mb-6 p-4 bg-blue-900 bg-opacity-20 border border-blue-700 rounded-lg">
-       
-
+      {/* Production Status Banner - TRANSPARENT */}
+      <div className="mb-6 p-4 bg-black/30 backdrop-blur-md border border-yellow-400/30 rounded-lg">
         {isBackendConnected ? (
-          <div className="mt-2 p-2 bg-green-900 bg-opacity-20 border border-green-700 rounded">
-            <p className="text-green-300 text-sm">✅ Backend connected</p>
+          <div className="mt-2 p-2 bg-green-500/20 backdrop-blur-md border border-green-500/30 rounded">
+            <p className="text-green-300 text-sm drop-shadow-md">✅ Backend connected</p>
           </div>
         ) : (
-          <div className="mt-2 p-2 bg-red-900 bg-opacity-20 border border-red-700 rounded">
-            <p className="text-red-300 text-sm">❌ Backend not connected</p>
-            <p className="text-red-400 text-xs">Check Render dashboard</p>
+          <div className="mt-2 p-2 bg-red-500/20 backdrop-blur-md border border-red-500/30 rounded">
+            <p className="text-red-300 text-sm drop-shadow-md">❌ Backend not connected</p>
+            <p className="text-red-400 text-xs drop-shadow-md">Check Render dashboard</p>
           </div>
         )}
       </div>
@@ -332,7 +330,7 @@ const Login = () => {
       {!showForgotPassword ? (
         <form onSubmit={handleSubmit}>
           <div>
-            <label className="block text-[#ababab] mb-2 text-sm font-medium">
+            <label className="block text-yellow-300 mb-2 text-sm font-medium drop-shadow-md">
               Email
             </label>
             <input
@@ -341,13 +339,13 @@ const Login = () => {
               value={formData.email}
               onChange={handleChange}
               placeholder="admin@delish.com"
-              className="w-full p-3 bg-[#1f1f1f] border border-gray-700 rounded-lg text-white mb-4"
+              className="w-full p-3 bg-black/30 backdrop-blur-md border border-yellow-400/30 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:border-yellow-400 focus:bg-black/40 transition-all mb-4"
               required
             />
           </div>
 
           <div>
-            <label className="block text-[#ababab] mb-2 text-sm font-medium">
+            <label className="block text-yellow-300 mb-2 text-sm font-medium drop-shadow-md">
               Password
             </label>
             <input
@@ -356,7 +354,7 @@ const Login = () => {
               value={formData.password}
               onChange={handleChange}
               placeholder="password123"
-              className="w-full p-3 bg-[#1f1f1f] border border-gray-700 rounded-lg text-white mb-4"
+              className="w-full p-3 bg-black/30 backdrop-blur-md border border-yellow-400/30 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:border-yellow-400 focus:bg-black/40 transition-all mb-4"
               required
             />
           </div>
@@ -364,29 +362,17 @@ const Login = () => {
           <button
             type="submit"
             disabled={loginMutation.isLoading}
-            className="w-full p-4 bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold rounded-lg mt-4 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full p-4 bg-yellow-500 hover:bg-yellow-600 text-gray-900 font-bold rounded-lg mt-4 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg"
           >
             {loginMutation.isLoading ? "Signing in..." : "Sign In"}
           </button>
-
-          {/* Quick Actions */}
-          <div className="mt-4 space-y-2">
-           
-            <button
-              type="button"
-              onClick={handleQuickLoginTest}
-              className="w-full p-2 bg-blue-800 hover:bg-blue-700 text-blue-300 text-sm rounded"
-            >
-              Test Login Connection
-            </button>
-          </div>
 
           {/* Forgot Password Link */}
           <div className="text-center mt-4">
             <button
               type="button"
               onClick={() => setShowForgotPassword(true)}
-              className="text-yellow-400 hover:text-yellow-300 text-sm font-medium"
+              className="text-yellow-400 hover:text-yellow-300 text-sm font-medium transition-colors drop-shadow-md"
             >
               Forgot Password?
             </button>
@@ -394,8 +380,8 @@ const Login = () => {
         </form>
       ) : (
         <div className="text-center">
-          <h2 className="text-xl font-bold text-white mb-4">Forgot Password</h2>
-          <p className="text-gray-400 mb-4">
+          <h2 className="text-xl font-bold text-yellow-300 mb-4 drop-shadow-lg">Forgot Password</h2>
+          <p className="text-gray-200 mb-4 drop-shadow-md">
             Enter your email to receive a reset link.
           </p>
           <input
@@ -403,28 +389,26 @@ const Login = () => {
             value={forgotPasswordEmail}
             onChange={(e) => setForgotPasswordEmail(e.target.value)}
             placeholder="your@email.com"
-            className="w-full p-3 bg-[#1f1f1f] border border-gray-700 rounded-lg text-white mb-4"
+            className="w-full p-3 bg-black/30 backdrop-blur-md border border-yellow-400/30 rounded-lg text-white placeholder-gray-300 focus:outline-none focus:border-yellow-400 focus:bg-black/40 transition-all mb-4"
           />
           <div className="flex gap-2">
             <button
               type="button"
               onClick={() => setShowForgotPassword(false)}
-              className="flex-1 p-3 bg-gray-700 hover:bg-gray-600 text-white rounded-lg"
+              className="flex-1 p-3 bg-gray-600/30 backdrop-blur-md hover:bg-gray-600/50 text-white rounded-lg transition-all drop-shadow-md"
             >
               Cancel
             </button>
             <button
               type="button"
               onClick={handleEmergencyCreateUser}
-              className="flex-1 p-3 bg-red-600 hover:bg-red-700 text-white rounded-lg"
+              className="flex-1 p-3 bg-red-600/30 backdrop-blur-md hover:bg-red-600/50 text-white rounded-lg transition-all drop-shadow-md"
             >
               Create Test User
             </button>
           </div>
         </div>
       )}
-
- 
     </div>
   );
 };

@@ -11,11 +11,11 @@ console.log("🚀 Frontend Platform:", IS_VERCEL ? "Vercel" : "Local");
 console.log("📍 Frontend URL:", FRONTEND_URL);
 console.log("🔗 Backend URL:", API_BASE_URL);
 
-// ✅ Create Axios instance with safe configuration
+// ✅ Create Axios instance with increased timeout for large reports
 const axiosWrapper = axios.create({
   baseURL: API_BASE_URL,
   withCredentials: false, // Must be false for Vercel → Render
-  timeout: 30000, // Fixed: Changed from 5000 to 30000 (30 seconds)
+  timeout: 120000, // Increased from 30000 to 120000 (2 minutes) for large profit/loss reports
   headers: {
     "Content-Type": "application/json",
     Accept: "application/json",
@@ -53,7 +53,7 @@ axiosWrapper.interceptors.request.use(
   }
 );
 
-// ✅ Response interceptor
+// ✅ Response interceptor with improved error handling
 axiosWrapper.interceptors.response.use(
   (response) => {
     // Log only in development
@@ -73,28 +73,41 @@ axiosWrapper.interceptors.response.use(
   (error) => {
     const status = error.response?.status;
     const url = error.config?.url;
+    const errorMessage = error.message;
 
     // Log error details
-    console.error(`❌ API Error [${status || 'Network'}]:`, error.message);
+    console.error(`❌ API Error [${status || 'Network'}]:`, errorMessage);
+    
+    // Handle timeout errors specifically
+    if (errorMessage.includes("timeout") || error.code === "ECONNABORTED") {
+      console.error("⏰ Request Timeout - The server is taking too long to respond");
+      console.error("This may happen for large reports or slow network connections");
+      
+      error.userMessage = "Request is taking too long. The server might be processing a large amount of data. Please try again or select a smaller date range.";
+    }
     
     // Handle network/CORS errors
     if (
       error.code === "ERR_NETWORK" ||
       error.code === "ECONNABORTED" ||
-      error.message.includes("Network Error") ||
-      error.message.includes("CORS") ||
-      error.message.includes("cross-origin") ||
-      error.message.includes("timeout")
+      errorMessage.includes("Network Error") ||
+      errorMessage.includes("CORS") ||
+      errorMessage.includes("cross-origin")
     ) {
       console.error("🌐 Network/CORS Issue Detected!");
       
       error.userMessage = `Connection failed. Please check:
       1. Backend server is running (${API_BASE_URL})
-      2. CORS is configured on backend
-      3. Network connection is stable
+      2. Your internet connection is stable
+      3. Try refreshing the page
       
       Frontend: ${FRONTEND_URL}
       Backend: ${API_BASE_URL}`;
+    }
+
+    // Handle slow response but not timeout (keep connection alive)
+    if (errorMessage.includes("timeout of") && !errorMessage.includes("120000")) {
+      console.warn("⚠️ Response slower than expected, but connection is still active");
     }
 
     // Clear token on 401 (unauthorized)

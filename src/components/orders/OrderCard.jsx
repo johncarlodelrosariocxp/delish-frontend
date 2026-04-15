@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import {
   FaPrint,
-  FaBan,
+  FaTrash,
   FaUser,
   FaReceipt,
   FaCheckCircle,
@@ -12,6 +12,7 @@ import {
   FaCashRegister,
   FaUserCog,
 } from "react-icons/fa";
+import axiosWrapper from "../../https/axiosWrapper"; // IMPORTANTE: Gamitin ang axiosWrapper
 
 const OrderCard = ({
   order,
@@ -23,7 +24,6 @@ const OrderCard = ({
 }) => {
   const [localDeleting, setLocalDeleting] = useState(false);
 
-  // Status configuration
   const getStatusConfig = (status) => {
     const statusLower = status?.toLowerCase();
     switch (statusLower) {
@@ -60,20 +60,16 @@ const OrderCard = ({
           color: "text-gray-500",
           bgColor: "bg-gray-50",
           borderColor: "border-gray-200",
-          text: "Unknown",
+          text: order.orderStatus || "Pending",
         };
     }
   };
 
-  // Calculate total amount
   const calculateTotalAmount = (order) => {
     if (order.totalAmount !== undefined && order.totalAmount !== null) {
       return order.totalAmount;
     }
-    if (
-      order.bills?.totalWithTax !== undefined &&
-      order.bills.totalWithTax !== null
-    ) {
+    if (order.bills?.totalWithTax !== undefined && order.bills.totalWithTax !== null) {
       return order.bills.totalWithTax;
     }
     if (order.items && Array.isArray(order.items)) {
@@ -86,10 +82,8 @@ const OrderCard = ({
     return 0;
   };
 
-  // Format currency
   const formatCurrency = (amount) => {
-    const numericAmount =
-      typeof amount === "number" ? amount : parseFloat(amount) || 0;
+    const numericAmount = typeof amount === "number" ? amount : parseFloat(amount) || 0;
     return new Intl.NumberFormat("en-PH", {
       style: "currency",
       currency: "PHP",
@@ -98,7 +92,6 @@ const OrderCard = ({
     }).format(numericAmount);
   };
 
-  // Format date with time
   const formatDate = (dateString) => {
     if (!dateString) return "N/A";
     try {
@@ -114,7 +107,6 @@ const OrderCard = ({
     }
   };
 
-  // Format time only
   const formatTime = (dateString) => {
     if (!dateString) return "";
     try {
@@ -128,18 +120,13 @@ const OrderCard = ({
     }
   };
 
-  // Get items count
   const getItemsCount = (order) => {
     if (order.items && Array.isArray(order.items)) {
-      return order.items.reduce(
-        (total, item) => total + (item.quantity || 1),
-        0
-      );
+      return order.items.reduce((total, item) => total + (item.quantity || 1), 0);
     }
     return order.itemsCount || order.quantity || 0;
   };
 
-  // Get items preview text
   const getItemsPreview = (order) => {
     if (!order.items || !Array.isArray(order.items)) {
       return "No items";
@@ -155,9 +142,7 @@ const OrderCard = ({
       .join(", ");
 
     const totalItems = getItemsCount(order);
-    const shownItems = order.items
-      .slice(0, 3)
-      .reduce((total, item) => total + (item.quantity || 1), 0);
+    const shownItems = order.items.slice(0, 3).reduce((total, item) => total + (item.quantity || 1), 0);
 
     if (totalItems > shownItems) {
       return `${itemsText} +${totalItems - shownItems} more`;
@@ -166,26 +151,15 @@ const OrderCard = ({
     return itemsText;
   };
 
-  // Get cashier/admin name with proper detection and display real names
   const getCashierInfo = (order) => {
     let userName = "Staff";
     let userRole = "Cashier";
     let found = false;
-    let originalUserData = null;
 
-    // Helper function to extract name from user object
     const extractUserName = (userObj) => {
       if (!userObj) return null;
-      
-      // If it's a string, return it directly
       if (typeof userObj === 'string') return userObj;
-      
-      // If it's an object, try to find the name
       if (typeof userObj === 'object') {
-        // Store original data for debugging
-        originalUserData = userObj;
-        
-        // Check for direct name properties
         if (userObj.name) return userObj.name;
         if (userObj.fullName) return userObj.fullName;
         if (userObj.username) return userObj.username;
@@ -193,42 +167,21 @@ const OrderCard = ({
           if (userObj.lastName) return `${userObj.firstName} ${userObj.lastName}`;
           return userObj.firstName;
         }
-        if (userObj.lastName) {
-          if (userObj.firstName) return `${userObj.firstName} ${userObj.lastName}`;
-          return userObj.lastName;
-        }
-        if (userObj.displayName) return userObj.displayName;
         if (userObj.email) return userObj.email.split('@')[0];
       }
-      
       return null;
     };
 
-    // Helper function to extract role from user object
     const extractUserRole = (userObj) => {
       if (!userObj) return null;
-      
       if (typeof userObj === 'object') {
         if (userObj.role) return userObj.role;
         if (userObj.userRole) return userObj.userRole;
         if (userObj.isAdmin) return "Admin";
       }
-      
       return null;
     };
 
-    // 1. Check createdBy (most common - this should have the real user data)
-    if (order.createdBy && !found) {
-      const extractedName = extractUserName(order.createdBy);
-      if (extractedName) {
-        userName = extractedName;
-        found = true;
-        const extractedRole = extractUserRole(order.createdBy);
-        if (extractedRole) userRole = extractedRole;
-      }
-    }
-
-    // 2. Check user object
     if (order.user && !found) {
       const extractedName = extractUserName(order.user);
       if (extractedName) {
@@ -239,233 +192,124 @@ const OrderCard = ({
       }
     }
 
-    // 3. Check cashierName field
-    if (order.cashierName && !found) {
-      userName = order.cashierName;
-      found = true;
-    }
-
-    // 4. Check cashier object
     if (order.cashier && !found) {
       const extractedName = extractUserName(order.cashier);
       if (extractedName) {
         userName = extractedName;
         found = true;
-        const extractedRole = extractUserRole(order.cashier);
-        if (extractedRole) userRole = extractedRole;
       }
     }
 
-    // 5. Check adminName field
-    if (order.adminName && !found) {
-      userName = order.adminName;
-      userRole = "Admin";
+    if (order.cashierName && !found) {
+      userName = order.cashierName;
       found = true;
     }
 
-    // 6. Check admin object
-    if (order.admin && !found) {
-      const extractedName = extractUserName(order.admin);
-      if (extractedName) {
-        userName = extractedName;
-        userRole = "Admin";
-        found = true;
-      }
-    }
-
-    // 7. Check processedBy
-    if (order.processedBy && !found) {
-      const extractedName = extractUserName(order.processedBy);
-      if (extractedName) {
-        userName = extractedName;
-        found = true;
-        const extractedRole = extractUserRole(order.processedBy);
-        if (extractedRole) userRole = extractedRole;
-      }
-    }
-
-    // 8. Check staffName
-    if (order.staffName && !found) {
-      userName = order.staffName;
-      found = true;
-    }
-
-    // 9. Check employeeName
-    if (order.employeeName && !found) {
-      userName = order.employeeName;
-      found = true;
-    }
-
-    // 10. Check if there's a name in customerDetails?.processedBy
-    if (order.customerDetails?.processedBy && !found) {
-      userName = order.customerDetails.processedBy;
-      found = true;
-    }
-
-    // 11. Check if createdBy has nested user object
-    if (order.createdBy?.user && !found) {
-      const extractedName = extractUserName(order.createdBy.user);
-      if (extractedName) {
-        userName = extractedName;
-        found = true;
-      }
-    }
-
-    // Override role if admin flags are present
     if (order.isAdminOrder || order.processedByAdmin) {
       userRole = "Admin";
     }
 
-    // If we still have the default values but found is true, check originalUserData
-    if (userName === "Staff" && found && originalUserData) {
-      // Try to extract from _doc if it's a Mongoose document
-      if (originalUserData._doc) {
-        if (originalUserData._doc.name) userName = originalUserData._doc.name;
-        else if (originalUserData._doc.username) userName = originalUserData._doc.username;
-        else if (originalUserData._doc.email) userName = originalUserData._doc.email.split('@')[0];
-      }
-      
-      // If still Staff, try to stringify and extract
-      if (userName === "Staff") {
-        try {
-          const str = JSON.stringify(originalUserData);
-          // Look for name patterns
-          const nameMatch = str.match(/"name":"([^"]+)"/) || 
-                           str.match(/"fullName":"([^"]+)"/) ||
-                           str.match(/"username":"([^"]+)"/) ||
-                           str.match(/"firstName":"([^"]+)"/);
-          if (nameMatch) {
-            userName = nameMatch[1];
-          }
-        } catch (e) {
-          console.log("Error parsing user data:", e);
-        }
-      }
+    if (userName && userName !== "Staff") {
+      userName = userName.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ');
     }
 
-    // Clean up the username - remove any quotes or extra spaces
-    if (userName) {
-      userName = userName.toString().trim();
-      // Remove quotes if present
-      userName = userName.replace(/^["']|["']$/g, '');
-      
-      // If it's an email, show the name part
-      if (userName.includes('@')) {
-        userName = userName.split('@')[0];
-      }
-      
-      // If it's an object string, try to extract meaningful data
-      if (userName.startsWith('{') || userName.startsWith('[')) {
-        try {
-          const parsed = JSON.parse(userName);
-          if (parsed.name) userName = parsed.name;
-          else if (parsed.username) userName = parsed.username;
-          else if (parsed.email) userName = parsed.email.split('@')[0];
-        } catch (e) {
-          // Keep as is
-        }
-      }
-    }
-
-    // Capitalize first letter of each word
-    if (userName && userName !== "Staff" && userName !== "Staff Member") {
-      userName = userName
-        .split(' ')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
-        .join(' ');
-    }
-
-    // Capitalize role
     userRole = userRole.charAt(0).toUpperCase() + userRole.slice(1).toLowerCase();
     
     return { name: userName, role: userRole, found };
   };
 
-  // Get payment method
   const getPaymentMethod = (order) => {
     if (order.paymentMethod) {
-      return order.paymentMethod.charAt(0).toUpperCase() + 
-             order.paymentMethod.slice(1).toLowerCase();
+      return order.paymentMethod.charAt(0).toUpperCase() + order.paymentMethod.slice(1).toLowerCase();
     }
-    
     if (order.bills?.paymentMethod) {
       const method = order.bills.paymentMethod;
       return method.charAt(0).toUpperCase() + method.slice(1).toLowerCase();
     }
-    
     return "Cash";
   };
 
-  // UPDATED: Cancel order instead of delete
-  const handleCancel = async () => {
-    // Check if order is already cancelled
-    if (order.orderStatus?.toLowerCase() === "cancelled") {
-      alert("This order is already cancelled.");
-      return;
-    }
-
-    // Show confirmation dialog with clear warning
-    const confirmCancel = window.confirm(
-      "⚠️ CANCEL ORDER WARNING ⚠️\n\n" +
-      "Are you sure you want to cancel this order?\n" +
+  // ========== WORKING DELETE FUNCTION - GAMIT ANG AXIOSWRAPPER ==========
+  const handleDeleteOrder = async () => {
+    const confirmDelete = window.confirm(
+      "⚠️ DELETE ORDER WARNING ⚠️\n\n" +
+      "Are you sure you want to DELETE this order?\n" +
       "Order ID: " + (order._id?.slice(-8) || "N/A") + "\n" +
       "Customer: " + (order.customerDetails?.name || order.customerName || "Walk-in Customer") + "\n" +
       "Amount: " + formatCurrency(calculateTotalAmount(order)) + "\n\n" +
-      "This will mark the order as CANCELLED and update the total orders count.\n" +
-      "This action can be reversed by changing the status back."
+      "⚠️ THIS ACTION CANNOT BE UNDONE!\n" +
+      "The order will be permanently removed from the database."
     );
     
-    if (!confirmCancel) {
-      return; // User cancelled
-    }
+    if (!confirmDelete) return;
     
     setLocalDeleting(true);
     
     try {
-      // Make sure we have an ID to update
       if (!order._id) {
-        throw new Error("Order ID is missing - cannot cancel");
+        throw new Error("Order ID is missing - cannot delete");
       }
       
-      console.log(`🗑️ Attempting to cancel order ${order._id}...`);
+      console.log(`🗑️ Deleting order ${order._id}...`);
       
-      // Create updated order with cancelled status
-      const updatedOrder = {
-        ...order,
-        orderStatus: "cancelled",
-        status: "cancelled",
-        cancelledAt: new Date().toISOString(),
-        // Add cancellation flag for total orders calculation
-        isCancelled: true
-      };
+      // GAMITIN ANG AXIOSWRAPPER (may token na ito automatically)
+      const response = await axiosWrapper.delete(`/api/order/${order._id}`);
       
-      // Call onStatusChange if available, otherwise use onDelete with cancelled flag
-      if (onStatusChange) {
-        await onStatusChange(updatedOrder);
+      console.log('Delete response:', response.data);
+      
+      if (response.data && response.data.success === true) {
+        console.log(`✅ Order ${order._id} successfully deleted`);
+        
+        // Tawagin ang onDelete callback para ma-remove sa UI
+        if (onDelete && typeof onDelete === 'function') {
+          onDelete(order._id);
+        }
+        
+        alert(`✅ Order #${order._id?.slice(-8)} has been permanently deleted.`);
       } else {
-        // If no status change handler, use onDelete but with cancellation context
-        await onDelete(updatedOrder);
+        throw new Error(response.data?.message || "Failed to delete order");
       }
-      
-      console.log(`✅ Order ${order._id} successfully cancelled`);
-      
-      // Show success message
-      alert(`Order #${order._id?.slice(-8)} has been cancelled and will be deducted from total orders.`);
       
     } catch (error) {
-      console.error("❌ Order cancellation error:", error);
+      console.error("❌ Order deletion error:", error);
       
-      // Show detailed error message
-      alert(
-        `❌ FAILED TO CANCEL ORDER\n\n` +
-        `Error: ${error.message || "Unknown error"}\n\n` +
-        `Please check your network connection and try again.\n` +
-        `If the problem persists, contact system administrator.`
-      );
+      let errorMessage = "Failed to delete order";
+      let errorDetails = "";
+      
+      if (error.response) {
+        console.error("Error response data:", error.response.data);
+        console.error("Error response status:", error.response.status);
+        
+        if (error.response.status === 404) {
+          errorMessage = "Order not found. It may have been already deleted or the ID is invalid.";
+          errorDetails = `Order ID: ${order._id}`;
+        } else if (error.response.status === 401) {
+          errorMessage = "Authentication failed. Please login again.";
+          errorDetails = "Your session may have expired.";
+        } else if (error.response.status === 403) {
+          errorMessage = "You don't have permission to delete orders.";
+          errorDetails = "Please contact an administrator.";
+        } else if (error.response.status === 500) {
+          errorMessage = "Server error occurred while deleting order.";
+          errorDetails = "Please try again or contact support.";
+        } else {
+          errorMessage = error.response.data?.message || `Server error: ${error.response.status}`;
+          errorDetails = error.response.data?.error || "";
+        }
+      } else if (error.request) {
+        errorMessage = "No response from server. Please check your network connection.";
+        errorDetails = "The server may be down or unreachable.";
+      } else {
+        errorMessage = error.message;
+        errorDetails = "Please check your configuration and try again.";
+      }
+      
+      alert(`❌ FAILED TO DELETE ORDER\n\nError: ${errorMessage}\n${errorDetails ? `\nDetails: ${errorDetails}` : ''}\n\nPlease try again or contact support.`);
     } finally {
       setLocalDeleting(false);
     }
   };
+  // ========== END DELETE FUNCTION ==========
 
   const statusConfig = getStatusConfig(order.orderStatus);
   const StatusIcon = statusConfig.icon;
@@ -478,28 +322,18 @@ const OrderCard = ({
   
   const UserRoleIcon = cashierInfo.role === "Admin" ? FaUserCog : FaUserTie;
 
-  // Get customer name
   const getCustomerName = (order) => {
-    if (order.customerDetails?.name) {
-      return order.customerDetails.name;
-    }
-    if (order.customerName) {
-      return order.customerName;
-    }
-    if (order.customer?.name) {
-      return order.customer.name;
-    }
+    if (order.customerDetails?.name) return order.customerDetails.name;
+    if (order.customerName) return order.customerName;
+    if (order.customer?.name) return order.customer.name;
     return "Walk-in Customer";
   };
 
   const customerName = getCustomerName(order);
-  
-  // Check if order is cancelled to disable cancel button
   const isCancelled = order.orderStatus?.toLowerCase() === "cancelled";
 
   return (
     <div className="border rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-all duration-200 w-full h-full flex flex-col">
-      {/* Order Header */}
       <div className="flex justify-between items-start mb-3">
         <div className="flex items-center gap-2">
           <FaReceipt className="text-gray-600 text-sm" />
@@ -516,68 +350,37 @@ const OrderCard = ({
           {isUpdating || deleting ? (
             <FaSpinner className="text-blue-500 text-xs animate-spin" />
           ) : (
-            <StatusIcon
-              className={`text-xs ${statusConfig.color} ${
-                order.orderStatus?.toLowerCase() === "in progress"
-                  ? "animate-spin"
-                  : ""
-              }`}
-            />
+            <StatusIcon className={`text-xs ${statusConfig.color}`} />
           )}
-          <span
-            className={`text-xs font-medium capitalize ${statusConfig.color}`}
-          >
-            {isUpdating
-              ? "Updating..."
-              : deleting
-              ? "Cancelling..."
-              : statusConfig.text}
+          <span className={`text-xs font-medium capitalize ${statusConfig.color}`}>
+            {isUpdating ? "Updating..." : deleting ? "Deleting..." : statusConfig.text}
           </span>
         </div>
       </div>
 
-      {/* Customer and Cashier/Admin Info */}
       <div className="grid grid-cols-2 gap-2 mb-3">
-        {/* Customer Info */}
         <div className="flex items-center gap-2">
           <FaUser className="text-gray-500 text-xs" />
           <div className="flex flex-col">
-            <span className="text-xs font-medium text-gray-800">
-              {customerName}
-            </span>
+            <span className="text-xs font-medium text-gray-800">{customerName}</span>
             <span className="text-[10px] text-gray-500">Customer</span>
           </div>
         </div>
-
-        {/* Cashier/Admin Info */}
         <div className="flex items-center gap-2 justify-end">
           <div className="flex flex-col items-end">
-            <span className="text-xs font-medium text-gray-800">
-              {cashierInfo.name}
-            </span>
+            <span className="text-xs font-medium text-gray-800">{cashierInfo.name}</span>
             <span className="text-[10px] text-gray-500 flex items-center gap-1">
               {cashierInfo.role === "Admin" ? (
-                <>
-                  <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
-                  Admin
-                </>
+                <><span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>Admin</>
               ) : (
-                <>
-                  <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
-                  Cashier
-                </>
+                <><span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>Cashier</>
               )}
             </span>
           </div>
-          <UserRoleIcon 
-            className={`text-xs ${
-              cashierInfo.role === "Admin" ? "text-green-600" : "text-gray-500"
-            }`} 
-          />
+          <UserRoleIcon className={`text-xs ${cashierInfo.role === "Admin" ? "text-green-600" : "text-gray-500"}`} />
         </div>
       </div>
 
-      {/* Table Info */}
       {order.table?.tableNo && (
         <div className="flex items-center gap-2 mb-3 text-xs text-gray-600">
           <span>Table {order.table.tableNo}</span>
@@ -591,58 +394,40 @@ const OrderCard = ({
         </div>
       )}
 
-      {/* Order Details */}
       <div className="grid grid-cols-2 gap-3 text-xs mb-3">
         <div className="space-y-1">
           <div className="text-gray-600">Date</div>
-          <div className="font-medium text-gray-800">
-            {formatDate(order.createdAt || order.orderDate)}
-          </div>
+          <div className="font-medium text-gray-800">{formatDate(order.createdAt || order.orderDate)}</div>
         </div>
         <div className="space-y-1 text-right">
           <div className="text-gray-600">Amount</div>
-          <div className="font-semibold text-gray-800">
-            {formatCurrency(totalAmount)}
-          </div>
+          <div className="font-semibold text-gray-800">{formatCurrency(totalAmount)}</div>
         </div>
       </div>
 
-      {/* Items Preview */}
       {(order.items && order.items.length > 0) || itemsCount > 0 ? (
         <div className="mt-2 pt-2 border-t border-gray-200 mb-3">
-          <div className="text-xs text-gray-600 mb-1">
-            Items {itemsCount > 0 && `(${itemsCount})`}
-          </div>
-          <div className="text-xs text-gray-800 line-clamp-2">
-            {itemsPreview}
-          </div>
+          <div className="text-xs text-gray-600 mb-1">Items {itemsCount > 0 && `(${itemsCount})`}</div>
+          <div className="text-xs text-gray-800 line-clamp-2">{itemsPreview}</div>
         </div>
       ) : null}
 
-      {/* Cancellation Info (if cancelled) */}
-      {isCancelled && order.cancelledAt && (
+      {isCancelled && (
         <div className="mt-1 pt-2 border-t border-gray-100 mb-3">
           <div className="text-xs text-red-600 mb-1 flex items-center gap-1">
             <FaTimesCircle className="text-[10px]" />
-            Cancelled on:
-          </div>
-          <div className="text-xs text-gray-700">
-            {formatDate(order.cancelledAt)}
+            Status: Cancelled
           </div>
         </div>
       )}
 
-      {/* Notes (if any) */}
       {order.notes && (
         <div className="mt-1 pt-2 border-t border-gray-100 mb-3">
           <div className="text-xs text-gray-600 mb-1">Notes</div>
-          <div className="text-xs text-gray-700 italic line-clamp-1">
-            "{order.notes}"
-          </div>
+          <div className="text-xs text-gray-700 italic line-clamp-1">"{order.notes}"</div>
         </div>
       )}
 
-      {/* Receipt and Cancel Buttons */}
       <div className="flex gap-2 pt-2 border-t border-gray-200 mt-auto">
         <button
           onClick={() => onViewReceipt(order)}
@@ -652,21 +437,19 @@ const OrderCard = ({
           <FaPrint className="text-[10px]" />
           View Receipt
         </button>
+        
         <button
-          onClick={handleCancel}
+          onClick={handleDeleteOrder}
           disabled={deleting || isCancelled}
-          className={`flex-1 px-2 py-2 rounded text-xs font-medium flex items-center gap-2 justify-center transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
-            isCancelled 
-              ? "bg-gray-400 text-white cursor-not-allowed" 
-              : "bg-orange-500 text-white hover:bg-orange-600"
+          className={`flex-1 px-2 py-2 rounded text-xs font-medium flex items-center gap-2 justify-center transition-colors ${
+            deleting || isCancelled
+              ? "bg-gray-400 text-white cursor-not-allowed"
+              : "bg-red-600 text-white hover:bg-red-700"
           }`}
+          title={isCancelled ? "Cancelled orders cannot be deleted" : "Delete this order"}
         >
-          {deleting ? (
-            <FaSpinner className="animate-spin text-[10px]" />
-          ) : (
-            <FaBan className="text-[10px] text-white" />
-          )}
-          {deleting ? "Cancelling..." : isCancelled ? "Cancelled" : "Cancel"}
+          {deleting ? <FaSpinner className="animate-spin text-[10px]" /> : <FaTrash className="text-[10px]" />}
+          {deleting ? "Deleting..." : "Delete"}
         </button>
       </div>
     </div>

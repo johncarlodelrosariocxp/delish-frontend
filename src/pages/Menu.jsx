@@ -515,10 +515,7 @@ const Menu = () => {
 
                   <hr className="border-gray-300 border-t-2" />
 
-                  {/* Cart Info */}
-                  <div className="flex-1 min-h-0 overflow-hidden">
-                    <CartInfo orderId={activeOrderId} />
-                  </div>
+                  
 
                   <hr className="border-gray-300 border-t-2" />
 

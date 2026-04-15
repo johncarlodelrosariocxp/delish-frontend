@@ -1,5 +1,8 @@
-// This file should be in your `src/https/index.js`
+// src/https/index.js
 import axiosWrapper from "./axiosWrapper";
+
+// Re-export axiosWrapper para magamit sa ibang components
+export { axiosWrapper };
 
 // =============================
 // ✅ AUTH ENDPOINTS
@@ -32,14 +35,11 @@ export const getPayments = () => axiosWrapper.get("/api/payment");
 export const getPaymentStats = () => axiosWrapper.get("/api/payment/stats");
 
 // =============================
-// ✅ ORDER ENDPOINTS - UPDATED TO ACCEPT PARAMETERS
+// ✅ ORDER ENDPOINTS
 // =============================
 export const addOrder = (data) => axiosWrapper.post("/api/order", data);
-
-// ✅ FIXED: Now accepts parameters like { limit: 5000 }
 export const getOrders = (params = {}) =>
   axiosWrapper.get("/api/order", { params });
-
 export const getOrderById = (orderId) =>
   axiosWrapper.get(`/api/order/${orderId}`);
 export const updateOrderStatus = ({ orderId, orderStatus }) =>
@@ -49,12 +49,10 @@ export const deleteOrder = (orderId) =>
 export const getOrderStats = () => axiosWrapper.get("/api/order/stats");
 
 // =============================
-// ✅ ADMIN ENDPOINTS - UPDATED TO ACCEPT PARAMETERS
+// ✅ ADMIN ENDPOINTS
 // =============================
-// ✅ FIXED: Now accepts parameters like { limit: 5000 }
 export const getAdminOrders = (params = {}) =>
   axiosWrapper.get("/api/order/admin/all-orders", { params });
-
 export const getAdminStats = () =>
   axiosWrapper.get("/api/order/admin/all-stats");
 export const getAdminDashboardStats = () =>
@@ -71,19 +69,73 @@ export const getSalesByRange = (startDate, endDate) =>
 export const getSalesReports = () => axiosWrapper.get("/api/sales/reports");
 
 // =============================
-// ✅ INVENTORY ENDPOINTS
+// ✅ EXPENSE ENDPOINTS
 // =============================
-export const getInventory = () => axiosWrapper.get("/api/inventory");
-export const addInventoryItem = (data) =>
-  axiosWrapper.post("/api/inventory", data);
-export const updateInventoryItem = ({ itemId, ...itemData }) =>
-  axiosWrapper.put(`/api/inventory/${itemId}`, itemData);
-export const transferStock = (itemId, transferData) =>
-  axiosWrapper.patch(`/api/inventory/${itemId}/transfer`, transferData);
-export const deleteInventoryItem = (itemId) =>
-  axiosWrapper.delete(`/api/inventory/${itemId}`);
-export const getLowStockItems = () =>
-  axiosWrapper.get("/api/inventory/low-stock");
+export const getExpenses = (params = {}) => {
+  let url = "/api/expenses";
+  const queryParams = new URLSearchParams();
+  if (params.startDate) queryParams.append("startDate", params.startDate);
+  if (params.endDate) queryParams.append("endDate", params.endDate);
+  if (params.category) queryParams.append("category", params.category);
+  if (queryParams.toString()) url += `?${queryParams.toString()}`;
+  return axiosWrapper.get(url);
+};
+
+export const addExpense = (data) => axiosWrapper.post("/api/expenses", data);
+export const updateExpense = (id, data) => axiosWrapper.put(`/api/expenses/${id}`, data);
+export const deleteExpense = (id) => axiosWrapper.delete(`/api/expenses/${id}`);
+export const getInventoryValue = () => axiosWrapper.get("/api/expenses/inventory-value");
+export const getProfitLossReport = (params = {}) => {
+  let url = "/api/expenses/profit-loss";
+  const queryParams = new URLSearchParams();
+  if (params.startDate) queryParams.append("startDate", params.startDate);
+  if (params.endDate) queryParams.append("endDate", params.endDate);
+  if (queryParams.toString()) url += `?${queryParams.toString()}`;
+  return axiosWrapper.get(url);
+};
+
+// =============================
+// ✅ PROFIT & LOSS ENDPOINTS
+// =============================
+export const generateProfitLossReport = (data) => axiosWrapper.post("/api/profit-loss/generate", data);
+export const generateDailyProfitLoss = () => axiosWrapper.post("/api/profit-loss/generate-daily");
+export const getAllProfitLossReports = () => axiosWrapper.get("/api/profit-loss");
+export const getLatestProfitLossReport = () => axiosWrapper.get("/api/profit-loss/latest");
+export const getAllTimeProfitLossSummary = () => axiosWrapper.get("/api/profit-loss/summary");
+export const getProfitLossReportById = (id) => axiosWrapper.get(`/api/profit-loss/${id}`);
+export const deleteProfitLossReport = (id) => axiosWrapper.delete(`/api/profit-loss/${id}`);
+
+// =============================
+// ✅ MENU ENDPOINTS
+// =============================
+export const getMenus = () => axiosWrapper.get("/api/menu");
+export const getMenuById = (id) => axiosWrapper.get(`/api/menu/${id}`);
+export const getMenusByTag = (tag) => axiosWrapper.get(`/api/menu/tag/${tag}`);
+export const getMenuItems = (menuId) => axiosWrapper.get(`/api/menu/${menuId}/items`);
+export const getMenuItem = (menuId, itemId) =>
+  axiosWrapper.get(`/api/menu/${menuId}/items/${itemId}`);
+export const getCheesecakeFlavors = () =>
+  axiosWrapper.get("/api/menu/cheesecake/flavors");
+export const getCheesecakeFlavorsByCategory = (category) =>
+  axiosWrapper.get(`/api/menu/cheesecake/flavors/category/${category}`);
+
+// Admin menu endpoints
+export const createMenu = (data) => axiosWrapper.post("/api/menu", data);
+export const updateMenu = (id, data) => axiosWrapper.put(`/api/menu/${id}`, data);
+export const deleteMenu = (id) => axiosWrapper.delete(`/api/menu/${id}`);
+export const addMenuItem = (menuId, data) =>
+  axiosWrapper.post(`/api/menu/${menuId}/items`, data);
+export const updateMenuItem = (menuId, itemId, data) =>
+  axiosWrapper.put(`/api/menu/${menuId}/items/${itemId}`, data);
+export const deleteMenuItem = (menuId, itemId) =>
+  axiosWrapper.delete(`/api/menu/${menuId}/items/${itemId}`);
+export const createCheesecakeFlavor = (data) =>
+  axiosWrapper.post("/api/menu/cheesecake/flavors", data);
+export const updateCheesecakeFlavor = (id, data) =>
+  axiosWrapper.put(`/api/menu/cheesecake/flavors/${id}`, data);
+export const deleteCheesecakeFlavor = (id) =>
+  axiosWrapper.delete(`/api/menu/cheesecake/flavors/${id}`);
+export const importMenuData = (data) => axiosWrapper.post("/api/menu/import", data);
 
 // =============================
 // ✅ TEST CONNECTION

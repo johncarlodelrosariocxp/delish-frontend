@@ -7,6 +7,8 @@ import {
   FaTachometerAlt,
   FaBluetooth,
   FaBluetoothB,
+  FaChartLine,
+  FaMoneyBillWave,
 } from "react-icons/fa";
 import logo from "../../assets/images/delish.jpg";
 import { useDispatch, useSelector } from "react-redux";
@@ -162,6 +164,32 @@ const Header = () => {
             </button>
           </div>
 
+          {/* Profit & Loss Button for Desktop */}
+          <button
+            onClick={() => navigate("/profit-loss")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all backdrop-blur-sm shadow-md ${
+              location.pathname === "/profit-loss"
+                ? "bg-gray-700/90 text-white shadow-lg border border-white/30"
+                : "bg-gray-600/80 text-white hover:bg-gray-700/90 hover:shadow-md border border-white/10"
+            }`}
+          >
+            <FaChartLine className="text-white text-lg" />
+            <span className="text-sm font-medium">P&L</span>
+          </button>
+
+          {/* Expenses Button for Desktop */}
+          <button
+            onClick={() => navigate("/expenses")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all backdrop-blur-sm shadow-md ${
+              location.pathname === "/expenses"
+                ? "bg-gray-700/90 text-white shadow-lg border border-white/30"
+                : "bg-gray-600/80 text-white hover:bg-gray-700/90 hover:shadow-md border border-white/10"
+            }`}
+          >
+            <FaMoneyBillWave className="text-white text-lg" />
+            <span className="text-sm font-medium">Inventory</span>
+          </button>
+
           {/* Dashboard Button for Desktop */}
           {canAccessDashboard && (
             <button
@@ -177,18 +205,6 @@ const Header = () => {
             </button>
           )}
 
-          {/* Inventory Button for Desktop */}
-          <button
-            onClick={() => navigate("/inventory")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all backdrop-blur-sm shadow-md ${
-              location.pathname === "/inventory"
-                ? "bg-gray-700/90 text-white shadow-lg border border-white/30"
-                : "bg-gray-600/80 text-white hover:bg-gray-700/90 hover:shadow-md border border-white/10"
-            }`}
-          >
-            <FaBox className="text-white text-lg" />
-            <span className="text-sm font-medium">Inventory</span>
-          </button>
 
           {/* Desktop User Info */}
           <div className="flex items-center gap-4">
@@ -275,6 +291,38 @@ const Header = () => {
 
             {/* Menu Items */}
             <div className="space-y-4">
+              {/* Profit & Loss Button for Mobile */}
+              <div
+                onClick={() => {
+                  navigate("/profit-loss");
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all backdrop-blur-sm border ${
+                  location.pathname === "/profit-loss"
+                    ? "bg-gray-700/90 border-white/40 shadow-lg"
+                    : "bg-gray-600/80 border-white/10 hover:bg-gray-700/90"
+                }`}
+              >
+                <FaChartLine className="text-white text-xl drop-shadow" />
+                <span className="text-white font-medium drop-shadow">Profit & Loss</span>
+              </div>
+
+              {/* Expenses Button for Mobile */}
+              <div
+                onClick={() => {
+                  navigate("/expenses");
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all backdrop-blur-sm border ${
+                  location.pathname === "/expenses"
+                    ? "bg-gray-700/90 border-white/40 shadow-lg"
+                    : "bg-gray-600/80 border-white/10 hover:bg-gray-700/90"
+                }`}
+              >
+                <FaMoneyBillWave className="text-white text-xl drop-shadow" />
+                <span className="text-white font-medium drop-shadow">Inventory</span>
+              </div>
+
               {/* Dashboard Button for Mobile */}
               {canAccessDashboard && (
                 <div
@@ -293,22 +341,7 @@ const Header = () => {
                 </div>
               )}
 
-              {/* Inventory Button for Mobile */}
-              <div
-                onClick={() => {
-                  navigate("/inventory");
-                  setIsMobileMenuOpen(false);
-                }}
-                className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all backdrop-blur-sm border ${
-                  location.pathname === "/inventory"
-                    ? "bg-gray-700/90 border-white/40 shadow-lg"
-                    : "bg-gray-600/80 border-white/10 hover:bg-gray-700/90"
-                }`}
-              >
-                <FaBox className="text-white text-xl drop-shadow" />
-                <span className="text-white font-medium drop-shadow">Inventory</span>
-              </div>
-
+              
               {/* Logout Button */}
               <button
                 onClick={handleLogoutClick}

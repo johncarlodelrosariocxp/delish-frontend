@@ -11,7 +11,7 @@ const BottomNav = () => {
 
   return (
     <>
-      <style jsx>{`
+      <style>{`
         .glass-container {
           background: rgba(255, 255, 255, 0.15);
           backdrop-filter: blur(15px) saturate(180%);

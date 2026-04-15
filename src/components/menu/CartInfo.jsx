@@ -30,9 +30,7 @@ const CartInfo = ({ orderId }) => {
 
   return (
     <div className="w-full px-4 py-4 sm:px-6 md:px-8">
-      <h1 className="text-lg text-white font-semibold tracking-wide mb-3">
-        Order Details
-      </h1>
+      
 
       <div
         ref={scrollRef}
