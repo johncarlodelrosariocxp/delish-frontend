@@ -95,6 +95,17 @@ export const getProfitLossReport = (params = {}) => {
 };
 
 // =============================
+// ✅ INVENTORY ENDPOINTS
+// =============================
+export const getInventory = () => axiosWrapper.get("/api/inventory");
+export const getInventoryItem = (id) => axiosWrapper.get(`/api/inventory/${id}`);
+export const addInventoryItem = (data) => axiosWrapper.post("/api/inventory", data);
+export const updateInventoryItem = (id, data) => axiosWrapper.put(`/api/inventory/${id}`, data);
+export const deleteInventoryItem = (id) => axiosWrapper.delete(`/api/inventory/${id}`);
+export const transferStock = (itemId, data) => 
+  axiosWrapper.post(`/api/inventory/${itemId}/transfer`, data);
+
+// =============================
 // ✅ PROFIT & LOSS ENDPOINTS
 // =============================
 export const generateProfitLossReport = (data) => axiosWrapper.post("/api/profit-loss/generate", data);
