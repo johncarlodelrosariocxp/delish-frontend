@@ -345,15 +345,6 @@ const Bill = ({ orderId }) => {
       "macchiato",
       "mocha",
       "matcha",
-      "ube",
-      "vanilla",
-      "caramel",
-      "hazelnut",
-      "biscoff",
-      "white mocha",
-      "oreo",
-      "chocolate",
-      "choco",
     ];
 
     return drinkKeywords.some((keyword) => name.includes(keyword));
@@ -1717,7 +1708,7 @@ const Bill = ({ orderId }) => {
     }
   };
 
-  // Order mutation - UPDATED with fixed auto-print
+  // Order mutation - FIXED: Added duplicate order prevention
   const orderMutation = useMutation({
     mutationFn: (reqData) => {
       console.log(
@@ -1731,6 +1722,14 @@ const Bill = ({ orderId }) => {
 
       if (!res || !res.data) {
         throw new Error("Invalid response from server");
+      }
+
+      // CRITICAL FIX: Check if this order was already processed
+      if (currentOrder && processedOrders.has(currentOrder.id)) {
+        console.warn("Order already processed, skipping duplicate submission");
+        setIsProcessing(false);
+        setIsProcessingOrder(false);
+        return;
       }
 
       const { data } = res.data;
@@ -1816,9 +1815,21 @@ const Bill = ({ orderId }) => {
     },
   });
 
-  // Combined order placement and invoice printing function
+  // Combined order placement and invoice printing function - FIXED: Added duplicate prevention
   const handlePlaceOrderAndPrintInvoice = async () => {
-    if (isProcessing || isProcessingOrder) return;
+    // CRITICAL FIX: Prevent duplicate orders
+    if (isProcessing || isProcessingOrder) {
+      console.warn("Order already in progress, ignoring duplicate request");
+      return;
+    }
+
+    // Check if this order was already processed
+    if (currentOrder && processedOrders.has(currentOrder.id)) {
+      enqueueSnackbar("This order has already been completed!", {
+        variant: "warning",
+      });
+      return;
+    }
 
     console.log("Starting order placement and invoice generation...");
 
