@@ -4,4 +4,7 @@ export { default as Auth } from "./Auth.jsx";
 export { default as Tables } from "./Tables.jsx";
 export { default as Menu } from "./Menu.jsx";
 export { default as Dashboard } from "./Dashboard.jsx";
-export { default as Inventory } from "./Inventory"; // Add this export
+export { default as Inventory } from "./Inventory.jsx";
+export { default as ProfitLoss } from "./ProfitLoss.jsx";
+export { default as Expenses } from "./Expenses.jsx";
+export { default as AdminMenu } from "./AdminMenu.jsx";

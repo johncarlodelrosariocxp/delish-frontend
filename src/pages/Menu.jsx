@@ -1,16 +1,7 @@
-import React, { useEffect, useState, useRef, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import BottomNav from "../components/shared/BottomNav";
-import {
-  MdRestaurantMenu,
-  MdAdd,
-  MdClose,
-  MdCheckCircle,
-  MdPrint,
-  MdDoneAll,
-  MdReceipt,
-} from "react-icons/md";
+import { MdAdd, MdClose, MdDoneAll, MdPrint } from "react-icons/md";
 import MenuContainer from "../components/menu/MenuContainer";
-import CustomerInfo from "../components/menu/CustomerInfo";
 import CartInfo from "../components/menu/CartInfo";
 import Bill from "../components/menu/Bill";
 import Invoice from "../components/invoice/Invoice";
@@ -19,10 +10,10 @@ import {
   createNewOrder,
   switchOrder,
   closeOrder,
-  hideInvoice,
   clearRecentCompletedOrder,
   completeOrder,
 } from "../redux/slices/orderSlice";
+import { getMenus } from "../https";
 
 const Menu = () => {
   useEffect(() => {
@@ -30,33 +21,48 @@ const Menu = () => {
   }, []);
 
   const dispatch = useDispatch();
-  const {
-    orders,
-    activeOrderId,
-    completedOrders,
-    recentCompletedOrder,
-    showInvoice,
-  } = useSelector((state) => state.order);
+  const { orders, activeOrderId, recentCompletedOrder } = useSelector(
+    (state) => state.order,
+  );
 
   // State
   const [activeTab, setActiveTab] = useState("active");
   const [printingOrderId, setPrintingOrderId] = useState(null);
   const [showCompletionLoading, setShowCompletionLoading] = useState(false);
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [menus, setMenus] = useState([]);
+  const [loadingMenus, setLoadingMenus] = useState(true);
 
   // Refs
   const autoCompleteTimeoutRef = useRef(null);
   const isProcessingRef = useRef(false);
 
+  // Load menus from backend
+  useEffect(() => {
+    const loadMenus = async () => {
+      try {
+        const response = await getMenus();
+        if (response.data.success) {
+          setMenus(response.data.menus);
+        }
+      } catch (error) {
+        console.error("Error loading menus:", error);
+      } finally {
+        setLoadingMenus(false);
+      }
+    };
+    loadMenus();
+  }, []);
+
   // Memoized derived values
   const activeOrders = React.useMemo(
     () => orders.filter((order) => order.status === "active"),
-    [orders]
+    [orders],
   );
 
   const currentActiveOrder = React.useMemo(
     () => activeOrders.find((order) => order.id === activeOrderId),
-    [activeOrders, activeOrderId]
+    [activeOrders, activeOrderId],
   );
 
   // Format functions
@@ -127,7 +133,7 @@ const Menu = () => {
         completeOrder({
           orderId: currentActiveOrder.id,
           paymentMethod: currentActiveOrder.paymentMethod,
-        })
+        }),
       );
 
       // Reset states after delay
@@ -141,7 +147,7 @@ const Menu = () => {
         }, 300);
       }, 1500);
     },
-    [currentActiveOrder, dispatch]
+    [currentActiveOrder, dispatch],
   );
 
   // Handle auto-completion
@@ -202,7 +208,7 @@ const Menu = () => {
         setActiveTab("active");
       }
     },
-    [dispatch, orders]
+    [dispatch, orders],
   );
 
   // Handle closing an order
@@ -222,7 +228,7 @@ const Menu = () => {
 
       if (orderId === activeOrderId) {
         const remainingOrders = activeOrders.filter(
-          (order) => order.id !== orderId
+          (order) => order.id !== orderId,
         );
         if (remainingOrders.length > 0) {
           setTimeout(() => {
@@ -231,7 +237,7 @@ const Menu = () => {
         }
       }
     },
-    [dispatch, activeOrders, activeOrderId]
+    [dispatch, activeOrders, activeOrderId],
   );
 
   // Print receipt
@@ -399,7 +405,7 @@ const Menu = () => {
 
       return receipt;
     },
-    [formatCurrency, formatDate]
+    [formatCurrency, formatDate],
   );
 
   // Loading state during order completion
@@ -502,20 +508,21 @@ const Menu = () => {
                 {/* Menu Section */}
                 <div className="flex-1 lg:flex-[3] flex flex-col min-h-0">
                   <div className="flex-1 min-h-0 overflow-hidden">
-                    <MenuContainer orderId={activeOrderId} />
+                    <MenuContainer
+                      orderId={activeOrderId}
+                      menus={menus}
+                      loadingMenus={loadingMenus}
+                    />
                   </div>
                 </div>
 
                 {/* Sidebar */}
                 <div className="flex-1 lg:flex-[1] bg-gray-100 rounded-lg shadow-md h-auto lg:h-[calc(100vh-11rem)] flex flex-col">
-                  {/* Customer Info */}
-                  <div className="flex-shrink-0">
-                    <CustomerInfo orderId={activeOrderId} />
-                  </div>
-
                   <hr className="border-gray-300 border-t-2" />
 
-                  
+                  <div className="flex-shrink-0">
+                    <CartInfo orderId={activeOrderId} />
+                  </div>
 
                   <hr className="border-gray-300 border-t-2" />
 

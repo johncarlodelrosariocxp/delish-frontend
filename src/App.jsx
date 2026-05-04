@@ -18,12 +18,12 @@ import { BluetoothProvider } from "./contexts/BluetoothContext";
 const Home = lazy(() => import("./pages/Home"));
 const Auth = lazy(() => import("./pages/Auth"));
 const Orders = lazy(() => import("./pages/Orders"));
-const Tables = lazy(() => import("./pages/Tables"));
 const Menu = lazy(() => import("./pages/Menu"));
 const Dashboard = lazy(() => import("./pages/Dashboard"));
 const Inventory = lazy(() => import("./pages/Inventory"));
 const ProfitLoss = lazy(() => import("./pages/ProfitLoss"));
 const Expenses = lazy(() => import("./pages/Expenses"));
+const AdminMenu = lazy(() => import("./pages/AdminMenu"));
 
 // Cache
 const cache = new Map();
@@ -271,14 +271,6 @@ function Layout() {
             }
           />
           <Route
-            path="/tables"
-            element={
-              <ProtectedRoutes>
-                <Tables />
-              </ProtectedRoutes>
-            }
-          />
-          <Route
             path="/menu"
             element={
               <ProtectedRoutes>
@@ -318,6 +310,14 @@ function Layout() {
               </ProtectedRoutes>
             }
           />
+          <Route
+            path="/admin-menu"
+            element={
+              <ProtectedRoutes>
+                <AdminMenu />
+              </ProtectedRoutes>
+            }
+          />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </Suspense>
@@ -344,7 +344,7 @@ function ProtectedRoutes({ children }) {
               ...parsedUser,
               token,
               isAuth: true,
-            })
+            }),
           );
         } catch (error) {
           console.error("Error parsing user data:", error);

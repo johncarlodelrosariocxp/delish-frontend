@@ -69,7 +69,7 @@ export const getSalesByRange = (startDate, endDate) =>
 export const getSalesReports = () => axiosWrapper.get("/api/sales/reports");
 
 // =============================
-// ✅ EXPENSE ENDPOINTS
+// ✅ EXPENSE ENDPOINTS (Legacy - keep for compatibility)
 // =============================
 export const getExpenses = (params = {}) => {
   let url = "/api/expenses";
@@ -82,9 +82,11 @@ export const getExpenses = (params = {}) => {
 };
 
 export const addExpense = (data) => axiosWrapper.post("/api/expenses", data);
-export const updateExpense = (id, data) => axiosWrapper.put(`/api/expenses/${id}`, data);
+export const updateExpense = (id, data) =>
+  axiosWrapper.put(`/api/expenses/${id}`, data);
 export const deleteExpense = (id) => axiosWrapper.delete(`/api/expenses/${id}`);
-export const getInventoryValue = () => axiosWrapper.get("/api/expenses/inventory-value");
+export const getInventoryValue = () =>
+  axiosWrapper.get("/api/expenses/inventory-value");
 export const getProfitLossReport = (params = {}) => {
   let url = "/api/expenses/profit-loss";
   const queryParams = new URLSearchParams();
@@ -95,26 +97,79 @@ export const getProfitLossReport = (params = {}) => {
 };
 
 // =============================
-// ✅ INVENTORY ENDPOINTS
+// ✅ INVENTORY ENDPOINTS (COMPLETE - FIXED)
 // =============================
-export const getInventory = () => axiosWrapper.get("/api/inventory");
-export const getInventoryItem = (id) => axiosWrapper.get(`/api/inventory/${id}`);
-export const addInventoryItem = (data) => axiosWrapper.post("/api/inventory", data);
-export const updateInventoryItem = (id, data) => axiosWrapper.put(`/api/inventory/${id}`, data);
-export const deleteInventoryItem = (id) => axiosWrapper.delete(`/api/inventory/${id}`);
-export const transferStock = (itemId, data) => 
-  axiosWrapper.post(`/api/inventory/${itemId}/transfer`, data);
+
+// Get all inventory items with optional filters
+export const getInventory = (params = {}) => {
+  let url = "/api/inventory";
+  const queryParams = new URLSearchParams();
+  if (params.search) queryParams.append("search", params.search);
+  if (params.lowStock) queryParams.append("lowStock", params.lowStock);
+  if (params.category) queryParams.append("category", params.category);
+  if (queryParams.toString()) url += `?${queryParams.toString()}`;
+  return axiosWrapper.get(url);
+};
+
+// Get single inventory item by ID
+export const getInventoryItem = (id) =>
+  axiosWrapper.get(`/api/inventory/${id}`);
+
+// Create new inventory item
+export const addInventoryItem = (data) =>
+  axiosWrapper.post("/api/inventory", data);
+
+// Update inventory item
+export const updateInventoryItem = (id, data) =>
+  axiosWrapper.put(`/api/inventory/${id}`, data);
+
+// Delete inventory item (soft delete)
+export const deleteInventoryItem = (id) =>
+  axiosWrapper.delete(`/api/inventory/${id}`);
+
+// Update stock quantity (add or remove)
+export const updateStock = (id, data) =>
+  axiosWrapper.put(`/api/inventory/${id}/stock`, data);
+
+// Link inventory item to menu items
+export const linkInventoryToMenu = (id, data) =>
+  axiosWrapper.post(`/api/inventory/${id}/link-to-menu`, data);
+
+// Get all low stock items
+export const getLowStockItems = () =>
+  axiosWrapper.get("/api/inventory/low-stock");
+
+// Get inventory usage report
+export const getInventoryUsageReport = (params = {}) => {
+  let url = "/api/inventory/usage-report";
+  const queryParams = new URLSearchParams();
+  if (params.startDate) queryParams.append("startDate", params.startDate);
+  if (params.endDate) queryParams.append("endDate", params.endDate);
+  if (queryParams.toString()) url += `?${queryParams.toString()}`;
+  return axiosWrapper.get(url);
+};
+
+// Get inventory total value
+export const getInventoryTotalValue = () =>
+  axiosWrapper.get("/api/inventory/inventory-value");
 
 // =============================
 // ✅ PROFIT & LOSS ENDPOINTS
 // =============================
-export const generateProfitLossReport = (data) => axiosWrapper.post("/api/profit-loss/generate", data);
-export const generateDailyProfitLoss = () => axiosWrapper.post("/api/profit-loss/generate-daily");
-export const getAllProfitLossReports = () => axiosWrapper.get("/api/profit-loss");
-export const getLatestProfitLossReport = () => axiosWrapper.get("/api/profit-loss/latest");
-export const getAllTimeProfitLossSummary = () => axiosWrapper.get("/api/profit-loss/summary");
-export const getProfitLossReportById = (id) => axiosWrapper.get(`/api/profit-loss/${id}`);
-export const deleteProfitLossReport = (id) => axiosWrapper.delete(`/api/profit-loss/${id}`);
+export const generateProfitLossReport = (data) =>
+  axiosWrapper.post("/api/profit-loss/generate", data);
+export const generateDailyProfitLoss = () =>
+  axiosWrapper.post("/api/profit-loss/generate-daily");
+export const getAllProfitLossReports = () =>
+  axiosWrapper.get("/api/profit-loss");
+export const getLatestProfitLossReport = () =>
+  axiosWrapper.get("/api/profit-loss/latest");
+export const getAllTimeProfitLossSummary = () =>
+  axiosWrapper.get("/api/profit-loss/summary");
+export const getProfitLossReportById = (id) =>
+  axiosWrapper.get(`/api/profit-loss/${id}`);
+export const deleteProfitLossReport = (id) =>
+  axiosWrapper.delete(`/api/profit-loss/${id}`);
 
 // =============================
 // ✅ MENU ENDPOINTS
@@ -122,17 +177,22 @@ export const deleteProfitLossReport = (id) => axiosWrapper.delete(`/api/profit-l
 export const getMenus = () => axiosWrapper.get("/api/menu");
 export const getMenuById = (id) => axiosWrapper.get(`/api/menu/${id}`);
 export const getMenusByTag = (tag) => axiosWrapper.get(`/api/menu/tag/${tag}`);
-export const getMenuItems = (menuId) => axiosWrapper.get(`/api/menu/${menuId}/items`);
+export const getMenuItems = (menuId) =>
+  axiosWrapper.get(`/api/menu/${menuId}/items`);
 export const getMenuItem = (menuId, itemId) =>
   axiosWrapper.get(`/api/menu/${menuId}/items/${itemId}`);
-export const getCheesecakeFlavors = () =>
-  axiosWrapper.get("/api/menu/cheesecake/flavors");
-export const getCheesecakeFlavorsByCategory = (category) =>
-  axiosWrapper.get(`/api/menu/cheesecake/flavors/category/${category}`);
+export const checkMenuItemAvailability = (menuId, itemId, quantity = 1) =>
+  axiosWrapper.get(
+    `/api/menu/${menuId}/items/${itemId}/availability?quantity=${quantity}`,
+  );
+export const getItemFlavors = () => axiosWrapper.get("/api/menu/item/flavors");
+export const getItemFlavorsByCategory = (category) =>
+  axiosWrapper.get(`/api/menu/item/flavors/category/${category}`);
 
 // Admin menu endpoints
 export const createMenu = (data) => axiosWrapper.post("/api/menu", data);
-export const updateMenu = (id, data) => axiosWrapper.put(`/api/menu/${id}`, data);
+export const updateMenu = (id, data) =>
+  axiosWrapper.put(`/api/menu/${id}`, data);
 export const deleteMenu = (id) => axiosWrapper.delete(`/api/menu/${id}`);
 export const addMenuItem = (menuId, data) =>
   axiosWrapper.post(`/api/menu/${menuId}/items`, data);
@@ -140,13 +200,14 @@ export const updateMenuItem = (menuId, itemId, data) =>
   axiosWrapper.put(`/api/menu/${menuId}/items/${itemId}`, data);
 export const deleteMenuItem = (menuId, itemId) =>
   axiosWrapper.delete(`/api/menu/${menuId}/items/${itemId}`);
-export const createCheesecakeFlavor = (data) =>
-  axiosWrapper.post("/api/menu/cheesecake/flavors", data);
-export const updateCheesecakeFlavor = (id, data) =>
-  axiosWrapper.put(`/api/menu/cheesecake/flavors/${id}`, data);
-export const deleteCheesecakeFlavor = (id) =>
-  axiosWrapper.delete(`/api/menu/cheesecake/flavors/${id}`);
-export const importMenuData = (data) => axiosWrapper.post("/api/menu/import", data);
+export const createItemFlavor = (data) =>
+  axiosWrapper.post("/api/menu/item/flavors", data);
+export const updateItemFlavor = (id, data) =>
+  axiosWrapper.put(`/api/menu/item/flavors/${id}`, data);
+export const deleteItemFlavor = (id) =>
+  axiosWrapper.delete(`/api/menu/item/flavors/${id}`);
+export const importMenuData = (data) =>
+  axiosWrapper.post("/api/menu/import", data);
 
 // =============================
 // ✅ TEST CONNECTION

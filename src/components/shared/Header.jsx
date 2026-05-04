@@ -9,7 +9,9 @@ import {
   FaBluetoothB,
   FaChartLine,
   FaMoneyBillWave,
+  FaHome,
 } from "react-icons/fa";
+import { MdMenuBook } from "react-icons/md";
 import logo from "../../assets/images/delish.jpg";
 import { useDispatch, useSelector } from "react-redux";
 import { IoLogOut } from "react-icons/io5";
@@ -42,10 +44,6 @@ const Header = () => {
   useEffect(() => {
     console.log("🔍 HEADER - User Data:", userData);
     console.log("🔍 HEADER - User Role:", userData?.role);
-    console.log(
-      "🔍 HEADER - Can Access Dashboard:",
-      ["Admin", "Manager", "Supervisor"].includes(userData?.role)
-    );
   }, [userData]);
 
   const logoutMutation = useMutation({
@@ -88,11 +86,6 @@ const Header = () => {
     setIsMobileMenuOpen(false);
   }, [location.pathname]);
 
-  // Check if user can access dashboard
-  const canAccessDashboard = ["Admin", "Manager", "Supervisor"].includes(
-    userData?.role
-  );
-
   // Handle Bluetooth connection
   const handleBluetoothClick = () => {
     if (isConnected) {
@@ -122,7 +115,11 @@ const Header = () => {
             }}
             className="flex items-center gap-2 cursor-pointer"
           >
-            <img src={logo} className="h-7 w-7 rounded-full" alt="delish logo" />
+            <img
+              src={logo}
+              className="h-7 w-7 rounded-full"
+              alt="delish logo"
+            />
             <h1 className="text-base font-semibold text-white tracking-wide drop-shadow-md">
               DELISH
             </h1>
@@ -139,6 +136,58 @@ const Header = () => {
 
         {/* Desktop Navigation - Hidden on mobile */}
         <div className="hidden sm:flex items-center gap-4">
+          {/* Home Button */}
+          <button
+            onClick={() => navigate("/")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all backdrop-blur-sm shadow-md ${
+              location.pathname === "/"
+                ? "bg-gray-700/90 text-white shadow-lg border border-white/30"
+                : "bg-gray-600/80 text-white hover:bg-gray-700/90 hover:shadow-md border border-white/10"
+            }`}
+          >
+            <FaHome className="text-white text-lg" />
+            <span className="text-sm font-medium">Home</span>
+          </button>
+
+          {/* Profit & Loss Button */}
+          <button
+            onClick={() => navigate("/profit-loss")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all backdrop-blur-sm shadow-md ${
+              location.pathname === "/profit-loss"
+                ? "bg-gray-700/90 text-white shadow-lg border border-white/30"
+                : "bg-gray-600/80 text-white hover:bg-gray-700/90 hover:shadow-md border border-white/10"
+            }`}
+          >
+            <FaChartLine className="text-white text-lg" />
+            <span className="text-sm font-medium">P&L</span>
+          </button>
+
+          {/* INVENTORY Button (Fixed - now links to /inventory) */}
+          <button
+            onClick={() => navigate("/inventory")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all backdrop-blur-sm shadow-md ${
+              location.pathname === "/inventory"
+                ? "bg-gray-700/90 text-white shadow-lg border border-white/30"
+                : "bg-gray-600/80 text-white hover:bg-gray-700/90 hover:shadow-md border border-white/10"
+            }`}
+          >
+            <FaBox className="text-white text-lg" />
+            <span className="text-sm font-medium">Inventory</span>
+          </button>
+
+          {/* Manage Menu Button */}
+          <button
+            onClick={() => navigate("/admin-menu")}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all backdrop-blur-sm shadow-md ${
+              location.pathname === "/admin-menu"
+                ? "bg-gray-700/90 text-white shadow-lg border border-white/30"
+                : "bg-gray-600/80 text-white hover:bg-gray-700/90 hover:shadow-md border border-white/10"
+            }`}
+          >
+            <MdMenuBook className="text-white text-lg" />
+            <span className="text-sm font-medium">Manage Menu</span>
+          </button>
+
           {/* Bluetooth Status */}
           <div className="flex items-center gap-2">
             <button
@@ -148,8 +197,8 @@ const Header = () => {
                 isConnected
                   ? "bg-green-600/80 text-white hover:bg-green-700/90 border border-green-400/50"
                   : isConnecting
-                  ? "bg-yellow-500/80 text-white cursor-not-allowed border border-yellow-400/50"
-                  : "bg-blue-600/80 text-white hover:bg-blue-700/90 border border-blue-400/50"
+                    ? "bg-yellow-500/80 text-white cursor-not-allowed border border-yellow-400/50"
+                    : "bg-blue-600/80 text-white hover:bg-blue-700/90 border border-blue-400/50"
               }`}
               title={
                 printerName
@@ -163,48 +212,6 @@ const Header = () => {
               </span>
             </button>
           </div>
-
-          {/* Profit & Loss Button for Desktop */}
-          <button
-            onClick={() => navigate("/profit-loss")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all backdrop-blur-sm shadow-md ${
-              location.pathname === "/profit-loss"
-                ? "bg-gray-700/90 text-white shadow-lg border border-white/30"
-                : "bg-gray-600/80 text-white hover:bg-gray-700/90 hover:shadow-md border border-white/10"
-            }`}
-          >
-            <FaChartLine className="text-white text-lg" />
-            <span className="text-sm font-medium">P&L</span>
-          </button>
-
-          {/* Expenses Button for Desktop */}
-          <button
-            onClick={() => navigate("/expenses")}
-            className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all backdrop-blur-sm shadow-md ${
-              location.pathname === "/expenses"
-                ? "bg-gray-700/90 text-white shadow-lg border border-white/30"
-                : "bg-gray-600/80 text-white hover:bg-gray-700/90 hover:shadow-md border border-white/10"
-            }`}
-          >
-            <FaMoneyBillWave className="text-white text-lg" />
-            <span className="text-sm font-medium">Inventory</span>
-          </button>
-
-          {/* Dashboard Button for Desktop */}
-          {canAccessDashboard && (
-            <button
-              onClick={() => navigate("/dashboard")}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all backdrop-blur-sm shadow-md ${
-                location.pathname === "/dashboard"
-                  ? "bg-gray-700/90 text-white shadow-lg border border-white/30"
-                  : "bg-gray-600/80 text-white hover:bg-gray-700/90 hover:shadow-md border border-white/10"
-              }`}
-            >
-              <FaTachometerAlt className="text-white text-lg" />
-              <span className="text-sm font-medium">Dashboard</span>
-            </button>
-          )}
-
 
           {/* Desktop User Info */}
           <div className="flex items-center gap-4">
@@ -234,7 +241,7 @@ const Header = () => {
       {/* Spacer to prevent content from hiding under fixed header */}
       <div className="h-[72px] sm:h-[76px]"></div>
 
-      {/* Mobile Menu Overlay - Liquid Glass Design */}
+      {/* Mobile Menu Overlay */}
       {isMobileMenuOpen && (
         <div className="sm:hidden fixed inset-0 z-50 mt-[72px] bg-gray-500/30 backdrop-blur-xl backdrop-saturate-150">
           <div className="flex flex-col p-6 space-y-6 h-full overflow-y-auto">
@@ -251,47 +258,25 @@ const Header = () => {
               </div>
             </div>
 
-            {/* Bluetooth Section */}
-            <div className="p-4 bg-gray-700/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-lg">
-              <h3 className="text-white font-medium mb-2 drop-shadow-md">Bluetooth Printer</h3>
-              <div className="flex items-center justify-between">
-                <div>
-                  <p
-                    className={`text-sm font-semibold drop-shadow ${
-                      isConnected
-                        ? "text-green-300"
-                        : isConnecting
-                        ? "text-yellow-300"
-                        : "text-gray-300"
-                    }`}
-                  >
-                    {getBluetoothStatusText()}
-                  </p>
-                  {printerName && (
-                    <p className="text-xs text-gray-200 mt-1 truncate drop-shadow">
-                      {printerName}
-                    </p>
-                  )}
-                </div>
-                <button
-                  onClick={handleBluetoothClick}
-                  disabled={isConnecting}
-                  className={`px-4 py-2 rounded-xl text-sm font-medium backdrop-blur-sm shadow-md border border-white/20 ${
-                    isConnected
-                      ? "bg-red-600/80 text-white hover:bg-red-700/90"
-                      : isConnecting
-                      ? "bg-yellow-500/80 text-white cursor-not-allowed"
-                      : "bg-blue-600/80 text-white hover:bg-blue-700/90"
-                  }`}
-                >
-                  {isConnected ? "Disconnect" : "Connect"}
-                </button>
-              </div>
-            </div>
-
             {/* Menu Items */}
             <div className="space-y-4">
-              {/* Profit & Loss Button for Mobile */}
+              {/* Home Button */}
+              <div
+                onClick={() => {
+                  navigate("/");
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all backdrop-blur-sm border ${
+                  location.pathname === "/"
+                    ? "bg-gray-700/90 border-white/40 shadow-lg"
+                    : "bg-gray-600/80 border-white/10 hover:bg-gray-700/90"
+                }`}
+              >
+                <FaHome className="text-white text-xl drop-shadow" />
+                <span className="text-white font-medium drop-shadow">Home</span>
+              </div>
+
+              {/* Profit & Loss Button */}
               <div
                 onClick={() => {
                   navigate("/profit-loss");
@@ -304,44 +289,87 @@ const Header = () => {
                 }`}
               >
                 <FaChartLine className="text-white text-xl drop-shadow" />
-                <span className="text-white font-medium drop-shadow">Profit & Loss</span>
+                <span className="text-white font-medium drop-shadow">
+                  Profit & Loss
+                </span>
               </div>
 
-              {/* Expenses Button for Mobile */}
+              {/* INVENTORY Button for Mobile (Fixed) */}
               <div
                 onClick={() => {
-                  navigate("/expenses");
+                  navigate("/inventory");
                   setIsMobileMenuOpen(false);
                 }}
                 className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all backdrop-blur-sm border ${
-                  location.pathname === "/expenses"
+                  location.pathname === "/inventory"
                     ? "bg-gray-700/90 border-white/40 shadow-lg"
                     : "bg-gray-600/80 border-white/10 hover:bg-gray-700/90"
                 }`}
               >
-                <FaMoneyBillWave className="text-white text-xl drop-shadow" />
-                <span className="text-white font-medium drop-shadow">Inventory</span>
+                <FaBox className="text-white text-xl drop-shadow" />
+                <span className="text-white font-medium drop-shadow">
+                  Inventory
+                </span>
               </div>
 
-              {/* Dashboard Button for Mobile */}
-              {canAccessDashboard && (
-                <div
-                  onClick={() => {
-                    navigate("/dashboard");
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all backdrop-blur-sm border ${
-                    location.pathname === "/dashboard"
-                      ? "bg-gray-700/90 border-white/40 shadow-lg"
-                      : "bg-gray-600/80 border-white/10 hover:bg-gray-700/90"
-                  }`}
-                >
-                  <FaTachometerAlt className="text-white text-xl drop-shadow" />
-                  <span className="text-white font-medium drop-shadow">Dashboard</span>
-                </div>
-              )}
+              {/* Manage Menu Button */}
+              <div
+                onClick={() => {
+                  navigate("/admin-menu");
+                  setIsMobileMenuOpen(false);
+                }}
+                className={`flex items-center gap-3 p-3 rounded-xl cursor-pointer transition-all backdrop-blur-sm border ${
+                  location.pathname === "/admin-menu"
+                    ? "bg-gray-700/90 border-white/40 shadow-lg"
+                    : "bg-gray-600/80 border-white/10 hover:bg-gray-700/90"
+                }`}
+              >
+                <MdMenuBook className="text-white text-xl drop-shadow" />
+                <span className="text-white font-medium drop-shadow">
+                  Manage Menu
+                </span>
+              </div>
 
-              
+              {/* Bluetooth Section */}
+              <div className="p-4 bg-gray-700/80 backdrop-blur-sm rounded-2xl border border-white/20 shadow-lg">
+                <h3 className="text-white font-medium mb-2 drop-shadow-md">
+                  Bluetooth Printer
+                </h3>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p
+                      className={`text-sm font-semibold drop-shadow ${
+                        isConnected
+                          ? "text-green-300"
+                          : isConnecting
+                            ? "text-yellow-300"
+                            : "text-gray-300"
+                      }`}
+                    >
+                      {getBluetoothStatusText()}
+                    </p>
+                    {printerName && (
+                      <p className="text-xs text-gray-200 mt-1 truncate drop-shadow">
+                        {printerName}
+                      </p>
+                    )}
+                  </div>
+                  <button
+                    onClick={handleBluetoothClick}
+                    disabled={isConnecting}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium backdrop-blur-sm shadow-md border border-white/20 ${
+                      isConnected
+                        ? "bg-red-600/80 text-white hover:bg-red-700/90"
+                        : isConnecting
+                          ? "bg-yellow-500/80 text-white cursor-not-allowed"
+                          : "bg-blue-600/80 text-white hover:bg-blue-700/90"
+                    }`}
+                  >
+                    {isConnected ? "Disconnect" : "Connect"}
+                  </button>
+                </div>
+              </div>
+
               {/* Logout Button */}
               <button
                 onClick={handleLogoutClick}
@@ -357,7 +385,9 @@ const Header = () => {
 
             {/* Quick Navigation Links */}
             <div className="pt-4 border-t border-white/20">
-              <h3 className="text-white font-medium mb-3 drop-shadow-md">Quick Links</h3>
+              <h3 className="text-white font-medium mb-3 drop-shadow-md">
+                Quick Links
+              </h3>
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => {
@@ -370,21 +400,21 @@ const Header = () => {
                 </button>
                 <button
                   onClick={() => {
-                    navigate("/tables");
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="p-2 bg-gray-600/80 backdrop-blur-sm rounded-xl text-white text-sm hover:bg-gray-700/90 transition-all border border-white/10 shadow-md"
-                >
-                  Tables
-                </button>
-                <button
-                  onClick={() => {
                     navigate("/menu");
                     setIsMobileMenuOpen(false);
                   }}
                   className="p-2 bg-gray-600/80 backdrop-blur-sm rounded-xl text-white text-sm hover:bg-gray-700/90 transition-all border border-white/10 shadow-md"
                 >
                   Menu
+                </button>
+                <button
+                  onClick={() => {
+                    navigate("/inventory");
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="p-2 bg-gray-600/80 backdrop-blur-sm rounded-xl text-white text-sm hover:bg-gray-700/90 transition-all border border-white/10 shadow-md"
+                >
+                  Inventory
                 </button>
                 <button
                   onClick={() => {
@@ -410,7 +440,7 @@ const Header = () => {
         </div>
       )}
 
-      {/* Logout Confirmation Popup - Glass Design */}
+      {/* Logout Confirmation Popup */}
       {showLogoutConfirm && (
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white/90 backdrop-blur-xl rounded-2xl p-6 w-full max-w-md shadow-2xl border border-white/30">

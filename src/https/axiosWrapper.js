@@ -40,7 +40,7 @@ axiosWrapper.interceptors.request.use(
     }
 
     // Log request details (only in development)
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.log(`📤 ${config.method?.toUpperCase()} ${config.url}`);
       console.log("Headers:", config.headers);
     }
@@ -50,14 +50,14 @@ axiosWrapper.interceptors.request.use(
   (error) => {
     console.error("❌ Request Error:", error);
     return Promise.reject(error);
-  }
+  },
 );
 
 // ✅ Response interceptor with improved error handling
 axiosWrapper.interceptors.response.use(
   (response) => {
     // Log only in development
-    if (process.env.NODE_ENV === 'development') {
+    if (process.env.NODE_ENV === "development") {
       console.log(`✅ ${response.status} ${response.config.url}`);
     }
 
@@ -76,16 +76,21 @@ axiosWrapper.interceptors.response.use(
     const errorMessage = error.message;
 
     // Log error details
-    console.error(`❌ API Error [${status || 'Network'}]:`, errorMessage);
-    
+    console.error(`❌ API Error [${status || "Network"}]:`, errorMessage);
+
     // Handle timeout errors specifically
     if (errorMessage.includes("timeout") || error.code === "ECONNABORTED") {
-      console.error("⏰ Request Timeout - The server is taking too long to respond");
-      console.error("This may happen for large reports or slow network connections");
-      
-      error.userMessage = "Request is taking too long. The server might be processing a large amount of data. Please try again or select a smaller date range.";
+      console.error(
+        "⏰ Request Timeout - The server is taking too long to respond",
+      );
+      console.error(
+        "This may happen for large reports or slow network connections",
+      );
+
+      error.userMessage =
+        "Request is taking too long. The server might be processing a large amount of data. Please try again or select a smaller date range.";
     }
-    
+
     // Handle network/CORS errors
     if (
       error.code === "ERR_NETWORK" ||
@@ -95,7 +100,7 @@ axiosWrapper.interceptors.response.use(
       errorMessage.includes("cross-origin")
     ) {
       console.error("🌐 Network/CORS Issue Detected!");
-      
+
       error.userMessage = `Connection failed. Please check:
       1. Backend server is running (${API_BASE_URL})
       2. Your internet connection is stable
@@ -106,17 +111,25 @@ axiosWrapper.interceptors.response.use(
     }
 
     // Handle slow response but not timeout (keep connection alive)
-    if (errorMessage.includes("timeout of") && !errorMessage.includes("120000")) {
-      console.warn("⚠️ Response slower than expected, but connection is still active");
+    if (
+      errorMessage.includes("timeout of") &&
+      !errorMessage.includes("120000")
+    ) {
+      console.warn(
+        "⚠️ Response slower than expected, but connection is still active",
+      );
     }
 
     // Clear token on 401 (unauthorized)
     if (status === 401) {
       localStorage.removeItem("authToken");
-      
+
       // Redirect to login if not already there
       const currentPath = window.location.pathname;
-      if (!currentPath.includes("/login") && !currentPath.includes("/register")) {
+      if (
+        !currentPath.includes("/login") &&
+        !currentPath.includes("/register")
+      ) {
         // Use setTimeout to avoid interrupting the error flow
         setTimeout(() => {
           window.location.href = "/login";
@@ -125,17 +138,17 @@ axiosWrapper.interceptors.response.use(
     }
 
     return Promise.reject(error);
-  }
+  },
 );
 
 // ✅ Test backend connection with better error handling
 const testBackendConnection = async () => {
   try {
     console.log("🔍 Testing connection to Render...");
-    
+
     // Use a health check endpoint if available
     const healthUrl = `${API_BASE_URL}/health`;
-    
+
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
@@ -147,7 +160,7 @@ const testBackendConnection = async () => {
         "x-frontend-url": FRONTEND_URL,
       },
       mode: "cors",
-      signal: controller.signal
+      signal: controller.signal,
     });
 
     clearTimeout(timeoutId);
@@ -161,10 +174,10 @@ const testBackendConnection = async () => {
     };
   } catch (error) {
     console.error("❌ Connection test failed:", error.message);
-    
+
     return {
       success: false,
-      error: error.name === 'AbortError' ? 'Connection timeout' : error.message,
+      error: error.name === "AbortError" ? "Connection timeout" : error.message,
       frontend: FRONTEND_URL,
       backend: API_BASE_URL,
     };
@@ -175,12 +188,12 @@ const testBackendConnection = async () => {
 const testApiConnection = async () => {
   try {
     console.log("🔍 Testing API connection...");
-    
+
     // Try health endpoint first, fallback to root
     const response = await axiosWrapper.get("/health").catch(() => {
       return axiosWrapper.get("/");
     });
-    
+
     console.log("✅ API connection successful");
     return {
       success: true,
@@ -210,8 +223,8 @@ const setAuthToken = (token) => {
 if (typeof window !== "undefined") {
   // Only run test in development or on specific pages
   if (
-    process.env.NODE_ENV === 'development' ||
-    window.location.pathname === "/login" || 
+    process.env.NODE_ENV === "development" ||
+    window.location.pathname === "/login" ||
     window.location.pathname === "/"
   ) {
     // Run test after a short delay to not block rendering
