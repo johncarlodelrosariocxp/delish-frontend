@@ -1,13 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useSelector } from "react-redux";
-import { 
-  FaSearch, 
-  FaCalendar, 
-  FaHome, 
-  FaTimes, 
+import {
+  FaSearch,
+  FaCalendar,
+  FaHome,
+  FaTimes,
   FaChevronDown,
   FaSpinner,
-  FaSync 
+  FaSync,
 } from "react-icons/fa";
 import { useNavigate } from "react-router-dom";
 import { getOrders } from "../https";
@@ -24,27 +24,27 @@ const MAX_ORDER_AGE = 7 * 24 * 60 * 60 * 1000; // 7 days
 
 // Helper function to safely set localStorage
 const safeSetLocalStorage = (key, value) => {
-  if (typeof window === 'undefined') return false;
-  
+  if (typeof window === "undefined") return false;
+
   try {
     localStorage.setItem(key, value);
     return true;
   } catch (e) {
-    if (e.name === 'QuotaExceededError' || e.code === 22) {
+    if (e.name === "QuotaExceededError" || e.code === 22) {
       // Clear old cache items
       try {
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
           const storageKey = localStorage.key(i);
-          if (storageKey?.includes('pos_')) {
+          if (storageKey?.includes("pos_")) {
             keysToRemove.push(storageKey);
           }
         }
-        keysToRemove.forEach(k => localStorage.removeItem(k));
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
         localStorage.setItem(key, value);
         return true;
       } catch (retryError) {
-        console.error('Still failed to set localStorage:', retryError);
+        console.error("Still failed to set localStorage:", retryError);
         return false;
       }
     }
@@ -55,29 +55,45 @@ const safeSetLocalStorage = (key, value) => {
 // Optimize cache data
 const getOptimizedCacheData = (orders) => {
   if (!orders?.length) return null;
-  
+
   return orders
     .sort((a, b) => {
-      const dateA = a.parsedDate instanceof Date ? a.parsedDate : new Date(a.createdAt || 0);
-      const dateB = b.parsedDate instanceof Date ? b.parsedDate : new Date(b.createdAt || 0);
+      const dateA =
+        a.parsedDate instanceof Date
+          ? a.parsedDate
+          : new Date(a.createdAt || 0);
+      const dateB =
+        b.parsedDate instanceof Date
+          ? b.parsedDate
+          : new Date(b.createdAt || 0);
       return dateB - dateA;
     })
     .slice(0, MAX_CACHE_ITEMS)
-    .filter(order => {
-      const orderDate = order.parsedDate instanceof Date ? order.parsedDate : new Date(order.createdAt || 0);
+    .filter((order) => {
+      const orderDate =
+        order.parsedDate instanceof Date
+          ? order.parsedDate
+          : new Date(order.createdAt || 0);
       return Date.now() - orderDate.getTime() < MAX_ORDER_AGE;
     })
-    .map(o => ({
+    .map((o) => ({
       _id: o._id,
       orderStatus: o.orderStatus,
       totalAmount: o.totalAmount,
       bills: o.bills ? { totalWithTax: o.bills.totalWithTax } : undefined,
-      customerDetails: o.customerDetails ? { name: o.customerDetails.name } : undefined,
+      customerDetails: o.customerDetails
+        ? { name: o.customerDetails.name }
+        : undefined,
       createdAt: o.createdAt,
       orderDate: o.orderDate,
-      items: o.items?.slice(0, 5).map(({ name, quantity, price }) => ({ name, quantity, price })),
+      items: o.items
+        ?.slice(0, 5)
+        .map(({ name, quantity, price }) => ({ name, quantity, price })),
       table: o.table ? { tableNo: o.table.tableNo } : undefined,
-      parsedDate: o.parsedDate instanceof Date ? o.parsedDate.toISOString() : o.parsedDate
+      parsedDate:
+        o.parsedDate instanceof Date
+          ? o.parsedDate.toISOString()
+          : o.parsedDate,
     }));
 };
 
@@ -111,17 +127,21 @@ const Orders = () => {
   // Initialize from localStorage
   useEffect(() => {
     mountedRef.current = true;
-    
+
     // Load cached orders
     try {
       const cached = localStorage.getItem(CACHE_KEY);
       if (cached) {
         const { data } = JSON.parse(cached);
         if (data?.length) {
-          setOrders(data.map(order => ({
-            ...order,
-            parsedDate: order.parsedDate ? new Date(order.parsedDate) : new Date()
-          })));
+          setOrders(
+            data.map((order) => ({
+              ...order,
+              parsedDate: order.parsedDate
+                ? new Date(order.parsedDate)
+                : new Date(),
+            })),
+          );
         }
       }
     } catch (e) {
@@ -159,12 +179,12 @@ const Orders = () => {
 
     saveTimeoutRef.current = setTimeout(() => {
       if (!mountedRef.current) return;
-      
+
       const optimizedData = getOptimizedCacheData(orders);
       if (optimizedData?.length) {
         const cacheData = {
           data: optimizedData,
-          timestamp: Date.now()
+          timestamp: Date.now(),
         };
         safeSetLocalStorage(CACHE_KEY, JSON.stringify(cacheData));
         if (mountedRef.current) {
@@ -184,11 +204,11 @@ const Orders = () => {
   useEffect(() => {
     safeSetLocalStorage("pos_date_filter", dateFilter);
   }, [dateFilter]);
-  
+
   useEffect(() => {
     safeSetLocalStorage("pos_start_date", startDate);
   }, [startDate]);
-  
+
   useEffect(() => {
     safeSetLocalStorage("pos_end_date", endDate);
   }, [endDate]);
@@ -196,7 +216,7 @@ const Orders = () => {
   // Process orders data
   const processOrdersData = useCallback((data) => {
     let ordersData = [];
-    
+
     if (data?.data?.data) {
       ordersData = data.data.data;
     } else if (Array.isArray(data?.data)) {
@@ -205,42 +225,47 @@ const Orders = () => {
       ordersData = data;
     }
 
-    return ordersData.map(order => ({
+    return ordersData.map((order) => ({
       ...order,
       _id: order._id || order.id,
-      parsedDate: new Date(order.createdAt || order.orderDate || order.date || Date.now())
+      parsedDate: new Date(
+        order.createdAt || order.orderDate || order.date || Date.now(),
+      ),
     }));
   }, []);
 
   // Manual fetch only - no auto refresh
-  const fetchOrders = useCallback(async (showLoading = true) => {
-    if (!mountedRef.current) return;
-    
-    if (showLoading) setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await getOrders();
+  const fetchOrders = useCallback(
+    async (showLoading = true) => {
       if (!mountedRef.current) return;
-      
-      const processedOrders = processOrdersData(response);
-      setOrders(processedOrders);
-      setLastFetchTime(Date.now());
-    } catch (err) {
-      if (mountedRef.current) {
-        setError("Failed to load orders. Please try again.");
+
+      if (showLoading) setLoading(true);
+      setError(null);
+
+      try {
+        const response = await getOrders();
+        if (!mountedRef.current) return;
+
+        const processedOrders = processOrdersData(response);
+        setOrders(processedOrders);
+        setLastFetchTime(Date.now());
+      } catch (err) {
+        if (mountedRef.current) {
+          setError("Failed to load orders. Please try again.");
+        }
+      } finally {
+        if (showLoading && mountedRef.current) {
+          setLoading(false);
+        }
       }
-    } finally {
-      if (showLoading && mountedRef.current) {
-        setLoading(false);
-      }
-    }
-  }, [processOrdersData]);
+    },
+    [processOrdersData],
+  );
 
   // Initial fetch only if no cached orders
   useEffect(() => {
     if (!mountedRef.current) return;
-    
+
     // Only fetch if we have no orders (cache was empty)
     if (orders.length === 0 && !initialFetchDone.current) {
       initialFetchDone.current = true;
@@ -264,55 +289,68 @@ const Orders = () => {
   }, []);
 
   // Date filter functions
-  const getDateRange = useCallback((filterType) => {
-    const now = new Date();
-    const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-    
-    switch (filterType) {
-      case "today":
-        return { start: today, end: new Date(today.getTime() + 86400000) };
-      case "yesterday": {
-        const yesterday = new Date(today);
-        yesterday.setDate(today.getDate() - 1);
-        return { start: yesterday, end: today };
-      }
-      case "this week": {
-        const startOfWeek = new Date(today);
-        startOfWeek.setDate(today.getDate() - today.getDay());
-        return { start: startOfWeek, end: new Date(startOfWeek.getTime() + 604800000) };
-      }
-      case "last week": {
-        const startOfWeek = new Date(today);
-        startOfWeek.setDate(today.getDate() - today.getDay());
-        const startOfLastWeek = new Date(startOfWeek);
-        startOfLastWeek.setDate(startOfWeek.getDate() - 7);
-        return { start: startOfLastWeek, end: new Date(startOfLastWeek.getTime() + 604800000) };
-      }
-      case "this month": {
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-        return { start: startOfMonth, end: endOfMonth };
-      }
-      case "last month": {
-        const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-        const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        return { start: startOfLastMonth, end: endOfLastMonth };
-      }
-      case "custom":
-        if (startDate && endDate) {
-          const customStart = new Date(startDate);
-          const customEnd = new Date(endDate);
-          customEnd.setHours(23, 59, 59, 999);
-          return { start: customStart, end: customEnd };
+  const getDateRange = useCallback(
+    (filterType) => {
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      switch (filterType) {
+        case "today":
+          return { start: today, end: new Date(today.getTime() + 86400000) };
+        case "yesterday": {
+          const yesterday = new Date(today);
+          yesterday.setDate(today.getDate() - 1);
+          return { start: yesterday, end: today };
         }
-        return { start: null, end: null };
-      default:
-        return { start: null, end: null };
-    }
-  }, [startDate, endDate]);
+        case "this week": {
+          const startOfWeek = new Date(today);
+          startOfWeek.setDate(today.getDate() - today.getDay());
+          return {
+            start: startOfWeek,
+            end: new Date(startOfWeek.getTime() + 604800000),
+          };
+        }
+        case "last week": {
+          const startOfWeek = new Date(today);
+          startOfWeek.setDate(today.getDate() - today.getDay());
+          const startOfLastWeek = new Date(startOfWeek);
+          startOfLastWeek.setDate(startOfWeek.getDate() - 7);
+          return {
+            start: startOfLastWeek,
+            end: new Date(startOfLastWeek.getTime() + 604800000),
+          };
+        }
+        case "this month": {
+          const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+          return { start: startOfMonth, end: endOfMonth };
+        }
+        case "last month": {
+          const startOfLastMonth = new Date(
+            now.getFullYear(),
+            now.getMonth() - 1,
+            1,
+          );
+          const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+          return { start: startOfLastMonth, end: endOfLastMonth };
+        }
+        case "custom":
+          if (startDate && endDate) {
+            const customStart = new Date(startDate);
+            const customEnd = new Date(endDate);
+            customEnd.setHours(23, 59, 59, 999);
+            return { start: customStart, end: customEnd };
+          }
+          return { start: null, end: null };
+        default:
+          return { start: null, end: null };
+      }
+    },
+    [startDate, endDate],
+  );
 
   // Filter orders
-  const filteredOrders = orders.filter(order => {
+  const filteredOrders = orders.filter((order) => {
     if (dateFilter !== "all") {
       const { start, end } = getDateRange(dateFilter);
       if (start && end && order.parsedDate) {
@@ -321,11 +359,12 @@ const Orders = () => {
         }
       }
     }
-    
+
     if (searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       const orderId = order._id || "";
-      const customerName = order.customerDetails?.name || order.customerName || "";
+      const customerName =
+        order.customerDetails?.name || order.customerName || "";
       const orderStatus = order.orderStatus || "";
       return (
         orderId.toLowerCase().includes(query) ||
@@ -338,15 +377,19 @@ const Orders = () => {
 
   // Calculate totals
   const totalSales = filteredOrders
-    .filter(order => order.orderStatus?.toLowerCase() !== "cancelled")
-    .reduce((sum, order) => sum + (Number(order?.bills?.totalWithTax || order?.totalAmount || 0)), 0);
+    .filter((order) => order.orderStatus?.toLowerCase() !== "cancelled")
+    .reduce(
+      (sum, order) =>
+        sum + Number(order?.bills?.totalWithTax || order?.totalAmount || 0),
+      0,
+    );
 
   const activeOrdersCount = filteredOrders.filter(
-    order => order.orderStatus?.toLowerCase() !== "cancelled"
+    (order) => order.orderStatus?.toLowerCase() !== "cancelled",
   ).length;
 
   const completedOrdersCount = filteredOrders.filter(
-    order => order.orderStatus?.toLowerCase() === "completed"
+    (order) => order.orderStatus?.toLowerCase() === "completed",
   ).length;
 
   // Handlers
@@ -354,9 +397,11 @@ const Orders = () => {
     if (!order?._id) return;
     setUpdatingOrderId(order._id);
     try {
-      setOrders(prev => prev.map(o =>
-        o._id === order._id ? { ...o, orderStatus: newStatus } : o
-      ));
+      setOrders((prev) =>
+        prev.map((o) =>
+          o._id === order._id ? { ...o, orderStatus: newStatus } : o,
+        ),
+      );
     } catch (err) {
       console.error("Failed to update order status:", err);
     } finally {
@@ -369,7 +414,7 @@ const Orders = () => {
     setDeletingOrderId(orderId);
     try {
       // Remove from local state (actual API call is handled in OrderCard)
-      setOrders(prev => prev.filter(o => o._id !== orderId));
+      setOrders((prev) => prev.filter((o) => o._id !== orderId));
     } catch (err) {
       console.error("Failed to delete order:", err);
     } finally {
@@ -406,14 +451,17 @@ const Orders = () => {
     { value: "this month", label: "This Month" },
     { value: "last month", label: "Last Month" },
     { value: "custom", label: "Custom Date Range" },
-    { value: "all", label: "All Time" }
+    { value: "all", label: "All Time" },
   ];
 
   const getDateFilterLabel = () => {
     if (dateFilter === "custom" && startDate && endDate) {
       return `${new Date(startDate).toLocaleDateString()} - ${new Date(endDate).toLocaleDateString()}`;
     }
-    return dateFilterOptions.find(opt => opt.value === dateFilter)?.label || "Today";
+    return (
+      dateFilterOptions.find((opt) => opt.value === dateFilter)?.label ||
+      "Today"
+    );
   };
 
   // Render
@@ -427,14 +475,19 @@ const Orders = () => {
             <div className="flex items-center gap-3">
               <BackButton />
               <h1 className="text-xl font-bold text-gray-800">Orders</h1>
-              <span className={`px-2 py-1 text-xs rounded-full ${
-                isAdmin ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
-              }`}>
+              <span
+                className={`px-2 py-1 text-xs rounded-full ${
+                  isAdmin
+                    ? "bg-green-100 text-green-800"
+                    : "bg-blue-100 text-blue-800"
+                }`}
+              >
                 {isAdmin ? "Admin" : "Cashier"}
               </span>
               {lastFetchTime > 0 && (
                 <span className="text-[10px] text-gray-500">
-                  {orders.length} orders • Last updated: {new Date(lastFetchTime).toLocaleTimeString()}
+                  {orders.length} orders • Last updated:{" "}
+                  {new Date(lastFetchTime).toLocaleTimeString()}
                 </span>
               )}
             </div>
@@ -444,12 +497,8 @@ const Orders = () => {
                 className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-2 rounded-lg flex items-center gap-2 text-sm"
                 disabled={loading}
               >
-                {loading ? (
-                  <FaSpinner className="animate-spin" />
-                ) : (
-                  <FaSync />
-                )}
-                {loading ? 'Loading...' : 'Refresh'}
+                {loading ? <FaSpinner className="animate-spin" /> : <FaSync />}
+                {loading ? "Loading..." : "Refresh"}
               </button>
               <button
                 onClick={goToHome}
@@ -467,9 +516,13 @@ const Orders = () => {
               <div className="flex items-center gap-2">
                 <BackButton />
                 <h1 className="text-lg font-bold text-gray-800">Orders</h1>
-                <span className={`px-2 py-0.5 text-xs rounded-full ${
-                  isAdmin ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
-                }`}>
+                <span
+                  className={`px-2 py-0.5 text-xs rounded-full ${
+                    isAdmin
+                      ? "bg-green-100 text-green-800"
+                      : "bg-blue-100 text-blue-800"
+                  }`}
+                >
                   {isAdmin ? "Admin" : "Cashier"}
                 </span>
               </div>
@@ -497,7 +550,8 @@ const Orders = () => {
             </div>
             {lastFetchTime > 0 && (
               <div className="text-[10px] text-gray-500 text-center">
-                {orders.length} orders • Updated: {new Date(lastFetchTime).toLocaleTimeString()}
+                {orders.length} orders • Updated:{" "}
+                {new Date(lastFetchTime).toLocaleTimeString()}
               </div>
             )}
           </div>
@@ -531,11 +585,13 @@ const Orders = () => {
                 className="bg-gray-100 hover:bg-gray-200 text-gray-700 px-3 py-1.5 rounded-lg flex items-center gap-1 text-sm"
               >
                 <FaCalendar className="text-xs" />
-                <span className="max-w-[150px] truncate hidden sm:inline">{getDateFilterLabel()}</span>
+                <span className="max-w-[150px] truncate hidden sm:inline">
+                  {getDateFilterLabel()}
+                </span>
                 <span className="sm:hidden text-xs">Date</span>
                 <FaChevronDown className="text-xs" />
               </button>
-              
+
               {showDateDropdown && (
                 <div className="absolute top-full left-0 mt-1 w-48 bg-white border rounded-lg shadow-lg z-30 max-h-80 overflow-y-auto">
                   {dateFilterOptions.map((option) => (
@@ -552,7 +608,9 @@ const Orders = () => {
                         setShowDateDropdown(false);
                       }}
                       className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 ${
-                        dateFilter === option.value ? "bg-blue-50 text-blue-600" : ""
+                        dateFilter === option.value
+                          ? "bg-blue-50 text-blue-600"
+                          : ""
                       }`}
                     >
                       {option.label}
@@ -618,11 +676,10 @@ const Orders = () => {
             {dateFilter === "custom" && startDate && endDate && (
               <div className="flex items-center gap-1 text-xs">
                 <span className="text-gray-600 truncate max-w-[180px] hidden sm:inline">
-                  {new Date(startDate).toLocaleDateString()} - {new Date(endDate).toLocaleDateString()}
+                  {new Date(startDate).toLocaleDateString()} -{" "}
+                  {new Date(endDate).toLocaleDateString()}
                 </span>
-                <span className="sm:hidden text-gray-600 text-xs">
-                  Custom
-                </span>
+                <span className="sm:hidden text-gray-600 text-xs">Custom</span>
                 <button
                   onClick={handleCustomDateClear}
                   className="text-red-500 hover:text-red-700 text-xs"
@@ -640,12 +697,16 @@ const Orders = () => {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 md:gap-3">
               <div className="bg-white px-2 py-1.5 md:px-3 md:py-2 rounded-lg shadow-sm text-center">
                 <div className="text-xs text-gray-500">Total Orders</div>
-                <div className="font-bold text-sm md:text-base">{filteredOrders.length}</div>
+                <div className="font-bold text-sm md:text-base">
+                  {filteredOrders.length}
+                </div>
               </div>
-             
+
               <div className="bg-white px-2 py-1.5 md:px-3 md:py-2 rounded-lg shadow-sm text-center">
                 <div className="text-xs text-gray-500">Sales</div>
-                <div className="font-bold text-xs md:text-sm">₱{totalSales.toFixed(2)}</div>
+                <div className="font-bold text-xs md:text-sm">
+                  ₱{totalSales.toFixed(2)}
+                </div>
               </div>
             </div>
           </div>
@@ -678,7 +739,9 @@ const Orders = () => {
             <div className="text-center">
               <div className="text-3xl md:text-4xl mb-2">📋</div>
               <p className="text-gray-600 text-sm mb-2">
-                {!orders.length ? "No orders found" : "No orders match your filters"}
+                {!orders.length
+                  ? "No orders found"
+                  : "No orders match your filters"}
               </p>
               {orders.length > 0 && dateFilter !== "all" && (
                 <button

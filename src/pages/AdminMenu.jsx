@@ -154,17 +154,28 @@ const AdminMenu = () => {
     );
     if (cachedInventory) {
       setInventoryItems(cachedInventory);
-      console.log("✅ Loaded inventory from localStorage cache");
+      console.log(
+        "✅ Loaded inventory from localStorage cache, count:",
+        cachedInventory.length,
+      );
       return;
     }
 
     try {
       const response = await getInventory();
+      console.log("📦 Inventory API response:", response.data);
+
       if (response.data.success) {
         const inventoryData = response.data.data || [];
         setInventoryItems(inventoryData);
         saveToCache("admin_cached_inventory", inventoryData);
-        console.log("✅ Loaded fresh inventory from API and cached");
+        console.log(
+          "✅ Loaded fresh inventory from API and cached, count:",
+          inventoryData.length,
+        );
+      } else {
+        console.error("Inventory API returned success=false:", response.data);
+        setInventoryItems([]);
       }
     } catch (error) {
       console.error("Error loading inventory:", error);
@@ -172,20 +183,46 @@ const AdminMenu = () => {
       const expiredInventory = localStorage.getItem("admin_cached_inventory");
       if (expiredInventory) {
         try {
-          setInventoryItems(JSON.parse(expiredInventory));
-          console.log("⚠️ Using expired inventory cache due to API failure");
+          const parsedInventory = JSON.parse(expiredInventory);
+          setInventoryItems(parsedInventory);
+          console.log(
+            "⚠️ Using expired inventory cache due to API failure, count:",
+            parsedInventory.length,
+          );
         } catch (e) {
           console.error("Error parsing fallback inventory:", e);
+          setInventoryItems([]);
         }
+      } else {
+        setInventoryItems([]);
       }
     }
   }, []);
 
+  // Initial load
   useEffect(() => {
     loadMenus();
     loadFlavors();
     loadInventory();
   }, [loadMenus, loadFlavors, loadInventory]);
+
+  // Listen for inventory changes from other components (like InventoryForm)
+  useEffect(() => {
+    const handleInventoryChange = (event) => {
+      console.log("🔄 Inventory change detected, refreshing...", event.detail);
+      // Clear cache and reload inventory
+      localStorage.removeItem("admin_cached_inventory");
+      localStorage.removeItem("admin_cached_inventory_timestamp");
+      loadInventory();
+    };
+
+    window.addEventListener("inventoryChanged", handleInventoryChange);
+
+    // Cleanup listener on component unmount
+    return () => {
+      window.removeEventListener("inventoryChanged", handleInventoryChange);
+    };
+  }, [loadInventory]);
 
   // Refresh cache after mutations
   const refreshMenusCache = async () => {
@@ -221,6 +258,10 @@ const AdminMenu = () => {
         const inventoryData = response.data.data || [];
         setInventoryItems(inventoryData);
         saveToCache("admin_cached_inventory", inventoryData);
+        console.log(
+          "✅ Inventory cache refreshed, count:",
+          inventoryData.length,
+        );
       }
     } catch (error) {
       console.error("Error refreshing inventory cache:", error);
@@ -566,6 +607,33 @@ const AdminMenu = () => {
           >
             🔄 Refresh All Data
           </button>
+        </div>
+
+        {/* Inventory Summary */}
+        <div className="mb-6 bg-blue-50 border border-blue-200 rounded-lg p-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <MdInventory size={20} className="text-blue-600" />
+              <span className="font-medium text-blue-800">
+                Inventory Items Available:
+              </span>
+              <span className="text-blue-600 font-bold">
+                {inventoryItems.length}
+              </span>
+            </div>
+            <button
+              onClick={refreshInventoryCache}
+              className="text-blue-600 text-sm hover:text-blue-800"
+            >
+              Refresh Inventory
+            </button>
+          </div>
+          {inventoryItems.length === 0 && (
+            <p className="text-sm text-blue-600 mt-2">
+              No inventory items found. Please add inventory items first in the
+              Inventory page.
+            </p>
+          )}
         </div>
 
         {/* Main Grid */}
@@ -922,6 +990,12 @@ const AdminMenu = () => {
                       + Add Requirement
                     </button>
                   </div>
+                  {itemForm.inventoryRequirements.length === 0 && (
+                    <p className="text-sm text-gray-500 text-center py-2">
+                      No inventory requirements added. Add ingredients/supplies
+                      needed for this item.
+                    </p>
+                  )}
                   {itemForm.inventoryRequirements.map((req, idx) => (
                     <div
                       key={idx}
@@ -941,8 +1015,9 @@ const AdminMenu = () => {
                         <option value="">Select Inventory Item</option>
                         {inventoryItems.map((inv) => (
                           <option key={inv._id} value={inv._id}>
-                            {inv.itemName} ({inv.remainingQuantity} {inv.unit}{" "}
-                            left)
+                            {inv.itemName} (
+                            {inv.remainingQuantity || inv.quantity || 0}{" "}
+                            {inv.unit} left)
                           </option>
                         ))}
                       </select>
@@ -972,12 +1047,6 @@ const AdminMenu = () => {
                       </button>
                     </div>
                   ))}
-                  {itemForm.inventoryRequirements.length === 0 && (
-                    <p className="text-sm text-gray-500 text-center py-2">
-                      No inventory requirements added. Add ingredients/supplies
-                      needed for this item.
-                    </p>
-                  )}
                 </div>
               )}
 

@@ -6,6 +6,41 @@ import {
 } from "@ant-design/icons";
 
 const InventoryList = ({ data, onEdit, onDelete, loading }) => {
+  const [selectedItems, setSelectedItems] = React.useState([]);
+
+  React.useEffect(() => {
+    setSelectedItems([]);
+  }, [data]);
+
+  const handleSelectItem = (itemId) => {
+    setSelectedItems((prev) => {
+      if (prev.includes(itemId)) {
+        return prev.filter((id) => id !== itemId);
+      } else {
+        return [...prev, itemId];
+      }
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (selectedItems.length === data.length) {
+      setSelectedItems([]);
+    } else {
+      setSelectedItems(data.map((item) => item._id));
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    if (selectedItems.length === 0) return;
+    selectedItems.forEach((itemId) => {
+      const item = data.find((i) => i._id === itemId);
+      if (item) onDelete(item);
+    });
+    setSelectedItems([]);
+  };
+
+  const isAllSelected = data.length > 0 && selectedItems.length === data.length;
+
   if (loading) {
     return (
       <div className="flex justify-center items-center py-8">
@@ -24,9 +59,31 @@ const InventoryList = ({ data, onEdit, onDelete, loading }) => {
 
   return (
     <div className="overflow-x-auto bg-white rounded-lg shadow">
+      {selectedItems.length > 0 && (
+        <div className="bg-blue-50 px-4 py-2 flex justify-between items-center border-b border-gray-200">
+          <span className="text-sm text-blue-700">
+            {selectedItems.length} item(s) selected
+          </span>
+          <button
+            onClick={handleDeleteSelected}
+            className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm flex items-center gap-1"
+          >
+            <DeleteOutlined /> Delete Selected
+          </button>
+        </div>
+      )}
       <table className="min-w-full divide-y divide-gray-200">
         <thead className="bg-gray-50">
           <tr>
+            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+              <input
+                type="checkbox"
+                checked={isAllSelected}
+                onChange={handleSelectAll}
+                className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                disabled={data.length === 0}
+              />
+            </th>
             <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
               Item
             </th>
@@ -66,6 +123,14 @@ const InventoryList = ({ data, onEdit, onDelete, loading }) => {
 
             return (
               <tr key={item._id} className="hover:bg-gray-50">
+                <td className="px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedItems.includes(item._id)}
+                    onChange={() => handleSelectItem(item._id)}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-col">
                     <div className="text-sm font-medium text-gray-900">

@@ -8,7 +8,7 @@ const InventoryForm = ({ item, onSave, onCancel }) => {
     category: "Ingredients",
     quantity: "",
     unit: "pcs",
-    unitPrice: "",
+    unitPrice: "1",
     supplier: "",
     datePurchased: new Date().toISOString().split("T")[0],
     receiptNumber: "",
@@ -60,7 +60,10 @@ const InventoryForm = ({ item, onSave, onCancel }) => {
         category: item.category || "Ingredients",
         quantity: item.quantity || "",
         unit: item.unit || "pcs",
-        unitPrice: item.unitPrice || "",
+        unitPrice:
+          item.unitPrice !== undefined && item.unitPrice !== null
+            ? item.unitPrice.toString()
+            : "1",
         supplier: item.supplier || "",
         datePurchased: item.datePurchased
           ? new Date(item.datePurchased).toISOString().split("T")[0]
@@ -82,7 +85,7 @@ const InventoryForm = ({ item, onSave, onCancel }) => {
     const { name, value } = e.target;
     setFormData((prev) => ({
       ...prev,
-      [name]: value === "" ? 0 : parseFloat(value),
+      [name]: value === "" ? "" : parseFloat(value),
     }));
     if (error) setError("");
   };
@@ -132,6 +135,23 @@ const InventoryForm = ({ item, onSave, onCancel }) => {
     });
   };
 
+  // Function to notify other components that inventory has changed
+  const notifyInventoryChange = () => {
+    // Clear all inventory caches
+    localStorage.removeItem("admin_cached_inventory");
+    localStorage.removeItem("admin_cached_inventory_timestamp");
+    localStorage.removeItem("cached_inventory");
+    localStorage.removeItem("cached_inventory_timestamp");
+
+    // Dispatch a custom event that other components can listen to
+    const event = new CustomEvent("inventoryChanged", {
+      detail: { message: "Inventory has been updated", timestamp: Date.now() },
+    });
+    window.dispatchEvent(event);
+
+    console.log("📢 Inventory change notification sent to all components");
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
@@ -149,10 +169,17 @@ const InventoryForm = ({ item, onSave, onCancel }) => {
       return;
     }
 
-    if (!formData.unitPrice || formData.unitPrice <= 0) {
-      setError("Unit price must be greater than 0");
-      setLoading(false);
-      return;
+    // Handle unit price - if empty or invalid, default to 1
+    let unitPriceValue = 1;
+    if (
+      formData.unitPrice !== "" &&
+      formData.unitPrice !== null &&
+      formData.unitPrice !== undefined
+    ) {
+      const parsedPrice = parseFloat(formData.unitPrice);
+      if (!isNaN(parsedPrice) && parsedPrice > 0) {
+        unitPriceValue = parsedPrice;
+      }
     }
 
     const submitData = {
@@ -161,7 +188,7 @@ const InventoryForm = ({ item, onSave, onCancel }) => {
       category: formData.category,
       quantity: Number(formData.quantity),
       unit: formData.unit,
-      unitPrice: Number(formData.unitPrice),
+      unitPrice: unitPriceValue,
       supplier: formData.supplier || "",
       datePurchased: formData.datePurchased,
       receiptNumber: formData.receiptNumber || "",
@@ -186,6 +213,8 @@ const InventoryForm = ({ item, onSave, onCancel }) => {
       }
 
       if (response && (response.status === 200 || response.status === 201)) {
+        // Notify all components that inventory has changed
+        notifyInventoryChange();
         onSave();
       } else {
         throw new Error(response?.data?.message || "Unknown error");
@@ -224,10 +253,15 @@ const InventoryForm = ({ item, onSave, onCancel }) => {
     "lb",
   ];
 
-  const totalCost =
-    formData.quantity && formData.unitPrice
-      ? (Number(formData.quantity) * Number(formData.unitPrice)).toFixed(2)
-      : "0.00";
+  const totalCost = (() => {
+    const quantity = Number(formData.quantity);
+    const unitPrice =
+      formData.unitPrice === "" ? 1 : Number(formData.unitPrice);
+    if (quantity && !isNaN(quantity) && unitPrice && !isNaN(unitPrice)) {
+      return (quantity * unitPrice).toFixed(2);
+    }
+    return "0.00";
+  })();
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
@@ -311,7 +345,7 @@ const InventoryForm = ({ item, onSave, onCancel }) => {
       <div className="grid grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            Unit Price (₱) *
+            Unit Price (₱)
           </label>
           <input
             type="number"
@@ -320,10 +354,13 @@ const InventoryForm = ({ item, onSave, onCancel }) => {
             onChange={handleNumberChange}
             min="0"
             step="0.01"
-            required
             className="w-full px-3 py-2 border rounded-md"
             disabled={loading}
+            placeholder="Optional - defaults to 1"
           />
+          <p className="text-xs text-gray-500 mt-1">
+            Optional - will default to ₱1.00 if left empty
+          </p>
         </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -332,6 +369,9 @@ const InventoryForm = ({ item, onSave, onCancel }) => {
           <div className="w-full px-3 py-2 bg-gray-100 border rounded-md text-gray-700">
             ₱{totalCost}
           </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Auto-calculated from quantity × unit price (defaults to 1 if empty)
+          </p>
         </div>
       </div>
 
