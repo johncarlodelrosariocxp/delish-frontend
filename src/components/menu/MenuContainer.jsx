@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { GrRadialSelected } from "react-icons/gr";
-import { useDispatch } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { addItemsToOrder } from "../../redux/slices/orderSlice";
 import { getItemFlavors, checkMenuItemAvailability } from "../../https";
 
@@ -23,46 +23,135 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
 
   const dispatch = useDispatch();
 
-  // Load flavors from API
+  // Get current order items to check for duplicates
+  const { orders, activeOrderId } = useSelector((state) => state.order);
+  const currentOrder = orders.find((order) => order.id === orderId);
+
+  // Load flavors from API with 24-hour caching
   useEffect(() => {
     const loadFlavors = async () => {
+      // Check localStorage for cached flavors
+      const cachedFlavors = localStorage.getItem("cached_flavors");
+      const cachedTimestamp = localStorage.getItem("cached_flavors_timestamp");
+      const now = Date.now();
+      const cacheDuration = 24 * 60 * 60 * 1000; // 24 hours cache
+
+      if (
+        cachedFlavors &&
+        cachedTimestamp &&
+        now - parseInt(cachedTimestamp) < cacheDuration
+      ) {
+        try {
+          const parsedFlavors = JSON.parse(cachedFlavors);
+          setFlavors(parsedFlavors);
+          console.log(
+            "✅ Loaded flavors from localStorage cache (valid for 24 hours)",
+          );
+          return;
+        } catch (error) {
+          console.error("Error parsing cached flavors:", error);
+        }
+      }
+
       try {
         const response = await getItemFlavors();
         if (response.data.success) {
-          setFlavors(response.data.flavors);
+          const freshFlavors = response.data.flavors || [];
+          setFlavors(freshFlavors);
+
+          // Save to localStorage with 24 hour expiry
+          localStorage.setItem("cached_flavors", JSON.stringify(freshFlavors));
+          localStorage.setItem(
+            "cached_flavors_timestamp",
+            Date.now().toString(),
+          );
+          console.log(
+            "✅ Loaded fresh flavors from API and cached for 24 hours",
+          );
         }
       } catch (error) {
         console.error("Error loading flavors:", error);
+
+        // Try to use expired cache as fallback
+        const cachedFlavors = localStorage.getItem("cached_flavors");
+        if (cachedFlavors) {
+          try {
+            const parsedFlavors = JSON.parse(cachedFlavors);
+            setFlavors(parsedFlavors);
+            console.log("⚠️ Using expired flavors cache due to API failure");
+          } catch (e) {
+            console.error("Error parsing fallback flavors cache:", e);
+          }
+        }
       }
     };
     loadFlavors();
   }, []);
 
-  // Check stock availability for menu items
+  // Check stock availability for menu items with 1-hour caching
   const checkItemStock = async (menuId, itemId, itemName) => {
     const key = `${menuId}-${itemId}`;
     if (checkingAvailability[key]) return;
+
+    // Check localStorage cache for stock status
+    const cacheKey = `stock_cache_${key}`;
+    const cachedStock = localStorage.getItem(cacheKey);
+    const cachedTimestamp = localStorage.getItem(`${cacheKey}_timestamp`);
+    const now = Date.now();
+    const cacheDuration = 60 * 60 * 1000; // 1 hour cache for stock
+
+    if (
+      cachedStock &&
+      cachedTimestamp &&
+      now - parseInt(cachedTimestamp) < cacheDuration
+    ) {
+      try {
+        const parsedStock = JSON.parse(cachedStock);
+        setStockStatus((prev) => ({
+          ...prev,
+          [key]: parsedStock,
+        }));
+        return;
+      } catch (error) {
+        console.error("Error parsing cached stock:", error);
+      }
+    }
 
     setCheckingAvailability((prev) => ({ ...prev, [key]: true }));
 
     try {
       const response = await checkMenuItemAvailability(menuId, itemId, 1);
       if (response.data.success && response.data.data) {
+        const stockData = {
+          available: response.data.data.available,
+          requirements: response.data.data.requirements || [],
+          totalIngredientCost: response.data.data.totalIngredientCost || 0,
+          message: response.data.data.available ? "In Stock" : "Out of Stock",
+        };
+
         setStockStatus((prev) => ({
           ...prev,
-          [key]: {
-            available: response.data.data.available,
-            requirements: response.data.data.requirements || [],
-            totalIngredientCost: response.data.data.totalIngredientCost || 0,
-            message: response.data.data.available ? "In Stock" : "Out of Stock",
-          },
+          [key]: stockData,
         }));
+
+        // Save to localStorage cache with 1 hour expiry
+        localStorage.setItem(cacheKey, JSON.stringify(stockData));
+        localStorage.setItem(`${cacheKey}_timestamp`, Date.now().toString());
+      } else {
+        const stockData = { available: true, message: "In Stock" };
+        setStockStatus((prev) => ({
+          ...prev,
+          [key]: stockData,
+        }));
+        localStorage.setItem(cacheKey, JSON.stringify(stockData));
+        localStorage.setItem(`${cacheKey}_timestamp`, Date.now().toString());
       }
     } catch (error) {
       console.error(`Error checking stock for ${itemName}:`, error);
+      const stockData = { available: true, message: "Stock check failed" };
       setStockStatus((prev) => ({
         ...prev,
-        [key]: { available: true, message: "Stock check failed" },
+        [key]: stockData,
       }));
     } finally {
       setCheckingAvailability((prev) => ({ ...prev, [key]: false }));
@@ -91,7 +180,28 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
     }
   }, [menus, selected]);
 
-  // Handle add to cart with stock check
+  // Generate unique item key for checking if item already exists in cart
+  const getItemKey = (item, variant, flavor = null) => {
+    let key = `${item.id}-${variant.label}`;
+    if (flavor) {
+      key += `-${flavor.label}`;
+    }
+    return key;
+  };
+
+  // Check if item already exists in cart
+  const isItemInCart = (itemKey) => {
+    if (!currentOrder?.items) return false;
+    return currentOrder.items.some((cartItem) => cartItem.itemKey === itemKey);
+  };
+
+  // Get existing cart item
+  const getExistingCartItem = (itemKey) => {
+    if (!currentOrder?.items) return null;
+    return currentOrder.items.find((cartItem) => cartItem.itemKey === itemKey);
+  };
+
+  // Handle add to cart with stock check (increment quantity if exists)
   const handleAddToCart = async (item, variant, menu) => {
     // Check if item requires inventory tracking
     if (item.trackInventory && item.inventoryRequirements?.length > 0) {
@@ -99,7 +209,6 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
       const stock = stockStatus[key];
 
       if (!stock || !stock.available) {
-        // Show detailed out of stock message
         const requirementsList =
           stock?.requirements || item.inventoryRequirements;
         let message = `❌ Cannot add ${item.name} to order.\n\nMissing ingredients:\n`;
@@ -112,16 +221,39 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
       }
     }
 
-    // Proceed with adding to cart
-    const newObj = {
-      id: `${item.id}-${variant.label}`,
-      name: `${item.name} (${variant.label})`,
-      pricePerQuantity: variant.price,
-      quantity: 1,
-      price: variant.price,
-    };
+    const itemKey = getItemKey(item, variant);
+    const existingItem = getExistingCartItem(itemKey);
 
-    dispatch(addItemsToOrder({ orderId, item: newObj }));
+    if (existingItem) {
+      // Item already exists, update quantity
+      const updatedItem = {
+        ...existingItem,
+        quantity: (existingItem.quantity || 1) + 1,
+        totalPrice:
+          ((existingItem.quantity || 1) + 1) * existingItem.pricePerQuantity,
+      };
+      dispatch(
+        addItemsToOrder({
+          orderId,
+          item: updatedItem,
+          isUpdate: true,
+          itemKey,
+        }),
+      );
+    } else {
+      // New item, add to cart
+      const newObj = {
+        id: `${item.id}-${variant.label}-${Date.now()}`,
+        itemKey: itemKey,
+        name: `${item.name} (${variant.label})`,
+        pricePerQuantity: variant.price,
+        quantity: 1,
+        price: variant.price,
+        originalItemId: item.id,
+        variant: variant.label,
+      };
+      dispatch(addItemsToOrder({ orderId, item: newObj }));
+    }
   };
 
   // Handle Bento & Mini item add to cart
@@ -144,15 +276,39 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
       }
     }
 
-    const newObj = {
-      id: `${item.id}-${variant.label}`,
-      name: `${item.name}`,
-      pricePerQuantity: variant.price,
-      quantity: 1,
-      price: variant.price,
-    };
+    const itemKey = getItemKey(item, variant);
+    const existingItem = getExistingCartItem(itemKey);
 
-    dispatch(addItemsToOrder({ orderId, item: newObj }));
+    if (existingItem) {
+      // Item already exists, update quantity
+      const updatedItem = {
+        ...existingItem,
+        quantity: (existingItem.quantity || 1) + 1,
+        totalPrice:
+          ((existingItem.quantity || 1) + 1) * existingItem.pricePerQuantity,
+      };
+      dispatch(
+        addItemsToOrder({
+          orderId,
+          item: updatedItem,
+          isUpdate: true,
+          itemKey,
+        }),
+      );
+    } else {
+      // New item, add to cart
+      const newObj = {
+        id: `${item.id}-${variant.label}-${Date.now()}`,
+        itemKey: itemKey,
+        name: `${item.name}`,
+        pricePerQuantity: variant.price,
+        quantity: 1,
+        price: variant.price,
+        originalItemId: item.id,
+        variant: variant.label,
+      };
+      dispatch(addItemsToOrder({ orderId, item: newObj }));
+    }
   };
 
   // Handle Regular Item with flavor selection
@@ -192,22 +348,52 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
       }
     }
 
-    const newObj = {
-      id: `${selectedRegularItem.id}-${selectedRegularBase.label}-${flavor.label}`,
-      name: `${selectedRegularItem.name} - ${flavor.label}`,
-      pricePerQuantity: flavor.price,
-      quantity: 1,
-      price: flavor.price,
-    };
+    const itemKey = getItemKey(
+      selectedRegularItem,
+      selectedRegularBase,
+      flavor,
+    );
+    const existingItem = getExistingCartItem(itemKey);
 
-    dispatch(addItemsToOrder({ orderId, item: newObj }));
+    if (existingItem) {
+      // Item already exists, update quantity
+      const updatedItem = {
+        ...existingItem,
+        quantity: (existingItem.quantity || 1) + 1,
+        totalPrice:
+          ((existingItem.quantity || 1) + 1) * existingItem.pricePerQuantity,
+      };
+      dispatch(
+        addItemsToOrder({
+          orderId,
+          item: updatedItem,
+          isUpdate: true,
+          itemKey,
+        }),
+      );
+    } else {
+      // New item, add to cart
+      const newObj = {
+        id: `${selectedRegularItem.id}-${selectedRegularBase.label}-${flavor.label}-${Date.now()}`,
+        itemKey: itemKey,
+        name: `${selectedRegularItem.name} - ${flavor.label}`,
+        pricePerQuantity: flavor.price,
+        quantity: 1,
+        price: flavor.price,
+        originalItemId: selectedRegularItem.id,
+        variant: selectedRegularBase.label,
+        flavor: flavor.label,
+      };
+      dispatch(addItemsToOrder({ orderId, item: newObj }));
+    }
+
     setShowRegularFlavors(false);
     setSelectedRegularItem(null);
     setSelectedRegularBase(null);
   };
 
   // Handle Keto Item with flavor selection
-  const handleKetoItemClick = (item, baseVariant, isMini = false, menu) => {
+  const handleKetoItemClick = (item, baseVariant, isMini = false) => {
     if (isMini) {
       setSelectedKetoMiniItem(item);
       setSelectedKetoMiniBase(baseVariant);
@@ -233,13 +419,16 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
   const handleKetoFlavorSelect = async (flavor, menu) => {
     let item = null;
     let baseVariant = null;
+    let isMini = false;
 
     if (selectedKetoItem && selectedKetoBase) {
       item = selectedKetoItem;
       baseVariant = selectedKetoBase;
+      isMini = false;
     } else if (selectedKetoMiniItem && selectedKetoMiniBase) {
       item = selectedKetoMiniItem;
       baseVariant = selectedKetoMiniBase;
+      isMini = true;
     }
 
     if (!item) return;
@@ -262,22 +451,38 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
       }
     }
 
-    if (selectedKetoItem && selectedKetoBase) {
-      const newObj = {
-        id: `${selectedKetoItem.id}-${selectedKetoBase.label}-${flavor.label}`,
-        name: `${selectedKetoItem.name} - ${flavor.label}`,
-        pricePerQuantity: flavor.price,
-        quantity: 1,
-        price: flavor.price,
+    const itemKey = getItemKey(item, baseVariant, flavor);
+    const existingItem = getExistingCartItem(itemKey);
+
+    if (existingItem) {
+      // Item already exists, update quantity
+      const updatedItem = {
+        ...existingItem,
+        quantity: (existingItem.quantity || 1) + 1,
+        totalPrice:
+          ((existingItem.quantity || 1) + 1) * existingItem.pricePerQuantity,
       };
-      dispatch(addItemsToOrder({ orderId, item: newObj }));
-    } else if (selectedKetoMiniItem && selectedKetoMiniBase) {
+      dispatch(
+        addItemsToOrder({
+          orderId,
+          item: updatedItem,
+          isUpdate: true,
+          itemKey,
+        }),
+      );
+    } else {
+      // New item, add to cart
       const newObj = {
-        id: `${selectedKetoMiniItem.id}-${selectedKetoMiniBase.label}-${flavor.label}`,
-        name: `${selectedKetoMiniItem.name} - ${flavor.label}`,
+        id: `${item.id}-${baseVariant.label}-${flavor.label}-${Date.now()}`,
+        itemKey: itemKey,
+        name: `${item.name} - ${flavor.label}`,
         pricePerQuantity: flavor.price,
         quantity: 1,
         price: flavor.price,
+        originalItemId: item.id,
+        variant: baseVariant.label,
+        flavor: flavor.label,
+        isMini: isMini,
       };
       dispatch(addItemsToOrder({ orderId, item: newObj }));
     }
@@ -295,22 +500,17 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
 
   // Check if item has flavor selection
   const hasFlavorSelection = (item) => {
-    return (
-      item.hasFlavorSelection === true ||
-      item.name?.toLowerCase().includes("cheesecake") ||
-      item.name?.toLowerCase().includes("slice") ||
-      item.name?.toLowerCase().includes("mini")
-    );
+    return item.hasFlavorSelection === true;
   };
 
   // Check if item is available (has stock)
   const isItemAvailable = (item, menu) => {
     if (!item.trackInventory || !item.inventoryRequirements?.length) {
-      return true; // No inventory tracking = always available
+      return true;
     }
     const key = `${menu.id}-${item.id}`;
     const stock = stockStatus[key];
-    return stock ? stock.available : true; // Assume available if not checked yet
+    return stock ? stock.available : true;
   };
 
   // Get stock status message
@@ -353,7 +553,7 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
 
   return (
     <div className="w-full h-[calc(100vh-8rem)] flex bg-gray-50">
-      {/* 🟡 Category Sidebar */}
+      {/* Category Sidebar */}
       <div className="w-48 sm:w-56 md:w-60 lg:w-64 bg-white shadow-md overflow-y-auto flex-shrink-0">
         <div className="grid grid-cols-2 gap-2 p-3">
           {menus.map((menu) => (
@@ -365,10 +565,10 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
                   ? "border-2 border-yellow-400 shadow-lg scale-105"
                   : "border border-gray-200 shadow-sm"
               }`}
-              style={{ backgroundColor: menu.bgColor }}
+              style={{ backgroundColor: menu.bgColor || "#f59e0b" }}
             >
               <div className="text-white text-sm lg:text-base font-semibold text-center mb-1">
-                {menu.icon}
+                {menu.icon || "🍽️"}
               </div>
               <h1 className="text-white text-[0.7rem] sm:text-[0.75rem] font-semibold text-center leading-tight line-clamp-2">
                 {menu.name}
@@ -384,16 +584,16 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
         </div>
       </div>
 
-      {/* 🟢 Scrollable Menu Grid */}
+      {/* Scrollable Menu Grid */}
       <div className="flex-1 flex flex-col min-h-0">
         {/* Current Category Header */}
         <div className="bg-white shadow-sm border-b border-gray-200 px-4 py-3">
           <div className="flex items-center gap-3">
             <div
               className="w-8 h-8 rounded-lg flex items-center justify-center text-white text-sm font-bold"
-              style={{ backgroundColor: selected?.bgColor }}
+              style={{ backgroundColor: selected?.bgColor || "#f59e0b" }}
             >
-              {selected?.icon}
+              {selected?.icon || "🍽️"}
             </div>
             <div>
               <h1 className="text-gray-900 text-lg font-bold">
@@ -449,7 +649,7 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
                     )}
                   </div>
 
-                  {/* Inventory Requirements (show what's needed) */}
+                  {/* Inventory Requirements */}
                   {item.trackInventory &&
                     item.inventoryRequirements?.length > 0 &&
                     !stockMessage && (
@@ -502,12 +702,7 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
                                 const isMini = item.name
                                   ?.toLowerCase()
                                   .includes("mini");
-                                handleKetoItemClick(
-                                  item,
-                                  variant,
-                                  isMini,
-                                  selected,
-                                );
+                                handleKetoItemClick(item, variant, isMini);
                               } else {
                                 handleAddToCart(item, variant, selected);
                               }
@@ -607,10 +802,10 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
                 {selectedRegularItem.name}
               </h3>
               <p className="text-gray-600">
-                Price: ₱{selectedRegularBase.price.toLocaleString()}
+                Base Price: ₱{selectedRegularBase.price.toLocaleString()}
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                Choose your favorite flavor
+                Choose your favorite flavor (additional cost applies)
               </p>
             </div>
 
@@ -635,7 +830,7 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
                         ₱{flavor.price.toLocaleString()}
                       </p>
                       <button className="bg-yellow-500 text-white px-3 py-1 rounded text-sm hover:bg-yellow-600 transition-colors mt-1">
-                        Add Flavor
+                        Add
                       </button>
                     </div>
                   </div>
@@ -674,13 +869,15 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
                 {selectedKetoItem?.name || selectedKetoMiniItem?.name}
               </h3>
               <p className="text-gray-600">
-                Price: ₱
+                Base Price: ₱
                 {(
-                  selectedKetoBase?.price || selectedKetoMiniBase?.price
+                  selectedKetoBase?.price ||
+                  selectedKetoMiniBase?.price ||
+                  0
                 ).toLocaleString()}
               </p>
               <p className="text-sm text-gray-500 mt-1">
-                Choose your favorite flavor
+                Choose your favorite flavor (additional cost applies)
               </p>
             </div>
 
@@ -708,7 +905,7 @@ const MenuContainer = ({ orderId, menus, loadingMenus }) => {
                         ₱{flavor.price.toLocaleString()}
                       </p>
                       <button className="bg-purple-500 text-white px-3 py-1 rounded text-sm hover:bg-purple-600 transition-colors mt-1">
-                        Add Flavor
+                        Add
                       </button>
                     </div>
                   </div>

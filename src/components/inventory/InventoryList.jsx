@@ -3,24 +3,9 @@ import {
   EditOutlined,
   DeleteOutlined,
   ExclamationCircleOutlined,
-  PlusOutlined,
-  MinusOutlined,
 } from "@ant-design/icons";
-import { updateStock } from "../../https";
 
-const InventoryList = ({ data, onEdit, onDelete, loading, onRefresh }) => {
-  const handleQuantityUpdate = async (item, type) => {
-    if (!item?._id) return;
-
-    try {
-      await updateStock(item._id, { quantity: 1, type });
-      if (onRefresh) onRefresh();
-    } catch (error) {
-      console.error("Error updating quantity:", error);
-      alert(error.response?.data?.message || "Error updating quantity");
-    }
-  };
-
+const InventoryList = ({ data, onEdit, onDelete, loading }) => {
   if (loading) {
     return (
       <div className="flex justify-center items-center py-8">
@@ -100,13 +85,6 @@ const InventoryList = ({ data, onEdit, onDelete, loading, onRefresh }) => {
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex items-center space-x-2">
-                    <button
-                      onClick={() => handleQuantityUpdate(item, "remove")}
-                      className="p-1 text-red-600 hover:bg-red-50 rounded"
-                      disabled={remainingQuantity <= 0}
-                    >
-                      <MinusOutlined />
-                    </button>
                     <span
                       className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-medium min-w-12 justify-center ${
                         isOutOfStock
@@ -118,12 +96,6 @@ const InventoryList = ({ data, onEdit, onDelete, loading, onRefresh }) => {
                     >
                       {quantity} {item.unit}
                     </span>
-                    <button
-                      onClick={() => handleQuantityUpdate(item, "add")}
-                      className="p-1 text-green-600 hover:bg-green-50 rounded"
-                    >
-                      <PlusOutlined />
-                    </button>
                     {isLowStock && !isOutOfStock && (
                       <div
                         className="text-red-500 cursor-help"

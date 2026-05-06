@@ -1,6 +1,8 @@
+// src/pages/Inventory.jsx
 import React, { useState, useEffect } from "react";
 import InventoryForm from "../components/inventory/InventoryForm";
 import InventoryList from "../components/inventory/InventoryList";
+import InventoryTransactionReport from "../components/inventory/InventoryTransactionReport";
 import { getInventory, deleteInventoryItem } from "../https";
 import BackButton from "../components/shared/BackButton";
 import BottomNav from "../components/shared/BottomNav";
@@ -99,7 +101,8 @@ const Inventory = () => {
   const totalValue =
     summary?.totalValue ||
     inventory.reduce(
-      (sum, item) => sum + item.remainingQuantity * item.unitPrice,
+      (sum, item) =>
+        sum + (item.remainingQuantity || 0) * (item.unitPrice || 0),
       0,
     );
   const totalItems = inventory.length;
@@ -127,99 +130,132 @@ const Inventory = () => {
               <BackButton />
               <h1 className="text-xl font-bold text-gray-800">Inventory</h1>
             </div>
-            <button
-              onClick={handleCreate}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm"
-            >
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
+            {activeTab !== "reports" && (
+              <button
+                onClick={handleCreate}
+                className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2 text-sm"
               >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 4v16m8-8H4"
-                />
-              </svg>
-              Add Item
-            </button>
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Add Item
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="px-4 py-3 border-t bg-gray-50">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            <div className="bg-white p-3 rounded-lg shadow-sm">
-              <p className="text-xs text-gray-500">Total Items</p>
-              <p className="text-xl font-bold text-blue-600">{totalItems}</p>
+        {activeTab !== "reports" && (
+          <>
+            <div className="px-4 py-3 border-t bg-gray-50">
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-white p-3 rounded-lg shadow-sm">
+                  <p className="text-xs text-gray-500">Total Items</p>
+                  <p className="text-xl font-bold text-blue-600">
+                    {totalItems}
+                  </p>
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm">
+                  <p className="text-xs text-gray-500">Inventory Value</p>
+                  <p className="text-sm font-bold text-green-600">
+                    {formatCurrency(totalValue)}
+                  </p>
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm">
+                  <p className="text-xs text-gray-500">Low Stock</p>
+                  <p className="text-xl font-bold text-orange-600">
+                    {lowStockCount}
+                  </p>
+                </div>
+                <div className="bg-white p-3 rounded-lg shadow-sm">
+                  <p className="text-xs text-gray-500">Out of Stock</p>
+                  <p className="text-xl font-bold text-red-600">
+                    {outOfStockCount}
+                  </p>
+                </div>
+              </div>
             </div>
-            <div className="bg-white p-3 rounded-lg shadow-sm">
-              <p className="text-xs text-gray-500">Inventory Value</p>
-              <p className="text-sm font-bold text-green-600">
-                {formatCurrency(totalValue)}
-              </p>
-            </div>
-            <div className="bg-white p-3 rounded-lg shadow-sm">
-              <p className="text-xs text-gray-500">Low Stock</p>
-              <p className="text-xl font-bold text-orange-600">
-                {lowStockCount}
-              </p>
-            </div>
-            <div className="bg-white p-3 rounded-lg shadow-sm">
-              <p className="text-xs text-gray-500">Out of Stock</p>
-              <p className="text-xl font-bold text-red-600">
-                {outOfStockCount}
-              </p>
-            </div>
-          </div>
-        </div>
 
-        <div className="px-4 border-b">
-          <div className="flex space-x-6">
+            <div className="px-4 border-b">
+              <div className="flex space-x-6">
+                <button
+                  onClick={() => setActiveTab("all")}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === "all"
+                      ? "border-blue-500 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  All Items ({totalItems})
+                </button>
+                <button
+                  onClick={() => setActiveTab("lowStock")}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === "lowStock"
+                      ? "border-blue-500 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  Low Stock ({lowStockCount})
+                </button>
+                <button
+                  onClick={() => setActiveTab("outOfStock")}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === "outOfStock"
+                      ? "border-blue-500 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  Out of Stock ({outOfStockCount})
+                </button>
+                <button
+                  onClick={() => setActiveTab("reports")}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === "reports"
+                      ? "border-blue-500 text-blue-600"
+                      : "border-transparent text-gray-500 hover:text-gray-700"
+                  }`}
+                >
+                  Transaction Reports
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+
+        {activeTab === "reports" && (
+          <div className="px-4 py-2 border-b bg-gray-50">
             <button
               onClick={() => setActiveTab("all")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "all"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
+              className="text-blue-600 hover:text-blue-800 text-sm flex items-center gap-1"
             >
-              All Items ({totalItems})
-            </button>
-            <button
-              onClick={() => setActiveTab("lowStock")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "lowStock"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              Low Stock ({lowStockCount})
-            </button>
-            <button
-              onClick={() => setActiveTab("outOfStock")}
-              className={`py-2 px-1 border-b-2 font-medium text-sm ${
-                activeTab === "outOfStock"
-                  ? "border-blue-500 text-blue-600"
-                  : "border-transparent text-gray-500 hover:text-gray-700"
-              }`}
-            >
-              Out of Stock ({outOfStockCount})
+              ← Back to Inventory List
             </button>
           </div>
-        </div>
+        )}
       </div>
 
       <div className="p-4">
-        <InventoryList
-          data={filteredInventory}
-          loading={loading}
-          onEdit={handleEdit}
-          onDelete={handleDelete}
-          onRefresh={handleRefresh}
-        />
+        {activeTab === "reports" ? (
+          <InventoryTransactionReport />
+        ) : (
+          <InventoryList
+            data={filteredInventory}
+            loading={loading}
+            onEdit={handleEdit}
+            onDelete={handleDelete}
+            onRefresh={handleRefresh}
+          />
+        )}
       </div>
 
       {formVisible && (

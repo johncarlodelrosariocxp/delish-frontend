@@ -1,3 +1,4 @@
+// src/App.js
 import React, { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import {
   BrowserRouter as Router,
@@ -13,6 +14,7 @@ import FullScreenLoader from "./components/shared/FullScreenLoader";
 import PropTypes from "prop-types";
 import { setUser } from "./redux/slices/userSlice";
 import { BluetoothProvider } from "./contexts/BluetoothContext";
+import usePreventPullToRefresh from "./hooks/usePreventPullToRefresh";
 
 // Lazy load pages
 const Home = lazy(() => import("./pages/Home"));
@@ -199,6 +201,9 @@ function Layout() {
 
   const isAuthenticated = user.isAuth || localStorage.getItem("token");
 
+  // Add this hook to prevent pull-to-refresh
+  usePreventPullToRefresh(true);
+
   useEffect(() => {
     if (isAuthenticated) {
       const savedState = loadAppData("app_state");
@@ -221,10 +226,64 @@ function Layout() {
     };
   }, []);
 
+  // Setup root element styles for mobile
+  useEffect(() => {
+    // Set html and body styles
+    document.documentElement.style.height = "100%";
+    document.documentElement.style.margin = "0";
+    document.documentElement.style.padding = "0";
+    document.body.style.height = "100%";
+    document.body.style.margin = "0";
+    document.body.style.padding = "0";
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.width = "100%";
+
+    const root = document.getElementById("root");
+    if (root) {
+      root.style.height = "100%";
+      root.style.width = "100%";
+      root.style.overflow = "hidden";
+      root.style.display = "flex";
+      root.style.flexDirection = "column";
+      root.style.position = "relative";
+    }
+
+    return () => {
+      document.documentElement.style.height = "";
+      document.documentElement.style.margin = "";
+      document.documentElement.style.padding = "";
+      document.body.style.height = "";
+      document.body.style.margin = "";
+      document.body.style.padding = "";
+      document.body.style.overflow = "";
+      document.body.style.position = "";
+      document.body.style.width = "";
+      if (root) {
+        root.style.height = "";
+        root.style.width = "";
+        root.style.overflow = "";
+        root.style.display = "";
+        root.style.flexDirection = "";
+        root.style.position = "";
+      }
+    };
+  }, []);
+
   if (isLoading) return <FullScreenLoader />;
 
   return (
-    <>
+    <div
+      style={{
+        height: "100vh",
+        width: "100%",
+        display: "flex",
+        flexDirection: "column",
+        overflow: "hidden",
+        position: "relative",
+        backgroundColor: "#f9fafb",
+      }}
+    >
       {isOffline && (
         <div
           style={{
@@ -248,80 +307,91 @@ function Layout() {
       {!hideHeaderRoutes.includes(location.pathname) && isAuthenticated && (
         <Header />
       )}
-      <Suspense fallback={<FullScreenLoader />}>
-        <Routes>
-          <Route
-            path="/"
-            element={
-              <ProtectedRoutes>
-                <Home />
-              </ProtectedRoutes>
-            }
-          />
-          <Route
-            path="/auth"
-            element={isAuthenticated ? <Navigate to="/" replace /> : <Auth />}
-          />
-          <Route
-            path="/orders"
-            element={
-              <ProtectedRoutes>
-                <Orders />
-              </ProtectedRoutes>
-            }
-          />
-          <Route
-            path="/menu"
-            element={
-              <ProtectedRoutes>
-                <Menu />
-              </ProtectedRoutes>
-            }
-          />
-          <Route
-            path="/dashboard"
-            element={
-              <ProtectedRoutes>
-                <Dashboard />
-              </ProtectedRoutes>
-            }
-          />
-          <Route
-            path="/inventory"
-            element={
-              <ProtectedRoutes>
-                <Inventory />
-              </ProtectedRoutes>
-            }
-          />
-          <Route
-            path="/profit-loss"
-            element={
-              <ProtectedRoutes>
-                <ProfitLoss />
-              </ProtectedRoutes>
-            }
-          />
-          <Route
-            path="/expenses"
-            element={
-              <ProtectedRoutes>
-                <Expenses />
-              </ProtectedRoutes>
-            }
-          />
-          <Route
-            path="/admin-menu"
-            element={
-              <ProtectedRoutes>
-                <AdminMenu />
-              </ProtectedRoutes>
-            }
-          />
-          <Route path="*" element={<Navigate to="/" replace />} />
-        </Routes>
-      </Suspense>
-    </>
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          overflowX: "hidden",
+          WebkitOverflowScrolling: "touch",
+          overscrollBehavior: "contain",
+          position: "relative",
+        }}
+      >
+        <Suspense fallback={<FullScreenLoader />}>
+          <Routes>
+            <Route
+              path="/"
+              element={
+                <ProtectedRoutes>
+                  <Home />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/auth"
+              element={isAuthenticated ? <Navigate to="/" replace /> : <Auth />}
+            />
+            <Route
+              path="/orders"
+              element={
+                <ProtectedRoutes>
+                  <Orders />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/menu"
+              element={
+                <ProtectedRoutes>
+                  <Menu />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <ProtectedRoutes>
+                  <Dashboard />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/inventory"
+              element={
+                <ProtectedRoutes>
+                  <Inventory />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/profit-loss"
+              element={
+                <ProtectedRoutes>
+                  <ProfitLoss />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/expenses"
+              element={
+                <ProtectedRoutes>
+                  <Expenses />
+                </ProtectedRoutes>
+              }
+            />
+            <Route
+              path="/admin-menu"
+              element={
+                <ProtectedRoutes>
+                  <AdminMenu />
+                </ProtectedRoutes>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </Suspense>
+      </div>
+    </div>
   );
 }
 

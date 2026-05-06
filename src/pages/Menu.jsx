@@ -2,7 +2,6 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import BottomNav from "../components/shared/BottomNav";
 import { MdAdd, MdClose, MdDoneAll, MdPrint } from "react-icons/md";
 import MenuContainer from "../components/menu/MenuContainer";
-import CartInfo from "../components/menu/CartInfo";
 import Bill from "../components/menu/Bill";
 import Invoice from "../components/invoice/Invoice";
 import { useSelector, useDispatch } from "react-redux";
@@ -37,20 +36,72 @@ const Menu = () => {
   const autoCompleteTimeoutRef = useRef(null);
   const isProcessingRef = useRef(false);
 
-  // Load menus from backend
+  // Load menus from localStorage or backend
   useEffect(() => {
     const loadMenus = async () => {
+      // Check localStorage first
+      const cachedMenus = localStorage.getItem("cached_menus");
+      const cachedTimestamp = localStorage.getItem("cached_menus_timestamp");
+      const now = Date.now();
+      const cacheDuration = 5 * 60 * 1000; // 5 minutes cache duration
+
+      // Use cache if it exists and is not expired
+      if (
+        cachedMenus &&
+        cachedTimestamp &&
+        now - parseInt(cachedTimestamp) < cacheDuration
+      ) {
+        try {
+          const parsedMenus = JSON.parse(cachedMenus);
+          setMenus(parsedMenus);
+          setLoadingMenus(false);
+          console.log("✅ Loaded menus from localStorage cache");
+
+          // Still fetch in background to update cache silently
+          fetchFreshMenus();
+          return;
+        } catch (error) {
+          console.error("Error parsing cached menus:", error);
+        }
+      }
+
+      // Fetch fresh data
+      await fetchFreshMenus();
+    };
+
+    const fetchFreshMenus = async () => {
       try {
         const response = await getMenus();
         if (response.data.success) {
-          setMenus(response.data.menus);
+          const freshMenus = response.data.menus || [];
+          setMenus(freshMenus);
+
+          // Save to localStorage
+          localStorage.setItem("cached_menus", JSON.stringify(freshMenus));
+          localStorage.setItem("cached_menus_timestamp", Date.now().toString());
+          console.log(
+            "✅ Loaded fresh menus from API and cached to localStorage",
+          );
         }
       } catch (error) {
         console.error("Error loading menus:", error);
+
+        // If API fails, try to use expired cache as fallback
+        const cachedMenus = localStorage.getItem("cached_menus");
+        if (cachedMenus) {
+          try {
+            const parsedMenus = JSON.parse(cachedMenus);
+            setMenus(parsedMenus);
+            console.log("⚠️ Using expired cache due to API failure");
+          } catch (e) {
+            console.error("Error parsing fallback cache:", e);
+          }
+        }
       } finally {
         setLoadingMenus(false);
       }
     };
+
     loadMenus();
   }, []);
 
@@ -89,10 +140,10 @@ const Menu = () => {
 
   // Initialize orders
   useEffect(() => {
-    if (activeOrders.length === 0) {
+    if (activeOrders.length === 0 && !showCompletionLoading) {
       dispatch(createNewOrder());
     }
-  }, [dispatch, activeOrders.length]);
+  }, [dispatch, activeOrders.length, showCompletionLoading]);
 
   // Auto-show invoice when order is completed
   useEffect(() => {
@@ -140,11 +191,6 @@ const Menu = () => {
       setTimeout(() => {
         setShowCompletionLoading(false);
         isProcessingRef.current = false;
-
-        // Create new order after completion
-        setTimeout(() => {
-          dispatch(createNewOrder());
-        }, 300);
       }, 1500);
     },
     [currentActiveOrder, dispatch],
@@ -185,13 +231,13 @@ const Menu = () => {
     setShowInvoiceModal(false);
     dispatch(clearRecentCompletedOrder());
 
-    // Create new order after closing invoice if none exist
+    // Create new order after closing invoice
     setTimeout(() => {
-      if (activeOrders.length === 0) {
+      if (activeOrders.length === 0 && !showCompletionLoading) {
         dispatch(createNewOrder());
       }
     }, 300);
-  }, [dispatch, activeOrders.length]);
+  }, [dispatch, activeOrders.length, showCompletionLoading]);
 
   // Handle adding new order
   const handleAddNewOrder = useCallback(() => {
@@ -219,7 +265,9 @@ const Menu = () => {
       if (activeOrders.length <= 1) {
         dispatch(closeOrder(orderId));
         setTimeout(() => {
-          dispatch(createNewOrder());
+          if (!showCompletionLoading) {
+            dispatch(createNewOrder());
+          }
         }, 200);
         return;
       }
@@ -237,7 +285,7 @@ const Menu = () => {
         }
       }
     },
-    [dispatch, activeOrders, activeOrderId],
+    [dispatch, activeOrders, activeOrderId, showCompletionLoading],
   );
 
   // Print receipt
@@ -248,7 +296,6 @@ const Menu = () => {
     try {
       const receiptText = generateReceiptText(order);
 
-      // Create print window
       const printWindow = window.open("", "_blank");
       if (!printWindow) {
         throw new Error("Popup blocked. Please allow popups for printing.");
@@ -301,7 +348,6 @@ const Menu = () => {
 
       let receipt = "";
 
-      // Header
       receipt += doubleLine + lineBreak;
       receipt += "         DELISH RESTAURANT" + lineBreak;
       receipt += doubleLine + lineBreak;
@@ -311,8 +357,6 @@ const Menu = () => {
       receipt +=
         `Customer: ${order.customer?.customerName || "Walk-in"}` + lineBreak;
       receipt += dashedLine + lineBreak;
-
-      // Items
       receipt += "             ORDER ITEMS" + lineBreak;
       receipt += dashedLine + lineBreak;
 
@@ -328,18 +372,12 @@ const Menu = () => {
         receipt += `${itemName}` + lineBreak;
         receipt +=
           `  ${quantity}x ${formatCurrency(pricePerQuantity)}` + lineBreak;
-        receipt +=
-          `  ${formatCurrency(total)}${item.isRedeemed ? " (REDEEMED)" : ""}` +
-          lineBreak;
-        if (item.isPwdSssDiscounted) {
-          receipt += `  PWD/SSS 20% Discount Applied` + lineBreak;
-        }
+        receipt += `  ${formatCurrency(total)}` + lineBreak;
         receipt += lineBreak;
       });
 
       receipt += dashedLine + lineBreak;
 
-      // Calculate totals
       const subtotal =
         order.items?.reduce((sum, item) => {
           return (
@@ -351,7 +389,6 @@ const Menu = () => {
       const vat = order.bills?.tax || subtotal * 0.12;
       const total = order.bills?.total || subtotal + vat;
 
-      // Totals
       receipt +=
         "SUBTOTAL:".padEnd(15) +
         `${formatCurrency(subtotal)}`.padStart(25) +
@@ -485,9 +522,8 @@ const Menu = () => {
       {/* Active Orders Tab Content */}
       {activeTab === "active" && (
         <>
-          {/* Main POS Interface */}
           <div className="flex-1 flex flex-col lg:flex-row gap-3 p-3 pb-20 lg:pb-3">
-            {activeOrders.length === 0 ? (
+            {activeOrders.length === 0 && !showCompletionLoading ? (
               <div className="flex-1 flex items-center justify-center">
                 <div className="text-center">
                   <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto mb-4"></div>
@@ -520,13 +556,6 @@ const Menu = () => {
                 <div className="flex-1 lg:flex-[1] bg-gray-100 rounded-lg shadow-md h-auto lg:h-[calc(100vh-11rem)] flex flex-col">
                   <hr className="border-gray-300 border-t-2" />
 
-                  <div className="flex-shrink-0">
-                    <CartInfo orderId={activeOrderId} />
-                  </div>
-
-                  <hr className="border-gray-300 border-t-2" />
-
-                  {/* Bills */}
                   <div className="flex-shrink-0">
                     <Bill
                       orderId={activeOrderId}

@@ -1,4 +1,3 @@
-// src/https/index.js
 import axiosWrapper from "./axiosWrapper";
 
 // Re-export axiosWrapper para magamit sa ibang components
@@ -97,7 +96,7 @@ export const getProfitLossReport = (params = {}) => {
 };
 
 // =============================
-// ✅ INVENTORY ENDPOINTS (COMPLETE - FIXED)
+// ✅ INVENTORY ENDPOINTS (COMPLETE - WITH TRANSACTION REPORT)
 // =============================
 
 // Get all inventory items with optional filters
@@ -107,6 +106,23 @@ export const getInventory = (params = {}) => {
   if (params.search) queryParams.append("search", params.search);
   if (params.lowStock) queryParams.append("lowStock", params.lowStock);
   if (params.category) queryParams.append("category", params.category);
+  if (params.startDate) queryParams.append("startDate", params.startDate);
+  if (params.endDate) queryParams.append("endDate", params.endDate);
+  if (params.transactionType)
+    queryParams.append("transactionType", params.transactionType);
+  if (queryParams.toString()) url += `?${queryParams.toString()}`;
+  return axiosWrapper.get(url);
+};
+
+// Get inventory transaction report with date filtering
+export const getInventoryTransactionReport = (params = {}) => {
+  let url = "/api/inventory/transaction-report";
+  const queryParams = new URLSearchParams();
+  if (params.startDate) queryParams.append("startDate", params.startDate);
+  if (params.endDate) queryParams.append("endDate", params.endDate);
+  if (params.itemId) queryParams.append("itemId", params.itemId);
+  if (params.transactionType)
+    queryParams.append("transactionType", params.transactionType);
   if (queryParams.toString()) url += `?${queryParams.toString()}`;
   return axiosWrapper.get(url);
 };

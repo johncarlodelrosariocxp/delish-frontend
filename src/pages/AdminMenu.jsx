@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   getMenus,
   createMenu,
@@ -30,15 +30,12 @@ const AdminMenu = () => {
   const [editingItem, setEditingItem] = useState(null);
   const [editingFlavor, setEditingFlavor] = useState(null);
   const [menuForm, setMenuForm] = useState({
-    id: "",
     name: "",
     bgColor: "#f59e0b",
     icon: "🍽️",
     tag: "food",
-    items: [],
   });
   const [itemForm, setItemForm] = useState({
-    id: "",
     name: "",
     category: "",
     tag: "food",
@@ -54,52 +51,185 @@ const AdminMenu = () => {
     category: "regular",
   });
 
-  useEffect(() => {
-    loadMenus();
-    loadFlavors();
-    loadInventory();
-  }, []);
+  // Helper function to save to localStorage with timestamp
+  const saveToCache = (key, data) => {
+    localStorage.setItem(key, JSON.stringify(data));
+    localStorage.setItem(`${key}_timestamp`, Date.now().toString());
+  };
 
-  const loadMenus = async () => {
+  // Helper function to get from cache
+  const getFromCache = (key, maxAge = 24 * 60 * 60 * 1000) => {
+    const cached = localStorage.getItem(key);
+    const timestamp = localStorage.getItem(`${key}_timestamp`);
+    const now = Date.now();
+
+    if (cached && timestamp && now - parseInt(timestamp) < maxAge) {
+      try {
+        return JSON.parse(cached);
+      } catch (error) {
+        console.error(`Error parsing ${key} from cache:`, error);
+        return null;
+      }
+    }
+    return null;
+  };
+
+  const loadMenus = useCallback(async () => {
+    // Check cache first (24 hours)
+    const cachedMenus = getFromCache("admin_cached_menus", 24 * 60 * 60 * 1000);
+    if (cachedMenus) {
+      setMenus(cachedMenus);
+      console.log("✅ Loaded menus from localStorage cache");
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await getMenus();
       if (response.data.success) {
-        setMenus(response.data.menus);
+        const menusData = response.data.menus || [];
+        setMenus(menusData);
+        saveToCache("admin_cached_menus", menusData);
+        console.log("✅ Loaded fresh menus from API and cached");
       }
     } catch (error) {
       console.error("Error loading menus:", error);
-      alert("Failed to load menus");
+      // Try expired cache as fallback
+      const expiredMenus = localStorage.getItem("admin_cached_menus");
+      if (expiredMenus) {
+        try {
+          setMenus(JSON.parse(expiredMenus));
+          console.log("⚠️ Using expired menus cache due to API failure");
+        } catch (e) {
+          console.error("Error parsing fallback menus:", e);
+        }
+      } else {
+        alert("Failed to load menus");
+      }
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const loadFlavors = async () => {
+  const loadFlavors = useCallback(async () => {
+    // Check cache first (24 hours)
+    const cachedFlavors = getFromCache(
+      "admin_cached_flavors",
+      24 * 60 * 60 * 1000,
+    );
+    if (cachedFlavors) {
+      setFlavors(cachedFlavors);
+      console.log("✅ Loaded flavors from localStorage cache");
+      return;
+    }
+
     try {
       const response = await getItemFlavors();
       if (response.data.success) {
-        setFlavors(response.data.flavors);
+        const flavorsData = response.data.flavors || [];
+        setFlavors(flavorsData);
+        saveToCache("admin_cached_flavors", flavorsData);
+        console.log("✅ Loaded fresh flavors from API and cached");
       }
     } catch (error) {
       console.error("Error loading flavors:", error);
+      // Try expired cache as fallback
+      const expiredFlavors = localStorage.getItem("admin_cached_flavors");
+      if (expiredFlavors) {
+        try {
+          setFlavors(JSON.parse(expiredFlavors));
+          console.log("⚠️ Using expired flavors cache due to API failure");
+        } catch (e) {
+          console.error("Error parsing fallback flavors:", e);
+        }
+      }
     }
-  };
+  }, []);
 
-  const loadInventory = async () => {
+  const loadInventory = useCallback(async () => {
+    // Check cache first (1 hour for inventory as it changes more frequently)
+    const cachedInventory = getFromCache(
+      "admin_cached_inventory",
+      60 * 60 * 1000,
+    );
+    if (cachedInventory) {
+      setInventoryItems(cachedInventory);
+      console.log("✅ Loaded inventory from localStorage cache");
+      return;
+    }
+
     try {
       const response = await getInventory();
       if (response.data.success) {
-        setInventoryItems(response.data.data);
+        const inventoryData = response.data.data || [];
+        setInventoryItems(inventoryData);
+        saveToCache("admin_cached_inventory", inventoryData);
+        console.log("✅ Loaded fresh inventory from API and cached");
       }
     } catch (error) {
       console.error("Error loading inventory:", error);
+      // Try expired cache as fallback
+      const expiredInventory = localStorage.getItem("admin_cached_inventory");
+      if (expiredInventory) {
+        try {
+          setInventoryItems(JSON.parse(expiredInventory));
+          console.log("⚠️ Using expired inventory cache due to API failure");
+        } catch (e) {
+          console.error("Error parsing fallback inventory:", e);
+        }
+      }
+    }
+  }, []);
+
+  useEffect(() => {
+    loadMenus();
+    loadFlavors();
+    loadInventory();
+  }, [loadMenus, loadFlavors, loadInventory]);
+
+  // Refresh cache after mutations
+  const refreshMenusCache = async () => {
+    try {
+      const response = await getMenus();
+      if (response.data.success) {
+        const menusData = response.data.menus || [];
+        setMenus(menusData);
+        saveToCache("admin_cached_menus", menusData);
+      }
+    } catch (error) {
+      console.error("Error refreshing menus cache:", error);
+    }
+  };
+
+  const refreshFlavorsCache = async () => {
+    try {
+      const response = await getItemFlavors();
+      if (response.data.success) {
+        const flavorsData = response.data.flavors || [];
+        setFlavors(flavorsData);
+        saveToCache("admin_cached_flavors", flavorsData);
+      }
+    } catch (error) {
+      console.error("Error refreshing flavors cache:", error);
+    }
+  };
+
+  const refreshInventoryCache = async () => {
+    try {
+      const response = await getInventory();
+      if (response.data.success) {
+        const inventoryData = response.data.data || [];
+        setInventoryItems(inventoryData);
+        saveToCache("admin_cached_inventory", inventoryData);
+      }
+    } catch (error) {
+      console.error("Error refreshing inventory cache:", error);
     }
   };
 
   const handleCreateMenu = async () => {
-    if (!menuForm.id || !menuForm.name) {
-      alert("Menu ID and Name are required");
+    if (!menuForm.name) {
+      alert("Menu Name is required");
       return;
     }
 
@@ -109,7 +239,7 @@ const AdminMenu = () => {
         alert("Menu created successfully");
         setShowMenuModal(false);
         resetMenuForm();
-        loadMenus();
+        await refreshMenusCache();
       }
     } catch (error) {
       console.error("Error creating menu:", error);
@@ -127,7 +257,7 @@ const AdminMenu = () => {
         setShowMenuModal(false);
         resetMenuForm();
         setEditingMenu(null);
-        loadMenus();
+        await refreshMenusCache();
       }
     } catch (error) {
       console.error("Error updating menu:", error);
@@ -145,7 +275,7 @@ const AdminMenu = () => {
         const response = await deleteMenu(menu.id);
         if (response.data.success) {
           alert("Menu deleted successfully");
-          loadMenus();
+          await refreshMenusCache();
           if (selectedMenu?.id === menu.id) {
             setSelectedMenu(null);
           }
@@ -158,8 +288,8 @@ const AdminMenu = () => {
   };
 
   const handleCreateItem = async () => {
-    if (!selectedMenu || !itemForm.id || !itemForm.name) {
-      alert("Item ID and Name are required");
+    if (!selectedMenu || !itemForm.name) {
+      alert("Item Name is required");
       return;
     }
 
@@ -169,7 +299,7 @@ const AdminMenu = () => {
         alert("Item added successfully");
         setShowItemModal(false);
         resetItemForm();
-        loadMenus();
+        await refreshMenusCache();
       }
     } catch (error) {
       console.error("Error adding item:", error);
@@ -191,7 +321,7 @@ const AdminMenu = () => {
         setShowItemModal(false);
         resetItemForm();
         setEditingItem(null);
-        loadMenus();
+        await refreshMenusCache();
       }
     } catch (error) {
       console.error("Error updating item:", error);
@@ -205,7 +335,7 @@ const AdminMenu = () => {
         const response = await deleteMenuItem(menu.id, item.id);
         if (response.data.success) {
           alert("Item deleted successfully");
-          loadMenus();
+          await refreshMenusCache();
         }
       } catch (error) {
         console.error("Error deleting item:", error);
@@ -226,7 +356,7 @@ const AdminMenu = () => {
         alert("Flavor created successfully");
         setShowFlavorModal(false);
         resetFlavorForm();
-        loadFlavors();
+        await refreshFlavorsCache();
       }
     } catch (error) {
       console.error("Error creating flavor:", error);
@@ -244,7 +374,7 @@ const AdminMenu = () => {
         setShowFlavorModal(false);
         resetFlavorForm();
         setEditingFlavor(null);
-        loadFlavors();
+        await refreshFlavorsCache();
       }
     } catch (error) {
       console.error("Error updating flavor:", error);
@@ -258,7 +388,7 @@ const AdminMenu = () => {
         const response = await deleteItemFlavor(flavor._id);
         if (response.data.success) {
           alert("Flavor deleted successfully");
-          loadFlavors();
+          await refreshFlavorsCache();
         }
       } catch (error) {
         console.error("Error deleting flavor:", error);
@@ -269,18 +399,15 @@ const AdminMenu = () => {
 
   const resetMenuForm = () => {
     setMenuForm({
-      id: "",
       name: "",
       bgColor: "#f59e0b",
       icon: "🍽️",
       tag: "food",
-      items: [],
     });
   };
 
   const resetItemForm = () => {
     setItemForm({
-      id: "",
       name: "",
       category: "",
       tag: "food",
@@ -303,12 +430,10 @@ const AdminMenu = () => {
   const openEditMenu = (menu) => {
     setEditingMenu(menu);
     setMenuForm({
-      id: menu.id,
       name: menu.name,
       bgColor: menu.bgColor,
       icon: menu.icon,
       tag: menu.tag,
-      items: menu.items,
     });
     setShowMenuModal(true);
   };
@@ -317,7 +442,6 @@ const AdminMenu = () => {
     setSelectedMenu(menu);
     setEditingItem(item);
     setItemForm({
-      id: item.id,
       name: item.name,
       category: item.category || "",
       tag: item.tag,
@@ -350,7 +474,7 @@ const AdminMenu = () => {
   const updateVariant = (index, field, value) => {
     const updatedVariants = [...itemForm.variants];
     updatedVariants[index][field] =
-      field === "price" ? parseFloat(value) : value;
+      field === "price" ? parseFloat(value) || 0 : value;
     setItemForm({ ...itemForm, variants: updatedVariants });
   };
 
@@ -386,7 +510,7 @@ const AdminMenu = () => {
       };
     } else {
       updatedRequirements[index][field] =
-        field === "quantityPerServing" ? parseFloat(value) : value;
+        field === "quantityPerServing" ? parseFloat(value) || 0 : value;
     }
     setItemForm({ ...itemForm, inventoryRequirements: updatedRequirements });
   };
@@ -430,6 +554,17 @@ const AdminMenu = () => {
             className="bg-purple-500 text-white px-4 py-2 rounded-lg hover:bg-purple-600 flex items-center gap-2 text-sm"
           >
             <MdAdd size={18} /> Add Flavor
+          </button>
+          <button
+            onClick={async () => {
+              await refreshMenusCache();
+              await refreshFlavorsCache();
+              await refreshInventoryCache();
+              alert("All data refreshed from server!");
+            }}
+            className="bg-gray-500 text-white px-4 py-2 rounded-lg hover:bg-gray-600 flex items-center gap-2 text-sm"
+          >
+            🔄 Refresh All Data
           </button>
         </div>
 
@@ -536,7 +671,7 @@ const AdminMenu = () => {
                           <h3 className="font-semibold">{item.name}</h3>
                           <p className="text-xs text-gray-500">ID: {item.id}</p>
                           <p className="text-xs text-gray-500">
-                            Category: {item.category}
+                            Category: {item.category || "Uncategorized"}
                           </p>
                           {item.hasFlavorSelection && (
                             <span className="inline-block mt-1 text-xs bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded">
@@ -660,15 +795,6 @@ const AdminMenu = () => {
             </div>
             <div className="space-y-4">
               <input
-                type="number"
-                placeholder="Menu ID"
-                value={menuForm.id}
-                onChange={(e) =>
-                  setMenuForm({ ...menuForm, id: parseInt(e.target.value) })
-                }
-                className="w-full p-2 border rounded"
-              />
-              <input
                 type="text"
                 placeholder="Menu Name"
                 value={menuForm.name}
@@ -679,12 +805,11 @@ const AdminMenu = () => {
               />
               <input
                 type="color"
-                placeholder="Background Color"
                 value={menuForm.bgColor}
                 onChange={(e) =>
                   setMenuForm({ ...menuForm, bgColor: e.target.value })
                 }
-                className="w-full p-2 border rounded"
+                className="w-full p-2 border rounded h-12"
               />
               <input
                 type="text"
@@ -716,7 +841,7 @@ const AdminMenu = () => {
         </div>
       )}
 
-      {/* Item Modal with Inventory Requirements */}
+      {/* Item Modal */}
       {showItemModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-lg p-6 max-w-2xl w-full max-h-[90vh] overflow-y-auto">
@@ -732,15 +857,6 @@ const AdminMenu = () => {
               </button>
             </div>
             <div className="space-y-4">
-              <input
-                type="number"
-                placeholder="Item ID"
-                value={itemForm.id}
-                onChange={(e) =>
-                  setItemForm({ ...itemForm, id: parseInt(e.target.value) })
-                }
-                className="w-full p-2 border rounded"
-              />
               <input
                 type="text"
                 placeholder="Item Name"
@@ -964,7 +1080,7 @@ const AdminMenu = () => {
                 onChange={(e) =>
                   setFlavorForm({
                     ...flavorForm,
-                    price: parseFloat(e.target.value),
+                    price: parseFloat(e.target.value) || 0,
                   })
                 }
                 className="w-full p-2 border rounded"
